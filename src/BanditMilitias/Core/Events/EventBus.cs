@@ -315,13 +315,31 @@ namespace BanditMilitias.Core.Events
             int currentQueue = Volatile.Read(ref _deferredQueueCount);
             if (currentQueue >= MAX_QUEUE_SIZE)
             {
-                _ = Interlocked.Increment(ref _droppedDeferredCount);
-                if (IsDebugMode && (_droppedDeferredCount % 50 == 1))
+                // PRIORITY-AWARE DROP FIX:
+                // Critical olaylar (Priority=0) kuyruk dolu olsa bile kabul edilir (%20 tolerans).
+                // High olaylar (Priority=1) %10 toleranslı kabul edilir.
+                // Normal ve Low olaylar anında düşürülür.
+                bool isCritical   = gameEvent.Priority == EventPriority.Critical;
+                bool isHigh       = gameEvent.Priority == EventPriority.High;
+                bool allowOverflow = (isCritical && currentQueue < MAX_QUEUE_SIZE * 12 / 10)
+                                  || (isHigh     && currentQueue < MAX_QUEUE_SIZE * 11 / 10);
+
+                if (!allowOverflow)
+                {
+                    _ = Interlocked.Increment(ref _droppedDeferredCount);
+                    if (IsDebugMode && (_droppedDeferredCount % 50 == 1))
+                    {
+                        DebugLogger.Warning("EventBus",
+                            $"Deferred queue saturated. Dropped event {typeof(T).Name} (Priority={gameEvent.Priority}).");
+                    }
+                    return;
+                }
+
+                if (IsDebugMode)
                 {
                     DebugLogger.Warning("EventBus",
-                        $"Deferred queue saturated. Dropped event {typeof(T).Name} (Priority={gameEvent.Priority}).");
+                        $"Queue overflow but allowing {gameEvent.Priority} event {typeof(T).Name} (size={currentQueue}).");
                 }
-                return;
             }
 
             _deferredQueue.Enqueue(gameEvent);
@@ -379,8 +397,13 @@ namespace BanditMilitias.Core.Events
 
         public string GetQueueDiagnostics()
         {
-            return $"Queue={Volatile.Read(ref _deferredQueueCount)}/{MAX_QUEUE_SIZE}, " +
-                   $"Dropped={Interlocked.Read(ref _droppedDeferredCount)}";
+            int q = Volatile.Read(ref _deferredQueueCount);
+            long dropped = Interlocked.Read(ref _droppedDeferredCount);
+            float fillPct = (float)q / MAX_QUEUE_SIZE * 100f;
+            string health = fillPct >= 100f ? "DOLU" : fillPct >= 80f ? "YÜKSEK" : "OK";
+            return $"Queue={q}/{MAX_QUEUE_SIZE} ({fillPct:F0}% [{health}]), " +
+                   $"Dropped={dropped}, " +
+                   $"PoolTypes={_eventPool.Count}";
         }
     }
 

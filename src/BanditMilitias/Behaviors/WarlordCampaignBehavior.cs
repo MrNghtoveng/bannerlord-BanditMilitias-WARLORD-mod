@@ -1,6 +1,8 @@
+using System;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using System.Collections.Generic;
+using System.Linq;
 using BanditMilitias.Intelligence.Strategic;
 
 namespace BanditMilitias.Behaviors
@@ -23,10 +25,41 @@ namespace BanditMilitias.Behaviors
             CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
         }
 
+        // BUG-03 FIX: AI taktiksel hafızasını (warlord aktif parti listesi, kuyruk büyüklüğü)
+        // kayıt dosyasına yaz. Q-Table'ın kendisi AILearningSystem.SyncData tarafından ayrıca
+        // kaydedildiğinden burada tekrar edilmesine gerek yok.
+        private List<string> _savedWarlordIds = new List<string>();
+        private int _savedQueueSize = 0;
+
         public override void SyncData(IDataStore dataStore)
         {
-            // WarlordCampaignBehavior için şu anlık özel bir veri saklanmıyor.
-            // Kuyruk (Queue) günlük olarak OnDailyTick'te yenilendiği için serialize edilmesine gerek yok.
+            try
+            {
+                if (dataStore.IsSaving)
+                {
+                    // Aktif warlordları StringId listesi olarak sakla
+                    _savedWarlordIds = WarlordSystem.Instance.GetAllWarlords()
+                        .Where(w => w != null && w.IsAlive)
+                        .Select(w => w.StringId)
+                        .ToList();
+                    _savedQueueSize = _partiesToCalculate.Count;
+                }
+
+                _ = dataStore.SyncData("BM_WarlordIds",    ref _savedWarlordIds);
+                _ = dataStore.SyncData("BM_WarlordQueueSz", ref _savedQueueSize);
+
+                if (dataStore.IsLoading)
+                {
+                    // Kuyruk yükleme sonrası sıfırlanır; OnDailyTick'te dolduruluyor.
+                    _partiesToCalculate.Clear();
+                    Debug.DebugLogger.Info("WarlordCampaignBehavior",
+                        $"SyncData loaded: {_savedWarlordIds?.Count ?? 0} warlords persisted.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.DebugLogger.Warning("WarlordCampaignBehavior", $"SyncData error: {ex.Message}");
+            }
         }
 
         private void OnDailyTick()

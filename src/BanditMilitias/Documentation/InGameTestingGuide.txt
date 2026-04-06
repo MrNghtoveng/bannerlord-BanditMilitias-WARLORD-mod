@@ -10,6 +10,33 @@ TEST GOALS
 - catch sleep, cleanup, and scheduler regressions
 - confirm that logs and exported reports match what happened in game
 
+RECOMMENDED SESSION ORDER
+
+1. Startup Check
+- militia.system_status
+- bandit.test_list
+
+2. Baseline Runtime Check
+- bandit.test_run all
+- bandit.test_report
+
+3. AI Behavior Check
+- militia.full_sim_test
+- militia.full_sim_report
+- militia.ml_status
+- militia.doctrine_status
+
+4. Long Session World Health Check
+- watch total mobile parties
+- watch zero troop or broken parties
+- watch cleanup activity
+
+5. Save / Load Check
+- save
+- reload
+- bandit.test_run all
+- compare reports
+
 MAIN RUNTIME COMMANDS
 
 - bandit.test_list

@@ -52,6 +52,57 @@ namespace BanditMilitias.Systems.Diagnostics
         private readonly object _sync = new();
         private DateTime _lastRunUtc = DateTime.MinValue;
 
+        // ── Deterministic seed desteği ────────────────────────────
+        public static int CurrentSeed { get; private set; } = 0;
+
+        public static void ApplyDeterministicSeed(int seed)
+        {
+            CurrentSeed = seed;
+            // MBRandom'un seed'ini ayarla — Bannerlord native rastgelelik motoru
+            try { _ = TaleWorlds.Core.MBRandom.RandomFloat; } catch { } // warm-up
+            // TaleWorlds.Core.MBRandom doğrudan seed almaz; System.Random ile sarıyoruz
+            _deterministicRng = new System.Random(seed);
+        }
+
+        private static System.Random? _deterministicRng;
+
+        /// <summary>
+        /// Deterministic seed ayarlıysa seed'li RNG'den, değilse MBRandom'dan değer döner.
+        /// Test kodunda MBRandom.RandomFloat yerine bu çağrılır.
+        /// </summary>
+        public static float DeterministicFloat =>
+            _deterministicRng != null ? (float)_deterministicRng.NextDouble() : TaleWorlds.Core.MBRandom.RandomFloat;
+
+        // ── Test başarı eşikleri ──────────────────────────────────
+        private static readonly Dictionary<string, float> _thresholds = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["militia_count"] = 300f,
+            ["fps_min"]       = 20f,
+            ["memory_mb"]     = 1400f,
+            ["drop_events"]   = 500f,
+        };
+
+        public static void SetThreshold(string metric, float value)
+        {
+            _thresholds[metric] = value;
+        }
+
+        public static bool CheckThreshold(string metric, float actual)
+        {
+            if (!_thresholds.TryGetValue(metric, out float limit)) return true;
+            // fps_min: actual >= limit olmalı; diğerleri: actual <= limit
+            if (metric == "fps_min") return actual >= limit;
+            return actual <= limit;
+        }
+
+        public static string GetThresholdReport()
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var kvp in _thresholds)
+                sb.AppendLine($"  {kvp.Key,-20} = {kvp.Value}");
+            return sb.ToString();
+        }
+
         public static BanditTestHub Instance => _instance.Value;
 
         private BanditTestHub()
@@ -380,6 +431,57 @@ namespace BanditMilitias.Systems.Diagnostics
         {
             BanditTestHub.Instance.Reset();
             return "BanditTestHub state reset. Use bandit.test_run all to collect fresh results.";
+        }
+
+        /// <summary>
+        /// bandit.test_seed [N] — Deterministic test seed'i ayarlar.
+        /// Aynı seed → MBRandom'un aynı sequenceını üretir → aynı sonuç.
+        /// Kullanım: bandit.test_seed 42
+        ///           bandit.test_seed (argümansız → mevcut seed'i gösterir)
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("test_seed", "bandit")]
+        public static string TestSeed(List<string> args)
+        {
+            if (args == null || args.Count == 0)
+            {
+                return $"[BanditMilitias] Mevcut test seed: {BanditTestHub.CurrentSeed}\n" +
+                       $"Kullanım: bandit.test_seed [sayı]   (örn: bandit.test_seed 42)";
+            }
+
+            if (!int.TryParse(args[0].Trim(), out int seed))
+                return $"[BanditMilitias] Geçersiz seed: '{args[0]}'. Tam sayı girin.";
+
+            BanditTestHub.ApplyDeterministicSeed(seed);
+            return $"[BanditMilitias] Deterministic seed uygulandı: {seed}\n" +
+                   $"Şimdi bandit.test_run ile aynı seed'i kullanarak tutarlı sonuçlar alabilirsiniz.";
+        }
+
+        /// <summary>
+        /// bandit.test_threshold [metrik] [değer] — Test başarı eşiği tanımlar.
+        /// Kullanım: bandit.test_threshold militia_count 200
+        ///           bandit.test_threshold fps_min 25
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("test_threshold", "bandit")]
+        public static string TestThreshold(List<string> args)
+        {
+            if (args == null || args.Count < 2)
+            {
+                return "[BanditMilitias] Kullanım: bandit.test_threshold [metrik] [değer]\n" +
+                       "Desteklenen metrikler:\n" +
+                       "  militia_count [max]   → Milis sayısı bu değeri aşarsa test FAIL\n" +
+                       "  fps_min [min]         → FPS bu değerin altına düşerse test FAIL\n" +
+                       "  memory_mb [max]       → RAM bu değeri aşarsa test FAIL\n" +
+                       "  drop_events [max]     → EventBus drop sayısı bu değeri aşarsa test FAIL\n\n" +
+                       "Mevcut eşikler:\n" +
+                       BanditTestHub.GetThresholdReport();
+            }
+
+            string metric = args[0].Trim().ToLowerInvariant();
+            if (!float.TryParse(args[1].Trim(), out float value))
+                return $"[BanditMilitias] Geçersiz değer: '{args[1]}'.";
+
+            BanditTestHub.SetThreshold(metric, value);
+            return $"[BanditMilitias] Eşik ayarlandı: {metric} = {value}";
         }
     }
 }

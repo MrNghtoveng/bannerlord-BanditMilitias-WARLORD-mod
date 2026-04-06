@@ -6,6 +6,7 @@ using BanditMilitias.Intelligence.AI.Components;
 using BanditMilitias.Intelligence.ML;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Grid;
+using BanditMilitias.Systems.Diagnostics;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Systems.Scheduling;
 using BanditMilitias.Systems.Economy;
@@ -71,20 +72,20 @@ namespace BanditMilitias.Systems.Dev
             "Mount and Blade II Bannerlord",
             "BanditMilitias_Dev");
 
-        private string _sessionDir = _baseDir;
+        internal string _sessionDir = _baseDir;
 
         // ── Dosya yolları (session başında belirlenir) ─────────────
-        private string _spawnLog = "";
-        private string _aiLog = "";
-        private string _battleLog = "";
-        private string _schedulerLog = "";
-        private string _snapshotLog = "";
-        private string _sleepLog = "";
-        private string _warlordLog = "";
-        private string _economyLog = "";
-        private string _timingLog = "";
+        internal string _spawnLog = "";
+        internal string _aiLog = "";
+        internal string _battleLog = "";
+        internal string _schedulerLog = "";
+        internal string _snapshotLog = "";
+        internal string _sleepLog = "";
+        internal string _warlordLog = "";
+        internal string _economyLog = "";
+        internal string _timingLog = "";
         private string _pathLog = "";
-        private string _fullSimDir = "";
+        internal string _fullSimDir = "";
         private string _fullSimRunLog = "";
         private string _summaryFile = "";
 
@@ -961,6 +962,62 @@ namespace BanditMilitias.Systems.Dev
                 int activeMilitias = Campaign.Current?.MobileParties
                     .Count(p => p?.PartyComponent is MilitiaPartyComponent && p.IsActive) ?? 0;
 
+                // ── THRESHOLD KONTROLÜ (PASS/FAIL) ───────────────────────────────
+                // Rapor bölüm 6'daki "sadece gözlem var, assertion yok" eksikliği giderildi.
+                var thresholdResults = new List<string>();
+                bool allPassed = true;
+
+                void CheckTh(string metric, float actual)
+                {
+                    bool pass = BanditTestHub.CheckThreshold(metric, actual);
+                    string mark = pass ? "PASS" : "FAIL";
+                    thresholdResults.Add($"  {mark}  {metric}: {actual:F1}");
+                    if (!pass) allPassed = false;
+                }
+
+                CheckTh("militia_count", activeMilitias);
+                CheckTh("memory_mb",
+                    (float)(GC.GetTotalMemory(false) / (1024.0 * 1024.0)));
+
+                // EventBus drop sayısını çek
+                string busDiag = BanditMilitias.Core.Events.EventBus.Instance?.GetQueueDiagnostics() ?? "";
+                int dropped = 0;
+                int dIdx = busDiag.IndexOf("Dropped=", System.StringComparison.Ordinal);
+                if (dIdx >= 0)
+                {
+                    string after = busDiag.Substring(dIdx + 8);
+                    int end = after.IndexOfAny(new[] { ',', ' ', '\n', '\r' });
+                    string numStr = end >= 0 ? after.Substring(0, end) : after;
+                    int.TryParse(numStr.Trim(), out dropped);
+                }
+                CheckTh("drop_events", dropped);
+
+                string simStatus = allPassed ? "PASS" : "FAIL";
+
+                // Threshold sonuçlarını dosyaya yaz
+                string thresholdLog = Path.Combine(_fullSimDir, "threshold_results.txt");
+                try
+                {
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"=== full_sim_test #{_fullSimRunCount} [{trigger}] @ {Now()} ===");
+                    sb.AppendLine($"Genel sonuç: {simStatus}");
+                    sb.AppendLine($"Seed: {BanditTestHub.CurrentSeed}");
+                    foreach (var r in thresholdResults) sb.AppendLine(r);
+                    sb.AppendLine();
+                    File.AppendAllText(thresholdLog, sb.ToString());
+                }
+                catch { }
+
+                // Oyun içi bildirim
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    var color = allPassed ? TaleWorlds.Library.Colors.Green : TaleWorlds.Library.Colors.Red;
+                    InformationManager.DisplayMessage(new InformationMessage(
+                        $"[BM FullSim #{_fullSimRunCount}] {simStatus} — Milisler:{activeMilitias}  Drops:{dropped}",
+                        color));
+                }
+                // ─────────────────────────────────────────────────────────────────
+
                 AppendRow(_fullSimRunLog, new[]
                 {
                     Now(),
@@ -971,6 +1028,7 @@ namespace BanditMilitias.Systems.Dev
                     activeMilitias.ToString(),
                     _sessionBattles.ToString(),
                     _sessionWins.ToString(),
+                    simStatus,
                     Csv(_sessionDir),
                     Csv(BattleDataLogger.BattleLogPath),
                     Csv(BattleDataLogger.QTablePath)
@@ -1022,6 +1080,167 @@ namespace BanditMilitias.Systems.Dev
             int end = text.IndexOf(until, idx);
             if (end < 0) end = text.Length;
             return int.TryParse(text.Substring(idx, end - idx).Trim(), out int v) ? v : 0;
+        }
+
+        // ── UX İYİLEŞTİRMELERİ ───────────────────────────────────────────────────
+        // Rapor: Eksik Komutlar (Bölüm 4.1 / 4.2 / 4.3)
+
+        /// <summary>
+        /// militia.list_parties — Aktif tüm milisleri ID, konum ve asker sayısıyla listeler.
+        /// Kullanım: militia.list_parties   (opsiyonel filtre: militia.list_parties warlord)
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("list_parties", "militia")]
+        public static string CommandListParties(List<string> args)
+        {
+            if (Campaign.Current == null)
+                return "[BanditMilitias] Kampanya aktif değil.";
+
+            string filter = args != null && args.Count > 0 ? args[0].Trim().ToLowerInvariant() : "";
+
+            var sb = new StringBuilder();
+            int count = 0;
+
+            foreach (var party in Campaign.Current.MobileParties)
+            {
+                if (party == null || !party.IsActive) continue;
+                if (party.PartyComponent is not BanditMilitias.Components.MilitiaPartyComponent comp) continue;
+
+                string name    = party.Name?.ToString() ?? "?";
+                string id      = party.StringId ?? "?";
+                Vec2   pos     = Infrastructure.CompatibilityLayer.GetPartyPosition(party);
+                int    troops  = party.MemberRoster?.TotalManCount ?? 0;
+                string hero    = party.LeaderHero?.Name?.ToString() ?? "yok";
+
+                // Filtre uygulandıysa sadece eşleşenleri göster
+                if (!string.IsNullOrEmpty(filter) &&
+                    !name.ToLowerInvariant().Contains(filter) &&
+                    !id.ToLowerInvariant().Contains(filter) &&
+                    !hero.ToLowerInvariant().Contains(filter))
+                {
+                    continue;
+                }
+
+                sb.AppendLine($"  [{count + 1}] ID={id}  Ad={name}  Lider={hero}  Asker={troops}  Konum=({pos.X:F0},{pos.Y:F0})");
+                count++;
+            }
+
+            if (count == 0)
+                return string.IsNullOrEmpty(filter)
+                    ? "[BanditMilitias] Aktif milis partisi bulunamadı."
+                    : $"[BanditMilitias] '{filter}' filtresine uyan milis yok.";
+
+            return $"[BanditMilitias] Aktif milis sayısı: {count}\n" + sb.ToString();
+        }
+
+        /// <summary>
+        /// militia.reset_safe — Onay mekanizmalı reset. Kazara silmeyi önler.
+        /// Kullanım: militia.reset_safe confirm
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("reset_safe", "militia")]
+        public static string CommandResetSafe(List<string> args)
+        {
+            bool confirmed = args != null && args.Count > 0 &&
+                             args[0].Trim().Equals("confirm", StringComparison.OrdinalIgnoreCase);
+
+            if (!confirmed)
+            {
+                return "[BanditMilitias] ⚠ Bu komut TÜM milis verilerini sıfırlar!\n" +
+                       "Onaylamak için: militia.reset_safe confirm\n" +
+                       "İptal için hiçbir şey yazmayın.";
+            }
+
+            try
+            {
+                int removed = 0;
+                if (Campaign.Current != null)
+                {
+                    var toRemove = Campaign.Current.MobileParties
+                        .Where(p => p?.PartyComponent is BanditMilitias.Components.MilitiaPartyComponent)
+                        .ToList();
+
+                    foreach (var party in toRemove)
+                    {
+                        try { TaleWorlds.CampaignSystem.Actions.DestroyPartyAction.Apply(null, party); removed++; }
+                        catch { }
+                    }
+                }
+
+                Infrastructure.ModuleManager.Instance?.RebuildCaches();
+                return $"[BanditMilitias] Reset tamamlandı. {removed} milis partisi silindi.";
+            }
+            catch (Exception ex)
+            {
+                return $"[BanditMilitias] Reset hatası: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// militia.dev_export_path — Export çıktısını özel dizine yönlendirir.
+        /// Kullanım: militia.dev_export_path C:\MyFolder
+        ///           militia.dev_export_path (argümansız → mevcut yolu gösterir)
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("dev_export_path", "militia")]
+        public static string CommandDevExportPath(List<string> args)
+        {
+            var inst = ModuleManager.Instance.GetModule<DevDataCollector>();
+            if (inst == null || !inst.IsEnabled)
+                return "DevMode deaktif. Settings'ten DevMode=true yapın.";
+
+            if (args == null || args.Count == 0)
+                return $"[BanditMilitias] Mevcut export dizini:\n  {inst._sessionDir}";
+
+            string newPath = string.Join(" ", args).Trim();
+
+            if (!Path.IsPathRooted(newPath))
+                return $"[BanditMilitias] Hata: Tam yol gerekli (örn. C:\\Users\\Ad\\BM_Export)";
+
+            try
+            {
+                Directory.CreateDirectory(newPath);
+                inst._sessionDir = newPath;
+
+                // Log dosyalarını da yeni dizine taşı
+                inst._spawnLog    = Path.Combine(newPath, "spawn_log.csv");
+                inst._aiLog       = Path.Combine(newPath, "ai_decisions.csv");
+                inst._battleLog   = Path.Combine(newPath, "battle_outcomes.csv");
+                inst._snapshotLog = Path.Combine(newPath, "system_snapshot.csv");
+                inst._economyLog  = Path.Combine(newPath, "economy_log.csv");
+                inst._warlordLog  = Path.Combine(newPath, "warlord_career.csv");
+
+                return $"[BanditMilitias] Export dizini güncellendi:\n  {newPath}";
+            }
+            catch (Exception ex)
+            {
+                return $"[BanditMilitias] Dizin oluşturulamadı: {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// militia.help_ux — Tüm UX komutlarını ve kullanım örneklerini listeler.
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("help_ux", "militia")]
+        public static string CommandHelpUx(List<string> args)
+        {
+            return
+                "[BanditMilitias] UX Komut Rehberi\n" +
+                "─────────────────────────────────────────\n" +
+                "militia.list_parties           → Tüm aktif milisleri ID/konum/asker ile listele\n" +
+                "militia.list_parties warlord   → Sadece 'warlord' içerenleri filtrele\n" +
+                "militia.reset_safe             → Reset için onay ister (güvenli)\n" +
+                "militia.reset_safe confirm     → Onaylı reset — TÜM milis verisi silinir!\n" +
+                "militia.dev_export_path        → Mevcut export dizinini gösterir\n" +
+                "militia.dev_export_path [yol]  → Export çıktısını özel dizine yönlendirir\n" +
+                "militia.dev_export             → Anlık snapshot al ve dışa aktar\n" +
+                "militia.dev_status             → DevDataCollector oturum özeti\n" +
+                "militia.full_sim_test          → Tam sistem entegrasyon testi başlat\n" +
+                "militia.full_sim_test once     → Tek seferlik test çalıştır\n" +
+                "militia.runtime_diag           → Canlı runtime tanılama raporu\n" +
+                "militia.ml_status              → ML / Q-Table durumu\n" +
+                "militia.ml_export_now          → Q-Table anlık export\n" +
+                "militia.assert_check           → Tüm assertion kontrollerini çalıştır + oto-düzelt\n" +
+                "militia.assert_summary         → Oturum genelindeki ihlal ve oto-düzeltme özeti\n" +
+                "─────────────────────────────────────────\n" +
+                "İpucu: Tüm export dosyaları Documents/Mount and Blade II Bannerlord/BanditMilitias_Dev/ altında.";
         }
     }
 }

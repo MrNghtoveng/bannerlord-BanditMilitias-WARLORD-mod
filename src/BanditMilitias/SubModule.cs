@@ -481,6 +481,8 @@ namespace BanditMilitias
                 RegisterSafe(() => Systems.Seasonal.SeasonalEffectsSystem.Instance, nameof(Systems.Seasonal.SeasonalEffectsSystem));
                 RegisterSafe(() => Systems.Progression.WarlordSuccessionSystem.Instance, nameof(Systems.Progression.WarlordSuccessionSystem));
                 RegisterSafe(() => Systems.Combat.MilitiaMoraleSystem.Instance, nameof(Systems.Combat.MilitiaMoraleSystem));
+                // BUG FIX v5.2: Assertion ve oto-düzeltme katmanı eklendi
+                RegisterSafe(() => Systems.Diagnostics.MilitiaAssertionSystem.Instance, nameof(Systems.Diagnostics.MilitiaAssertionSystem));
                 // ──────────────────────────────────────────────────────────────────
 
                 // ── Eksik 6 sistem kaydı ──────────────────────────────────

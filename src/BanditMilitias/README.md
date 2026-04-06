@@ -82,11 +82,18 @@ Detaylı kurulum: [src/BanditMilitias/KURULUM.md](src/BanditMilitias/KURULUM.md)
 ### Derleme ve Test
 
 ```powershell
-dotnet build .\src\BanditMilitias\BanditMilitias.csproj -c Debug -nologo -v minimal
-dotnet build .\src\BanditMilitias\BanditMilitias.csproj -c Release -nologo -v minimal
-dotnet build .\src\BanditMilitias\BanditMilitias.csproj -c Release /p:UseMcm=true
-dotnet test .\src\BanditMilitias\BanditMilitias.Tests\BanditMilitias.Tests.csproj -v minimal
+dotnet build .\BanditMilitias.csproj -c Debug -nologo -v minimal
+dotnet build .\BanditMilitias.csproj -c Release -nologo -v minimal
+dotnet build .\BanditMilitias.csproj -c Release /p:UseMcm=true
+dotnet test .\BanditMilitias.Tests\BanditMilitias.Tests.csproj -v minimal
 ```
+
+### Runtime TestHub (Alt+~)
+
+Gelişmiş diagnostic test sistemi için mod içerisinden şu konsol komutlarını kullanabilirsiniz:
+- `bandit.test_list`: Mevcut tüm test ve sağlık kontrollerini listeler.
+- `bandit.test_run all`: Tüm modülleri (warm-up, pipeline, warlord logic) test eder.
+- `bandit.test_report`: "Cold module" analizi ve ihlal özetini sunar.
 
 ### Dokümantasyon
 
@@ -179,11 +186,18 @@ Detailed installation: [src/BanditMilitias/KURULUM.md](src/BanditMilitias/KURULU
 ### Build and Test
 
 ```powershell
-dotnet build .\src\BanditMilitias\BanditMilitias.csproj -c Debug -nologo -v minimal
-dotnet build .\src\BanditMilitias\BanditMilitias.csproj -c Release -nologo -v minimal
-dotnet build .\src\BanditMilitias\BanditMilitias.csproj -c Release /p:UseMcm=true
-dotnet test .\src\BanditMilitias\BanditMilitias.Tests\BanditMilitias.Tests.csproj -v minimal
+dotnet build .\BanditMilitias.csproj -c Debug -nologo -v minimal
+dotnet build .\BanditMilitias.csproj -c Release -nologo -v minimal
+dotnet build .\BanditMilitias.csproj -c Release /p:UseMcm=true
+dotnet test .\BanditMilitias.Tests\BanditMilitias.Tests.csproj -v minimal
 ```
+
+### Runtime TestHub (Alt+~)
+
+You can use the following console commands for advanced diagnostics:
+- `bandit.test_list`: Lists all available tests and health checks.
+- `bandit.test_run all`: Tests all modules (warm-up, pipeline, warlord logic).
+- `bandit.test_report`: Provides a "cold module" analysis and violation summary.
 
 ### Documentation
 

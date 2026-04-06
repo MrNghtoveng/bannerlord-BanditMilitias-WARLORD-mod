@@ -1,53 +1,53 @@
 # AI-Assisted Development
 
-## Türkçe
-
-Bu belge, `Bandit Militias: WARLORD Edition` geliştirme sürecinde yapay zeka araçlarının nasıl kullanıldığını açıklar.
-
-### Kullanılan Araçlar
-
-| Araç | Kullanım Alanı |
-|---|---|
-| `Antigravity IDE` | Kod tabanı inceleme ve geliştirme ortamı |
-| `Codex` | Kod üretimi ve refactoring desteği |
-| `Claude` | Mimari tartışma, log analizi, dokümantasyon |
-
-### Tipik Kullanım Alanları
-
-- Kod tabanı inceleme
-- Mimari tartışma ve alternatif tasarım keşfi
-- Log ve test verisi analizi
-- Dokümantasyon taslağı ve temizliği
-- Refactoring planlaması ve test iskelet kurma
-- Hata araştırması ve regresyon takibi
-
-### Son Sorumluluk
-
-İş akışı insan tarafından yönetilir. Son tasarım kararları, kod seçimi ve gönderilen depo içeriği projenin geliştiricisine aittir. Yapay zeka araçları karar alıcı değil, destekleyici bir rol üstlenir.
-
----
-
-## English
-
 This document explains how AI tools are used in the development workflow of `Bandit Militias: WARLORD Edition`.
 
-### Tools Used
+## Human-Directed Workflow
 
-| Tool | Primary Use |
-|---|---|
-| `Antigravity IDE` | Codebase inspection and development environment |
-| `Codex` | Code generation and refactoring support |
-| `Claude` | Architecture discussion, log analysis, documentation |
+The project is human-directed. AI tools assist the process, but final decisions remain with the maintainer.
 
-### Typical Use Cases
+## Tools Used
 
-- Codebase inspection
-- Architecture discussion and alternative design exploration
-- Log and test data analysis
-- Documentation drafting and cleanup
-- Refactor planning and test scaffolding
-- Bug investigation and regression tracking
+### `Antigravity IDE`
 
-### Final Responsibility
+Used as a development environment and workflow hub during implementation, review, and project organization.
 
-The workflow is human-directed. Final design choices, code selection, and shipped repository content remain with the project maintainer. AI tools serve a supporting role, not a decision-making one.
+### `Codex`
+
+Used for:
+
+- codebase inspection
+- refactor assistance
+- test scaffolding
+- documentation drafting
+- structured technical cleanup
+
+### `Claude`
+
+Used for:
+
+- architecture discussion
+- long-form analysis
+- report shaping
+- alternative solution framing
+
+## Typical AI-Assisted Tasks
+
+- log analysis
+- runtime test report review
+- documentation cleanup
+- regression-oriented investigation
+- architecture comparison
+
+## What AI Does Not Replace
+
+AI assistance does not replace:
+
+- final design choices
+- source-of-truth verification against code
+- manual game testing
+- maintainer responsibility for shipped content
+
+## Why This Matters
+
+Because the project is experimental, it benefits from fast iteration on analysis, documentation, and bug triage. AI tools help speed that up, but they are support tools inside a maintainer-led workflow.

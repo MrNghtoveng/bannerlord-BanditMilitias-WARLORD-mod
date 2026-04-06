@@ -21,9 +21,6 @@
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Default launcher path detection:
-         Epic Games and Steam are both supported here.
-         If neither path matches the local installation, set BANNERLORD_GAME_DIR manually. -->
     <BANNERLORD_GAME_DIR Condition="'$(BANNERLORD_GAME_DIR)' == '' and Exists('C:\Program Files\Epic Games\MountAndBlade2')">C:\Program Files\Epic Games\MountAndBlade2</BANNERLORD_GAME_DIR>
     <BANNERLORD_GAME_DIR Condition="'$(BANNERLORD_GAME_DIR)' == '' and Exists('C:\Program Files (x86)\Steam\steamapps\common\Mount &amp; Blade II Bannerlord')">C:\Program Files (x86)\Steam\steamapps\common\Mount &amp; Blade II Bannerlord</BANNERLORD_GAME_DIR>
   </PropertyGroup>
@@ -127,7 +124,7 @@
 
   <Target Name="ValidateBannerlordGameDir" BeforeTargets="ResolveReferences">
     <Error Condition="'$(BANNERLORD_REFERENCE_DIR)' == '' or !Exists('$(BANNERLORD_REFERENCE_DIR)\TaleWorlds.Core.dll')"
-           Text="Bannerlord reference assemblies not found. Default Steam/Epic path detection failed; set BANNERLORD_GAME_DIR or BANNERLORD_REFERENCE_DIR." />
+           Text="Bannerlord reference assemblies not found. Set BANNERLORD_REFERENCE_DIR." />
   </Target>
 
 </Project>

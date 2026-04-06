@@ -24,3 +24,5 @@ MAIN SYSTEMS
 - SpatialGridSystem
 - PartyCleanupSystem
 - Harmony patches
+
+In this project, AI means the combined behavior of rules, scheduling, context tracking, telemetry, and world simulation feedback.

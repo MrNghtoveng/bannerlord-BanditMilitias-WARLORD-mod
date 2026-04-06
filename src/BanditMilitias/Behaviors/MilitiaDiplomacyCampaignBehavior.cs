@@ -100,9 +100,10 @@ namespace BanditMilitias.Behaviors
 
         public override void SyncData(IDataStore dataStore)
         {
-
+            // BUG-04/05 ARAŞTIRMA NOTU: Bu sınıfın kayıt edilmesi gereken kendi field'ı yoktur.
+            // Dialog state ve extortion verileri session'a özgü olup kasıtlı olarak persist edilmiyor.
+            // WarlordSystem, AILearningSystem ve MilitiaBehavior kendi SyncData'larını yönetir.
         }
-
         private void OnSessionLaunched(CampaignGameStarter starter)
         {
             try

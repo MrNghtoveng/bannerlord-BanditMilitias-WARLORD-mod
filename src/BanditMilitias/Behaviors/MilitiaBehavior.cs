@@ -477,10 +477,12 @@ namespace BanditMilitias.Behaviors
 
         private void OnTick(float dt)
         {
-            if (!_isModActive) return;
-
+            // BUG-10 FIX: Activation kontrolü metriklerin önünde olmalı —
+            // mod uyanmadan önce gereksiz hashing ve hesaplama yapılmasını önler.
             if (CompatibilityLayer.IsGameplayActivationDelayed())
                 return;
+
+            if (!_isModActive) return;
 
             try
             {
@@ -872,7 +874,24 @@ namespace BanditMilitias.Behaviors
 
         private void OnDailyTick()
         {
+            // BUG-01 FIX: Tüm aktif sığınaklara günlük işlem uygula.
+            // Garnizon beslenmesi, XP kazanımı ve komutan gelişimi bu metot üzerinden tetiklenir.
+            if (_hideoutData == null || _hideoutData.Count == 0) return;
 
+            foreach (var kvp in _hideoutData)
+            {
+                if (kvp.Value == null) continue;
+                try
+                {
+                    ProcessHideoutDaily(kvp.Key, kvp.Value);
+                }
+                catch (Exception ex)
+                {
+                    BanditMilitias.Debug.DebugLogger.Warning(
+                        "MilitiaHideoutCampaignBehavior",
+                        $"ProcessHideoutDaily failed for {kvp.Key}: {ex.Message}");
+                }
+            }
         }
 
         private void ProcessHideoutDaily(string hideoutId, HideoutData data)

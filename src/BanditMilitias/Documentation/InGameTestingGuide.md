@@ -1,26 +1,22 @@
 # In-Game Testing Guide
 
-## Türkçe
+This document is a practical runtime testing guide for `Bandit Militias: WARLORD Edition`.
 
-Bu belge, oyun içi testleri daha düzenli yapmak için hazırlandı. Amaç yalnızca hata yakalamak değil; AI davranışı, dünya yüklenmesi, performans, cleanup ve telemetri akışlarını aynı oturum içinde anlamlı biçimde okumaktır.
+## Turkce
 
----
+Bu belge, oyun ici testleri daha duzenli yapmak icin hazirlandi. Amac, sadece hata yakalamak degil; AI davranisi, dunya yuklenmesi, performans, cleanup ve telemetry akislarini ayni oturum icinde anlamli sekilde okumaktir.
 
 ## English
 
-This guide is meant to make in-game testing more consistent. The goal is not only to catch bugs, but also to read AI behavior, world load, performance, cleanup, and telemetry in a structured way within the same session.
-
----
+This guide is meant to make in-game testing more consistent. The goal is not only to catch bugs, but also to read AI behavior, world load, performance, cleanup, and telemetry in a structured way during the same session.
 
 ## Test Goals
 
-- Verify that militia AI is active and ticking correctly
-- Verify that runtime diagnostics are reachable
-- Watch world growth and party inflation over time
-- Catch sleep, cleanup, and scheduler regressions
-- Confirm that logs and exported reports match in-game behavior
-
----
+- verify that militia AI is active
+- verify that runtime diagnostics are reachable
+- watch world growth and party inflation
+- catch sleep, cleanup, and scheduler regressions
+- confirm that logs and exported reports match what happened in game
 
 ## Recommended Session Order
 
@@ -28,115 +24,205 @@ This guide is meant to make in-game testing more consistent. The goal is not onl
 
 After loading a campaign:
 
-1. Confirm the module loaded without immediate red warnings
-2. Wait for the activation window to pass
-3. Run `militia.system_status`
-4. Run `bandit.test_list`
+- confirm the module loaded without immediate red warnings
+- wait until the activation window passes
+- run `militia.system_status`
+- run `bandit.test_list`
+
+What you want to see:
+
+- modules reporting healthy or at least not dead
+- runtime test hub responding normally
+- no immediate repeated initialization loops
 
 ### 2. Baseline Runtime Check
 
-```
-bandit.test_run all
-bandit.test_report
-militia.diag_report
-```
+Run:
+
+- `bandit.test_run all`
+- `bandit.test_report`
+- `militia.diag_report` if needed
+
+Focus on:
+
+- ghost module
+- dead module
+- stale module
+- cold module
+- event leak
+
+If one of these fails, stop and record it before continuing to long-session testing.
 
 ### 3. AI Behavior Check
 
-Watch several militia parties on the campaign map. Look for:
+Watch several militia parties on the campaign map and look for:
 
-- Patrol behavior
-- Merge attempts between nearby parties
-- Recruit attempts
-- Flee behavior under pressure
-- Swarm coordination when multiple militia parties are near each other
+- patrol behavior
+- merge attempts
+- recruit attempts
+- flee under pressure
+- swarm coordination when multiple militia parties are near each other
 
 Useful commands:
 
-```
-militia.full_sim_test
-militia.full_sim_report
-militia.ml_status
-militia.doctrine_status
-```
+- `militia.full_sim_test`
+- `militia.full_sim_report`
+- `militia.ml_status`
+- `militia.doctrine_status`
+
+What matters:
+
+- AI should not freeze into one repeated fallback forever
+- weak parties should not only flee; they should also try to merge or recruit when possible
+- swarm should not fully suppress every other layer
 
 ### 4. Long Session World Health Check
 
-Track the following over extended play:
+Let the campaign run long enough to produce map pressure.
 
-- Total mobile party count
-- Zero-troop or broken parties
-- Headless or invalid party remnants
-- Cleanup activity rate
-- Scheduler lag or tick storms
+Track:
 
-### 5. Save / Load Regression Check
+- total mobile party count
+- zero troop or broken parties
+- headless or invalid party remnants
+- cleanup activity
+- scheduler lag or tick storms
 
-1. Make a save mid-session
-2. Reload it
-3. Run `bandit.test_run all` again
-4. Compare the new `bandit.test_report` against the previous one
+Warning signs:
 
----
+- party count climbing uncontrollably
+- many empty parties staying alive
+- repeated cleanup without meaningful reduction
+- logs filling with the same warning thousands of times
+
+### 5. Save / Load Check
+
+Before ending the session:
+
+- make a save
+- reload it
+- run `bandit.test_run all` again
+- compare `bandit.test_report`
+
+You are checking for:
+
+- broken module state after load
+- lost telemetry or learning state
+- repeated deferred initialization
+- missing AI response after reload
 
 ## Main Runtime Commands
 
-| Command | Purpose |
-|---|---|
-| `bandit.test_list` | List all registered tests |
-| `bandit.test_run all` | Run all tests |
-| `bandit.test_report` | Print last test report |
-| `bandit.test_reset` | Reset test state |
-| `militia.full_sim_test` | Run full simulation test |
-| `militia.full_sim_report` | Print simulation report |
-| `militia.failed_modules` | List modules with failures |
-| `militia.system_status` | Print overall system status |
-| `militia.module_status` | Print per-module status |
-| `militia.watchdog_status` | Print watchdog status |
-| `militia.watchdog_check` | Trigger a manual watchdog check |
-| `militia.ml_status` | Print ML and telemetry status |
-| `militia.doctrine_status` | Print active doctrine state |
+- `bandit.test_list`
+- `bandit.test_run all`
+- `bandit.test_report`
+- `bandit.test_reset`
+- `militia.full_sim_test`
+- `militia.full_sim_report`
+- `militia.failed_modules`
+- `militia.system_status`
+- `militia.module_status`
+- `militia.watchdog_status`
+- `militia.watchdog_check`
+- `militia.ml_status`
+- `militia.doctrine_status`
 
----
+## What To Record During Testing
 
-## Common Runtime Test States
+At minimum, keep these notes:
 
-| State | Meaning |
-|---|---|
-| `ghost module` | Module is registered but not ticking |
-| `dead module` | Module has stopped responding entirely |
-| `stale module` | Module data has not been updated recently |
-| `event leak` | Events are accumulating without being consumed |
-| `cold module` | Module has not yet been activated |
-
----
+- real date and test build date
+- campaign day and in-game season
+- whether the session was new game or loaded save
+- total session duration
+- visible symptoms
+- commands used
+- paths to exported logs or CSV files
 
 ## High-Value Report Files
 
-| File | Contents |
-|---|---|
-| `Events.json` | Raw event stream from the current session |
-| `session_summary.txt` | High-level session overview |
-| `ai_decisions.csv` | AI decision log with timestamps |
-| `sleep_analysis.csv` | Sleep and wakeup analysis per module |
-| `CleanupHistory.csv` | Cleanup events and removed parties |
-| `BanditMilitias_FullSim.txt` | Full simulation test output |
+Typical useful outputs include:
 
----
+- `Events.json`
+- `session_summary.txt`
+- `ai_decisions.csv`
+- `sleep_analysis.csv`
+- `CleanupHistory.csv`
+- `BanditMilitias_FullSim.txt`
+
+Read them together, not in isolation. A good analysis usually compares AI choices, party health, cleanup behavior, and overall session state.
 
 ## Common Failure Patterns
 
-| Pattern | Symptoms |
-|---|---|
-| Party inflation | Mobile party count grows unbounded over time |
-| Sleep logic failure | Modules not entering or exiting sleep correctly |
-| AI fallback lock | AI stuck on a fallback decision indefinitely |
-| Patch routing failure | Vanilla AI behavior overrides mod AI unexpectedly |
+### Party Inflation
 
----
+Symptoms:
+
+- total party count grows too fast
+- cleanup is active but not reducing pressure enough
+- empty parties stay alive
+
+Likely areas:
+
+- `PartyCleanupSystem`
+- spawn throttling
+- invalid party destruction
+
+### Sleep Logic Failure
+
+Symptoms:
+
+- sleep hours fall below zero
+- parties remain sleeping forever
+- AI appears stuck or unresponsive
+
+Likely areas:
+
+- sleep remaining hours clamping
+- awake state transition
+- scheduler interaction
+
+### AI Fallback Lock
+
+Symptoms:
+
+- too many repeated evade or flee decisions
+- very low decision variety
+- weak parties never stabilize
+
+Likely areas:
+
+- `MilitiaDecider`
+- fallback thresholds
+- swarm pressure
+- recruit and merge thresholds
+
+### Patch Routing Failure
+
+Symptoms:
+
+- militia behavior looks fully vanilla
+- expected AI telemetry never appears
+- patch warnings show skipped targets
+
+Likely areas:
+
+- Harmony patch resolution
+- AI tick interception
+- patch registration during startup
+
+## Minimal Release Gate
+
+Before calling a build testable for others, try to confirm:
+
+- runtime test hub responds
+- no immediate dead-module state
+- no runaway party inflation in the first long session
+- no persistent negative sleep loop
+- at least one save/load cycle survives
 
 ## Related Documents
 
-- [Documentation/SystemFlowTree.md](SystemFlowTree.md)
-- [Documentation/AIArchitecture.md](AIArchitecture.md)
-- [Documentation/AI_Assisted_Development.md](AI_Assisted_Development.md)
+- `Documentation/SystemFlowTree.md`
+- `Documentation/AIArchitecture.md`
+- `Documentation/AI_Assisted_Development.md`

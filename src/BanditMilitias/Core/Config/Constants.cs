@@ -95,8 +95,9 @@ namespace BanditMilitias.Core.Config
         public const int PROPAGANDA_COST_DAILY = 150;
         public const float PROPAGANDA_LOYALTY_DELTA = 0.5f;
 
-        // Save
-        public const int SAVE_VERSION = 4;
+        // BUG-08 FIX: Tek kaynak olan BanditMilitiasSaveDefiner.SAVE_VERSION'a
+        // yönlendir. İki ayrı tanım senkronizasyon hatası riskiydi.
+        public const int SAVE_VERSION = Infrastructure.BanditMilitiasSaveDefiner.SAVE_VERSION;
         public const string SAVE_KEY_COOLDOWNS = "_bm_cooldowns";
         public const string SAVE_KEY_FAIL_CD = "_bm_fail_cooldowns";
         public const string SAVE_KEY_VERSION = "_bm_version";

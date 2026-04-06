@@ -124,19 +124,31 @@ namespace BanditMilitias.Systems.Diagnostics
             sb.AppendLine("=== BANDİT MİLİTİAS KONSOL KOMUTLARI ===");
             sb.AppendLine("Aşağıdaki komutları 'militia.[komut]' şeklinde kullanabilirsiniz:");
             sb.AppendLine("  help              - Bu yardım menüsünü gösterir.");
+            sb.AppendLine("  help_ux           - UX komutları rehberi (önerilen yeni başlangıç).");
+            sb.AppendLine("  list_parties      - Aktif tüm milisleri ID ve konumlarıyla listeler.");
+            sb.AppendLine("  list_parties [x]  - Sadece 'x' içeren milisleri listeler.");
+            sb.AppendLine("  reset_safe        - Onay mekanizmalı güvenli reset.");
+            sb.AppendLine("  reset_safe confirm- Onaylı reset (tüm milis verisi silinir!).");
+            sb.AppendLine("  dev_export_path   - Mevcut export dizinini gösterir.");
+            sb.AppendLine("  dev_export_path [yol] - Export çıktısını özel dizine yönlendirir.");
             sb.AppendLine("  module_status     - Modüllerin sağlık durumunu ve hataları listeler.");
             sb.AppendLine("  full_sim_test     - Tüm sistemlerin detaylı durum raporunu verir.");
+            sb.AppendLine("  full_sim_test once- Tek seferlik entegrasyon testi çalıştırır.");
             sb.AppendLine("  diag_report       - Performans ve metrik raporu oluşturur.");
             sb.AppendLine("  watchdog_status   - Sistem nöbetçisi (watchdog) durumunu gösterir.");
+            sb.AppendLine("  ml_status         - ML / Q-Table anlık durum özeti.");
+            sb.AppendLine("  ml_export_now     - Q-Table'ı anlık dışa aktarır.");
+            sb.AppendLine("  runtime_diag      - Canlı runtime tanılama raporu.");
+            sb.AppendLine("  dev_export        - Snapshot al ve DevDataCollector'a aktar.");
+            sb.AppendLine("  dev_status        - DevDataCollector oturum özeti.");
             sb.AppendLine("  bandit.test_list  - Runtime test hub check kataloğunu listeler.");
             sb.AppendLine("  bandit.test_run   - Runtime test hub check'lerini çalıştırır.");
             sb.AppendLine("  bandit.test_report- Son runtime test raporunu gösterir.");
-            sb.AppendLine("  spawn             - Rastgele bir milis ordusu doğurur.");
-            sb.AppendLine("  reset             - Tüm milis verilerini sıfırlar.");
             sb.AppendLine("\nDiğer ön ekler (Eski komutlar):");
             sb.AppendLine("  bandit_militias.spawn_swarm - Büyük bir haydut akını başlatır.");
             sb.AppendLine("  bandit_militias.debug_hideout - Sığınak verilerini gösterir.");
             sb.AppendLine("========================================");
+            sb.AppendLine("NOT: Bu mod single-player only'dir. Multiplayer'da çalışmaz.");
             return sb.ToString();
         }
 
