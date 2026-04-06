@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Module>
+    <Name value="Bandit Militias"/>
+    <Id value="BanditMilitias"/>
+    <Version value="v5.0.0"/>
+    <SingleplayerModule value="true"/>
+    <MultiplayerModule value="false"/>
+
+    <DependedModules>
+        <DependedModule Id="Native"/>
+        <DependedModule Id="SandBoxCore"/>
+        <DependedModule Id="Sandbox"/>
+        <DependedModule Id="StoryMode" Optional="true"/>
+        <DependedModule Id="Bannerlord.Harmony"/>
+        <DependedModule Id="Bannerlord.UIExtenderEx"/>
+        <DependedModule Id="Bannerlord.ButterLib"/>
+        <DependedModule Id="MCMv5" Optional="true"/>
+    </DependedModules>
+
+    <DependedModuleMetadatas>
+        <DependedModuleMetadata Id="Native" Order="LoadBefore" />
+        <DependedModuleMetadata Id="SandBoxCore" Order="LoadBefore" />
+        <DependedModuleMetadata Id="Sandbox" Order="LoadBefore" />
+        <DependedModuleMetadata Id="Bannerlord.Harmony" Order="LoadBefore" />
+        <DependedModuleMetadata Id="Bannerlord.UIExtenderEx" Order="LoadBefore" />
+        <DependedModuleMetadata Id="Bannerlord.ButterLib" Order="LoadBefore" />
+    </DependedModuleMetadatas>
+
+    <SubModules>
+        <SubModule>
+            <Name value="Bandit Militias Warlord Edition v5"/>
+            <DLLName value="BanditMilitias.dll"/>
+            <SubModuleClassType value="BanditMilitias.SubModule"/>
+            <Tags>
+                <Tag key="DedicatedServerType" value="none"/>
+                <Tag key="IsNoRenderModeElement" value="false"/>
+            </Tags>
+        </SubModule>
+    </SubModules>
+
+    <Xmls>
+        <XmlNode>
+            <XmlName id="std_xml_source_file" path="ModuleData/Languages/EN/std_BanditMilitias_xml_en.xml"/>
+        </XmlNode>
+        <XmlNode>
+            <XmlName id="std_xml_source_file" path="ModuleData/Languages/TR/std_BanditMilitias_xml_tr.xml"/>
+        </XmlNode>
+        <XmlNode>
+            <XmlName id="NPCCharacters" path="ModuleData/bandits.xml"/>
+        </XmlNode>
+        <XmlNode>
+            <XmlName id="NPCCharacters" path="ModuleData/lords.xml"/>
+        </XmlNode>
+        <XmlNode>
+            <XmlName id="Prefabs" path="ModuleData/GUI/Prefabs"/>
+        </XmlNode>
+    </Xmls>
+</Module>

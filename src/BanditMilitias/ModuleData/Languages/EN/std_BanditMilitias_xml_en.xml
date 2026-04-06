@@ -1,0 +1,442 @@
+<?xml version="1.0" encoding="utf-8"?>
+<base xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" type="string">
+    <tags>
+        <tag language="English"/>
+    </tags>
+    <strings>
+        <!-- General / MCM Settings -->
+        <string id="BMPrimary" text="Primary Settings"/>
+        <string id="BMSizeAdjustments" text="Size Adjustments"/>
+        <string id="BMAdjustments" text="Militia Adjustments"/>
+        <string id="BMXpOff" text="Off"/>
+        <string id="BMXpNormal" text="Normal"/>
+        <string id="BMXpHard" text="Hard"/>
+        <string id="BMXpHardest" text="Hardest"/>
+        <string id="BMGoldLow" text="Low"/>
+        <string id="BMGoldNormal" text="Normal"/>
+        <string id="BMGoldRich" text="Rich"/>
+        <string id="BMGoldRichest" text="Richest"/>
+
+        <string id="BMTrain" text="Train Militias"/>
+        <string id="BMTrainDesc" text="Bandit heroes will train their militias."/>
+        <string id="BMDailyTrain" text="Daily Training Chance"/>
+        <string id="BMDailyTrainDesc" text="Chance each day that they might train further."/>
+        <string id="BMXpBoost" text="Militia XP Boost"/>
+        <string id="BMXpBoostDesc" text="'Hardest' grants enough XP to significantly upgrade troops. 'Off' grants no bonus XP."/>
+        
+        <string id="BMGrowChance" text="Growth Chance Percent"/>
+        <string id="BMGrowChanceDesc" text="Chance per day that the militia will gain more troops (0 for off)."/>
+        <string id="BMGrowPercent" text="Growth Percent"/>
+        <string id="BMGrowPercentDesc" text="Grow each troop type by this percent."/>
+        
+        <string id="BMIgnore" text="Ignore Villagers/Caravans"/>
+        <string id="BMIgnoreDesc" text="They won't be attacked by Bandit Militias."/>
+        
+        <string id="BMSpawn" text="BM Spawn"/>
+        <string id="BMSpawnDesc" text="New Bandit Militias will form spontaneously as well as by merging together normally."/>
+        <string id="BMSpawnChance" text="Spawn Chance Percent"/>
+        <string id="BMSpawnChanceDesc" text="Bandit Militias will spawn hourly at this likelihood."/>
+        <string id="BMCooldown" text="Change Cooldown"/>
+        <string id="BMCooldownDesc" text="Bandit Militias won't merge or split a second time until this many hours go by."/>
+        
+        <string id="BMIgnoreSizePenalty" text="Ignore Size Penalty"/>
+        <string id="BMIgnoreSizePenaltyDesc" text="Bandit Militias will move at normal speed regardless of their party size."/>
+        
+        <string id="BMGoldReward" text="Bandit Hero Gold Reward"/>
+        <string id="BMDisperse" text="Disperse Militia Size"/>
+        <string id="BMDisperseDesc" text="Militias defeated with fewer than this many remaining troops will be dispersed."/>
+        <string id="BMMinSize" text="Minimum Size"/>
+        <string id="BMMinSizeDesc" text="No Bandit Militias smaller than this will form."/>
+        <string id="BMMergeSize" text="Mergeable Party Size"/>
+        <string id="BMMergeSizeDesc" text="Small looter and bandit parties won't merge."/>
+        <string id="BMSplit" text="Random Split Chance"/>
+        <string id="BMSplitDesc" text="How likely a Bandit Militia is to split when large enough."/>
+        <string id="BMMaxValue" text="Max Item Value"/>
+        <string id="BMMaxValueDesc" text="Limit the per-piece value of equipment given to the Heroes. Mostly for when other mods give you Hero loot."/>
+        
+        <string id="BMLooter" text="Looter Conversions"/>
+        <string id="BMLooterDesc" text="How many looters get made into better units when training."/>
+        <string id="BMUpgrade" text="Upgrade Units"/>
+        <string id="BMUpgradeDesc" text="Upgrade (at most) this percentage of troops when training occurs."/>
+        <string id="BMPower" text="Global Power"/>
+        <string id="BMPowerDesc" text="Major setting. Setting higher means more, bigger Bandit Militias."/>
+        <string id="BMTier" text="Max Training Tier"/>
+        <string id="BMTierDesc" text="Bandit Militias won't train any units past this tier."/>
+        <string id="BMWeaker" text="Ignore Weaker Parties"/>
+        <string id="BMWeakerDesc" text="10 means any party 10% weaker will be ignored. 100 attacks without restriction."/>
+        
+        <string id="BMPillage" text="Allow Pillaging"/>
+        <string id="BMPillageDesc" text="ALLOW PILLAGING!"/>
+        <string id="BMPillageChance" text="Pillaging Chance"/>
+        <string id="BMPillageChanceDesc" text="The chance of Bandit Militias AI considering raiding a village. Triggers once per in-game hour for every party, so a smaller value is advised."/>
+        
+        <string id="BMStringSetting" text="Bandit Militia"/>
+        <string id="BMStringSettingDesc" text="What to name a Bandit Militia."/>
+        <string id="BMLeaderlessStringSetting" text="Leaderless Bandit Militia"/>
+        <string id="BMLeaderlessStringSettingDesc" text="What to name a Bandit Militia with no leader."/>
+        <string id="BMStringSettingDefault" text="Bandit Militia"/>
+        <string id="BMLeaderlessStringSettingDefault" text="Leaderless Bandit Militia"/>
+        <string id="BMPartyName" text="{LEADER_NAME}'s {PARTY_NAME}"/>
+        
+        <string id="BMMarkers" text="Militia Map Markers"/>
+        <string id="BMMarkersDesc" text="Have omniscient view of Bandit Militias."/>
+        <string id="BMTrackSize" text="Minimum BM Size To Track"/>
+        <string id="BMTrackSizeDesc" text="Any smaller Bandit Militias won't be tracked."/>
+        
+        <string id="BMBanners" text="Random Banners"/>
+        <string id="BMBannersDesc" text="Bandit Militias will have unique banners, or use basic bandit clan ones."/>
+        <string id="BMRaidNotices" text="Village Raid Notices"/>
+        <string id="BMRaidNoticesDesc" text="When your fiefs are raided you'll see a banner message."/>
+        <string id="BMRemovePrisonerMessages" text="Remove Prisoner Messages"/>
+        <string id="BMRemovePrisonerMessagesDesc" text="Remove the messages of Bandit Militia Heroes being taken or released as prisoners."/>
+        
+        <string id="BMCheckVoiceGender" text="Check Voice Gender"/>
+        <string id="BMCheckVoiceGenderDesc" text="Double-check if the bandit voice lines match the gender. Some official lines don't specify gender, so female leaders might use male voices if disabled."/>
+        <string id="BMGenderSlider" text="Leader Gender Ratio"/>
+        <string id="BMGenderSliderDesc" text="Chance for Bandit Militia leaders to be female. 0 is all male, 100 is all female."/>
+        
+        <string id="BMLoggingLevel" text="Log Level"/>
+        <string id="BMLoggingLevelDesc" text="The log file is at 'Documents/Mount and Blade II Bannerlord/Configs/ModLogs/BanditMilitia_[Time].log'."/>
+        <string id="BMTesting" text="Testing Mode"/>
+        <string id="BMTestingDesc" text="Enables debug logging and hourly spawns. (Teleport removed)"/>
+        
+        <string id="BMWarsailsEnable" text="Enable Warsails Content"/>
+        <string id="BMWarsailsEnableDesc" text="Enable features related to Warsails DLC (e.g. Sea Raiders)."/>
+        <string id="BMWarsails" text="Warsails DLC"/>
+        <string id="BMSeaRaiders" text="Enable Sea Raiders"/>
+        <string id="BMSeaRaidersDesc" text="Allow Sea Raiders to form militias."/>
+        <string id="BM_Close" text="Close"/>
+
+        <!-- Code Strings -->
+        <string id="BM_Name" text="Bandit Militias"/>
+        <string id="BMRaidStart" text="{VILLAGE} is being raided by {PARTY}!"/>
+        <string id="BMRaidEnd" text="{SETTLEMENT} has been raided! {PARTY} is fleeing near {TOWN} with the loot!"/>
+        <string id="BMUnknownTown" text="Unknown Town"/>
+
+        <!-- Warlord Names -->
+        <string id="BM_Hero_Looter" text="Looter Warlord"/>
+        <string id="BM_Hero_SeaRaider" text="Sea Raider Chieftain"/>
+        <string id="BM_Hero_Mountain" text="Mountain King"/>
+        <string id="BM_Hero_Forest" text="Master Ranger"/>
+        <string id="BM_Hero_Desert" text="Desert Shaikh"/>
+        <string id="BM_Hero_Steppe" text="Steppe Khan"/>
+
+        <!-- AI States & Actions -->
+        <string id="BMAIState_Desperate" text="Desperate"/>
+        <string id="BMAIState_Warlord" text="Warlord"/>
+        <string id="BMAIAction_Ambush" text="Ambush"/>
+        <string id="BMAIAction_Flee" text="Flee"/>
+
+        <!-- Dialog Strings -->
+        <string id="BM_Dialog_Start_Normal" text="What do you want? We're not playing games here."/>
+        <string id="BM_Dialog_Start_Egg" text="Meow... I mean, ROAR! What do you want, traveler?"/>
+        <string id="BM_Dialog_Fight" text="Fight me if you have the guts!"/>
+        <string id="BM_Dialog_Who" text="Who are you?"/>
+        <string id="BM_Dialog_Leave" text="Never mind. I'm leaving."/>
+        <string id="BM_Dialog_Background_Response" text="We are the free people of Calradia. We take what we need."/>
+
+        <!-- Functional Dialogs -->
+        <string id="BM_Dialog_Bribe" text="Take these {BRIBE_COST} denars. Leave us alone."/>
+        <string id="BM_Bribe_Fail_Gold" text="Not enough gold ({COST})"/>
+        <string id="BM_Dialog_Recruit" text="You look like skilled warriors. Join me."/>
+        <string id="BM_Recruit_Fail_Space" text="Not enough space in party."/>
+        <string id="BM_Dialog_Recruit_Success" text="A tempting offer, warlord. We are with you!"/>
+        <string id="BM_Dialog_Recruit_Fail" text="We serve only ourselves. Prepare to die!"/>
+
+        <!-- Diplomacy Dialogs (New) -->
+        <string id="BM_Diplo_Start" text="Halt! This is Warlord territory. Pay the toll or bleed."/>
+        <string id="BM_Diplo_Start_Neutral" text="What do you want, traveler? We are on patrol."/>
+        <string id="BM_Diplo_Bribe" text="Here is {GOLD_COST} denars. Let us pass."/>
+        <string id="BM_Diplo_Bribe_Accept" text="A wise choice. You may pass."/>
+        <string id="BM_Diplo_Recruit" text="You look capable. Join my army and grow rich."/>
+        <string id="BM_Diplo_Recruit_Success" text="Better than the Warlord's offer. We are with you!"/>
+        <string id="BM_Diplo_Recruit_Fail" text="We serve the Warlord! Die!"/>
+        <string id="BM_Diplo_Fight" text="Out of my way, scum!"/>
+        <string id="BM_Diplo_Duel" text="I challenge your leader to a duel! (1v1)"/>
+        <string id="BM_Diplo_Duel_Accept" text="Hah! You have guts. Let's dance!"/>
+        <string id="BM_Diplo_Leave" text="Just passing through."/>
+        <string id="BM_Diplo_Intel" text="Show me your strength!"/>
+
+        <!-- Duel Strings -->
+        <string id="BM_Dialog_Duel" text="I challenge your leader to a duel! Winner takes all."/>
+        <string id="BM_Dialog_Duel_Accept" text="Bold words. Let's see if your steel is as sharp as your tongue! (Duel Starting...)"/>
+        <string id="BM_Dialog_Duel_Win" text="Argh... You are strong... Take the loot and go."/>
+        <string id="BM_Dialog_Duel_Lose" text="Hah! Another weakling. Get out before I finish you."/>
+        <string id="BM_Duel_Win_Title" text="Duel Won!"/>
+        <string id="BM_Duel_Win_Text" text="You defeated the Warlord in single combat! The bandits are awestruck."/>
+        <string id="BM_Duel_Lose_Title" text="Duel Lost!"/>
+        <string id="BM_Duel_Lose_Text" text="The Warlord disarmed you and kicked you into the dirt. You are dragged away in chains."/>
+        <string id="BM_Ok" text="Victory"/>
+        <string id="BM_Damn" text="Defeat"/>
+
+        <!-- Extortion System -->
+        <string id="BM_Extort" text="I am here to collect protection money. Pay up."/>
+        <string id="BM_Extort_Yes" text="We don't want trouble... take this and leave us be."/>
+        <string id="BM_Extort_No" text="We have nothing for you, vulture! Get out!"/>
+        <string id="BM_Extort_Success" text="[Extortion] The village yields! {GOLD} gold secured."/>
+        <string id="BM_Extort_Fail" text="[Extortion] The villagers refuse! 'Come and take it if you dare!'"/>
+        <string id="BM_Extort_Paid" text="Villagers paid {GOLD} gold tribute."/>
+        <string id="BM_Extort_Refused" text="Villagers refused to pay."/>
+
+        <string id="BM_Prisoner_Rob" text="[Bandit Militias] The militia has no cells for prisoners. They strip you of {GOLD} denars and leave you for dead."/>
+
+        <!-- Narrative System -->
+        <string id="BM_Nar_Agg_Kill1_1" text="{PLAYER}... You lost one? You'll pay for this."/>
+        <string id="BM_Nar_Agg_Kill1_2" text="You killed one of my men. I'm counting, {PLAYER}."/>
+        <string id="BM_Nar_Agg_Kill1_3" text="That fighter fell. My rage grows, {PLAYER}."/>
+        <string id="BM_Nar_Agg_Kill3_1" text="Three of my militia? THREE! {PLAYER} — I will find you."/>
+        <string id="BM_Nar_Agg_Kill3_2" text="The third fell too. Now it's personal, {PLAYER}."/>
+        <string id="BM_Nar_Agg_Kill10_1" text="You killed ten of my men. All forces: {PLAYER} must die."/>
+        <string id="BM_Nar_Agg_Kill10_2" text="THE TENTH. {PLAYER} — I wrote your name in blood. It stays there."/>
+
+        <!-- Maintenance & Error Strings -->
+        <string id="BM_Error_NoHideouts" text="[BanditMilitias] CRITICAL ERROR: Hideout list failed! No hideouts found."/>
+        <string id="BM_Error_GlobalsInitFailed" text="[BanditMilitias] CRITICAL: Globals could not be initialized!"/>
+        <string id="BM_Error_NavMeshInvalid" text="[BanditMilitias] SPAWN ABORTED: '{HIDE_NAME}' coordinates are invalid. Will retry."/>
+        <string id="BM_Raid_Success" text="Successful"/>
+        <string id="BM_Raid_Repelled" text="Repelled"/>
+        <string id="BM_Raid_Partial" text="Partial Success"/>
+        <string id="BM_Raid_Aborted" text="Aborted"/>
+        <string id="BM_Error_UnsupportedMode" text="[BanditMilitias] '{GAME_MODE}' is not supported - mod disabled."/>
+        <string id="BM_Startup_Starting" text="[BanditMilitias] Starting: {GAME_MODE}"/>
+        <string id="BM_Error_BehaviorRegistration" text="[BanditMilitias] Campaign behaviors could not be registered. Mod will run in limited mode."/>
+
+        <!-- Settings: Display Name -->
+        <string id="BMS_DisplayName" text="Bandit Militias: WARLORD"/>
+
+        <!-- Settings: Group Names -->
+        <string id="BMSG_Spawn" text="1. Spawning &amp; Population"/>
+        <string id="BMSG_DynHideout" text="Dynamic Hideouts"/>
+        <string id="BMSG_AI" text="2. Warlords &amp; AI"/>
+        <string id="BMSG_Promotion" text="Promotion"/>
+        <string id="BMSG_Doctrine" text="Adaptive Doctrine"/>
+        <string id="BMSG_Diplo" text="3. Politics &amp; Diplomacy"/>
+        <string id="BMSG_RelThreshold" text="Relation Thresholds"/>
+        <string id="BMSG_Combat" text="4. Combat &amp; Loot"/>
+        <string id="BMSG_Rewards" text="Rewards &amp; Multipliers"/>
+        <string id="BMSG_HeroicFeats" text="Heroic Feats"/>
+        <string id="BMSG_World" text="5. World &amp; Environment"/>
+        <string id="BMSG_Tactical" text="Tactical Modifiers"/>
+        <string id="BMSG_Powers" text="6. Warlord Powers"/>
+        <string id="BMSG_ML" text="7. Machine Learning"/>
+        <string id="BMSG_AdvML" text="Advanced ML"/>
+        <string id="BMSG_Debug" text="8. Technical &amp; Debug"/>
+        <string id="BMSG_AdvTech" text="Advanced Technical"/>
+        <string id="BMSG_Captivity" text="9. Captivity &amp; Surrender"/>
+
+        <!-- Settings: Spawning & Population -->
+        <string id="BMS_MilitiaSpawn" text="Enable Militia Spawning"/>
+        <string id="BMS_MilitiaSpawn_H" text="Master switch for militia spawning. Disabled = hideouts behave like vanilla."/>
+        <string id="BMS_MaxTotalMilitias" text="Max Total Militias"/>
+        <string id="BMS_MaxTotalMilitias_H" text="Hard cap on active militia parties across the entire map."/>
+        <string id="BMS_HideoutCooldown" text="Respawn Cooldown (Days)"/>
+        <string id="BMS_HideoutCooldown_H" text="Days to wait after a militia is destroyed before a new one spawns from the same hideout."/>
+        <string id="BMS_ActivationDelay" text="Initial Activation Delay (Days)"/>
+        <string id="BMS_ActivationDelay_H" text="Days after the world map opens before spawning begins. Applies to both Campaign and Sandbox."/>
+        <string id="BMS_SeaRaiders" text="Enable Sea Raiders"/>
+        <string id="BMS_SeaRaiders_H" text="Allows Sea Raider hideouts to spawn militias."/>
+        <string id="BMS_CustomNames" text="Custom Bandit Names"/>
+        <string id="BMS_CustomNames_H" text="Militias receive unique, flavourful names instead of the generic 'Bandit Militia'."/>
+        <string id="BMS_DynHideout" text="Enable Dynamic Hideout Formation"/>
+        <string id="BMS_DynHideout_H" text="Bandits can establish brand-new hideouts in lawless regions."/>
+        <string id="BMS_MinParties" text="Min Parties for Formation"/>
+        <string id="BMS_MinParties_H" text="Number of nearby bandit parties required to trigger a new hideout."/>
+        <string id="BMS_FormCooldown" text="Formation Cooldown (Days)"/>
+        <string id="BMS_FormCooldown_H" text="Minimum days between hideout formation attempts."/>
+        <string id="BMS_PatrolDensity" text="Max Patrol Density"/>
+        <string id="BMS_PatrolDensity_H" text="Formation is blocked when lord patrol density exceeds this value. Higher = easier formation."/>
+
+        <!-- Settings: Warlords & AI -->
+        <string id="BMS_EnableWarlords" text="Enable Warlords"/>
+        <string id="BMS_EnableWarlords_H" text="Powerful 'Anti-Hero' warlords emerge to command bandit forces. Disabling this reduces the mod to a simple spawn enhancer."/>
+        <string id="BMS_CustomAI" text="Custom AI Behaviors"/>
+        <string id="BMS_CustomAI_H" text="Advanced militia AI: territory control, swarm coordination, strategic retreats. Disabled = vanilla AI logic."/>
+        <string id="BMS_WarlordRegen" text="Warlord Regeneration"/>
+        <string id="BMS_WarlordRegen_H" text="Warlords and their bodyguards slowly regenerate HP during battle."/>
+        <string id="BMS_WarlordTactics" text="Warlord Tactics"/>
+        <string id="BMS_WarlordTactics_H" text="Warlords analyze the player's army composition and field counter-units (cavalry vs. infantry vs. ranged)."/>
+        <string id="BMS_WarlordMinTroops" text="Min Troops for Warlord"/>
+        <string id="BMS_WarlordMinTroops_H" text="Regional bandit strength required before a Warlord can emerge."/>
+        <string id="BMS_WarlordMinDays" text="Min Days Alive (Captain)"/>
+        <string id="BMS_WarlordMinDays_H" text="Minimum days a Captain must survive before being eligible for Warlord promotion."/>
+        <string id="BMS_WarlordMinBattles" text="Min Battles Won (Captain)"/>
+        <string id="BMS_WarlordMinBattles_H" text="Minimum battles a Captain must win before Warlord promotion."/>
+        <string id="BMS_WarlordFallback" text="Fallback Days (Force Promote)"/>
+        <string id="BMS_WarlordFallback_H" text="If no Warlord exists after this many days, the top 3 Captains are force-promoted."/>
+        <string id="BMS_MaxMinorLords" text="Max Warlords"/>
+        <string id="BMS_MaxMinorLords_H" text="Maximum concurrent Warlords on the map. (Recommended: 5 | Chaos: 20+)"/>
+        <string id="BMS_ChaosNerf" text="Reduce Chaos (Nerf Excess Lords)"/>
+        <string id="BMS_ChaosNerf_H" text="If Minor Lords exceed the cap, excess ones are weakened to Warlord level — making them easier to eliminate."/>
+        <string id="BMS_AdaptiveDoctrine" text="Enable Adaptive Doctrine"/>
+        <string id="BMS_AdaptiveDoctrine_H" text="Militias study the player's combat style (cavalry / ranged / infantry / mixed) and adapt counter-strategies."/>
+        <string id="BMS_LearningRate" text="Learning Rate"/>
+        <string id="BMS_LearningRate_H" text="How quickly doctrine confidence shifts after battle outcomes. Higher = faster adaptation."/>
+        <string id="BMS_SwitchCooldown" text="Switch Cooldown (Hours)"/>
+        <string id="BMS_SwitchCooldown_H" text="Minimum hours before a Warlord can switch to a different doctrine."/>
+        <string id="BMS_AggressionBias" text="Aggression Bias"/>
+        <string id="BMS_AggressionBias_H" text="Fine-tune doctrine aggression. Negative = cautious, Positive = reckless."/>
+
+        <!-- Settings: Politics & Diplomacy -->
+        <string id="BMS_Politics" text="Bandit Politics"/>
+        <string id="BMS_Politics_H" text="Enables alliances, rivalries, and betrayals between active warlords."/>
+        <string id="BMS_Propaganda" text="Propaganda"/>
+        <string id="BMS_Propaganda_H" text="Warlords can run propaganda campaigns to erode town loyalty."/>
+        <string id="BMS_BlackMarket" text="Black Market"/>
+        <string id="BMS_BlackMarket_H" text="Warlords bribe officials to establish underground networks, earning daily gold income."/>
+        <string id="BMS_BribeCostPerMan" text="Bribe Cost Per Man"/>
+        <string id="BMS_BribeCostPerMan_H" text="Gold cost per militia member during diplomacy bribe events."/>
+        <string id="BMS_AllianceThreshold" text="Alliance Threshold"/>
+        <string id="BMS_AllianceThreshold_H" text="Minimum relation score required for two warlords to form an alliance."/>
+        <string id="BMS_RivalryThreshold" text="Rivalry Threshold"/>
+        <string id="BMS_RivalryThreshold_H" text="Relations at or below this value trigger open rivalry."/>
+        <string id="BMS_BetrayalThreshold" text="Betrayal Threshold"/>
+        <string id="BMS_BetrayalThreshold_H" text="An allied warlord may betray the other once relations fall below this value."/>
+        <string id="BMS_DailyDrift" text="Daily Relation Drift"/>
+        <string id="BMS_DailyDrift_H" text="How quickly political relations drift back toward neutrality each day."/>
+
+        <!-- Settings: Combat & Loot -->
+        <string id="BMS_EnhancedBandits" text="Enhanced Bandits"/>
+        <string id="BMS_EnhancedBandits_H" text="Upgrades bandits with better gear and combat stats. Highly recommended for mid-to-late game."/>
+        <string id="BMS_SkillBoost" text="Bandit Skill Boost"/>
+        <string id="BMS_SkillBoost_H" text="Flat skill point bonus applied to enhanced bandits."/>
+        <string id="BMS_EqQuality" text="Equipment Quality"/>
+        <string id="BMS_EqQuality_H" text="Overall gear quality for enhanced bandits. 0 = vanilla, 5 = elite."/>
+        <string id="BMS_HeroicFeats" text="Heroic Feats"/>
+        <string id="BMS_HeroicFeats_H" text="Defeating stronger enemies can reward Focus points or rare high-tier items."/>
+        <string id="BMS_GoldMult" text="Gold Multiplier"/>
+        <string id="BMS_GoldMult_H" text="Multiplies gold dropped by enhanced bandits."/>
+        <string id="BMS_RenownMult" text="Renown Multiplier"/>
+        <string id="BMS_RenownMult_H" text="Multiplies Renown earned from mod battles."/>
+        <string id="BMS_WarlordLoot" text="Warlord Loot Bonus"/>
+        <string id="BMS_WarlordLoot_H" text="Additional loot multiplier exclusive to Warlord battles."/>
+        <string id="BMS_HardBattle" text="Hard Battle Bonus"/>
+        <string id="BMS_HardBattle_H" text="Reward multiplier for hard-fought battles. 2.0 = double rewards."/>
+        <string id="BMS_AttrRewards" text="Attribute &amp; Focus Rewards"/>
+        <string id="BMS_AttrRewards_H" text="Small chance to gain an Attribute or Focus point from very challenging battles."/>
+        <string id="BMS_QualityDrops" text="Quality Item Drops"/>
+        <string id="BMS_QualityDrops_H" text="Chance to receive high-quality item drops from difficult battles."/>
+
+        <!-- Settings: World & Environment -->
+        <string id="BMS_BanditDensity" text="Bandit Density Multiplier"/>
+        <string id="BMS_BanditDensity_H" text="Scales total bandit population (vanilla + mod). High values significantly impact performance. Requires restart."/>
+        <string id="BMS_PartySizeMult" text="Party Size Multiplier"/>
+        <string id="BMS_PartySizeMult_H" text="Multiplies maximum party size for all bandit groups."/>
+        <string id="BMS_WarZoneMult" text="War Zone Spawn Multiplier"/>
+        <string id="BMS_WarZoneMult_H" text="Increases spawn rates in kingdoms currently at war. Chaos breeds bandits!"/>
+        <string id="BMS_TradeRouteMult" text="Trade Route Spawn Multiplier"/>
+        <string id="BMS_TradeRouteMult_H" text="Increases spawn rates near heavy caravan routes and prosperous settlements."/>
+        <string id="BMS_NightAmbush" text="Night Ambush Bonus"/>
+        <string id="BMS_NightAmbush_H" text="Flat AI aggression bonus during night hours."/>
+        <string id="BMS_ForestBonus" text="Forest Advantage Bonus"/>
+        <string id="BMS_ForestBonus_H" text="Flat AI aggression bonus in forested terrain."/>
+        <string id="BMS_PatrolAggression" text="Patrol Aggression Threshold"/>
+        <string id="BMS_PatrolAggression_H" text="Strength ratio required before a militia will attack a lord's patrol. Lower = more aggressive."/>
+
+        <!-- Settings: Warlord Powers -->
+        <string id="BMS_FearSystem" text="Fear System"/>
+        <string id="BMS_FearSystem_H" text="Villages pay tribute or betray warlords based on accumulated fear."/>
+        <string id="BMS_WarlordLegacy" text="Warlord Legacy"/>
+        <string id="BMS_WarlordLegacy_H" text="Fallen warlords leave fear echoes and inherited tactics that affect future spawns in the same hideout."/>
+        <string id="BMS_CrisisEvents" text="Crisis Events"/>
+        <string id="BMS_CrisisEvents_H" text="Dynamic crisis events triggered by warlord actions — raids, sieges, betrayals."/>
+        <string id="BMS_Legitimacy" text="Legitimacy System"/>
+        <string id="BMS_Legitimacy_H" text="Warlords can rise through ranks: Outlaw -&gt; Warlord -&gt; Minor Lord -&gt; Recognized Lord."/>
+        <string id="BMS_BountySystem" text="Bounty System"/>
+        <string id="BMS_BountySystem_H" text="Notorious warlords attract bounties and dedicated hunter parties."/>
+        <string id="BMS_MilitiaRaids" text="Militia Raids"/>
+        <string id="BMS_MilitiaRaids_H" text="Militia parties can raid villages for loot and to spread fear."/>
+        <string id="BMS_RaidLoot" text="Raid Loot Multiplier"/>
+        <string id="BMS_RaidLoot_H" text="Multiplies the gold earned from militia raids."/>
+        <string id="BMS_Jailbreak" text="Jailbreak System"/>
+        <string id="BMS_Jailbreak_H" text="Captured warlords attempt to escape imprisonment via bribes or underground contacts."/>
+        <string id="BMS_Logistics" text="Warlord Logistics"/>
+        <string id="BMS_Logistics_H" text="Warlords manage supply lines and resource extraction to sustain their armies."/>
+        <string id="BMS_CapLockHours" text="Escape Lock (Hours)"/>
+        <string id="BMS_CapLockHours_H" text="Minimum hours of captivity before escape attempts begin."/>
+        <string id="BMS_CapMaxDays" text="Max Captivity (Days)"/>
+        <string id="BMS_CapMaxDays_H" text="Hard cap on captivity length. Player is released when exceeded."/>
+        <string id="BMS_CapBaseChance" text="Base Escape Chance / Hour"/>
+        <string id="BMS_CapBaseChance_H" text="Base hourly escape chance after the lock period."/>
+        <string id="BMS_CapRogueryBonus" text="Roguery Bonus / Point"/>
+        <string id="BMS_CapRogueryBonus_H" text="Additional hourly escape chance per Roguery skill point."/>
+        <string id="BMS_CapMaxChance" text="Max Escape Chance / Hour"/>
+        <string id="BMS_CapMaxChance_H" text="Upper cap for hourly escape chance."/>
+        <string id="BMS_CapRampDays" text="Ramp Duration (Days)"/>
+        <string id="BMS_CapRampDays_H" text="Days after lock ends to reach full escape chance."/>
+
+        <!-- Settings: Machine Learning -->
+        <string id="BMS_ML" text="Enable Machine Learning"/>
+        <string id="BMS_ML_H" text="Enables Q-Learning AI for militias. They learn from battle outcomes over time."/>
+        <string id="BMS_MLData" text="Collect Battle Data"/>
+        <string id="BMS_MLData_H" text="Logs battle samples to CSV for offline ML analysis."/>
+        <string id="BMS_MLObs" text="Observation Mode (No Training)"/>
+        <string id="BMS_MLObs_H" text="Records ML data without updating Q-values. Useful for establishing baselines."/>
+        <string id="BMS_Underdog15" text="Underdog Bonus (1.5x enemy)"/>
+        <string id="BMS_Underdog15_H" text="Q-Learning reward multiplier when militia beats an enemy 1.5x its size."/>
+        <string id="BMS_Underdog20" text="Underdog Bonus (2.0x enemy)"/>
+        <string id="BMS_Underdog20_H" text="Q-Learning reward multiplier when militia beats an enemy 2.0x its size."/>
+        <string id="BMS_Underdog30" text="Underdog Bonus (3.0x enemy)"/>
+        <string id="BMS_Underdog30_H" text="Q-Learning reward multiplier when militia beats an enemy 3.0x its size."/>
+        <string id="BMS_MLLogN" text="Log Every N Battles"/>
+        <string id="BMS_MLLogN_H" text="Sampling interval for battle data logging. 1 = log every battle."/>
+        <string id="BMS_AutoPrune" text="Auto-Prune Q-Table"/>
+        <string id="BMS_AutoPrune_H" text="Automatically removes low-value entries from the Q-Table to conserve memory."/>
+        <string id="BMS_MaxQTable" text="Max Q-Table Size"/>
+        <string id="BMS_MaxQTable_H" text="Maximum state-action pairs stored in the AI's memory."/>
+
+        <!-- Settings: Technical & Debug -->
+        <string id="BMS_TestMode" text="Test Mode"/>
+        <string id="BMS_TestMode_H" text="Writes detailed diagnostics to the game log. For debugging only — expect log spam."/>
+        <string id="BMS_Uninstall" text="UNINSTALL MODE (DANGER)"/>
+        <string id="BMS_Uninstall_H" text="DANGER: Removes ALL mod parties for safe uninstallation. THIS CANNOT BE UNDONE."/>
+        <string id="BMS_AggressiveCleanup" text="Aggressive Cleanup"/>
+        <string id="BMS_AggressiveCleanup_H" text="Removes idle or weak parties during cleanup passes. Enable only if experiencing lag."/>
+        <string id="BMS_FileLogging" text="File Logging"/>
+        <string id="BMS_FileLogging_H" text="Writes all mod events to logs/BanditMilitias.log."/>
+        <string id="BMS_AIDecisionLog" text="AI Decision Logging"/>
+        <string id="BMS_AIDecisionLog_H" text="Verbose logging of AI reasoning and decision outcomes."/>
+        <string id="BMS_ShowDebug" text="Show Debug Messages"/>
+        <string id="BMS_ShowDebug_H" text="Displays [DEBUG] popups in-game for ongoing mod activity."/>
+        <string id="BMS_AIScheduler" text="AI Scheduler"/>
+        <string id="BMS_AIScheduler_H" text="Spreads AI processing across ticks to avoid frame spikes."/>
+        <string id="BMS_MaxAITasks" text="Max AI Tasks Per Tick"/>
+        <string id="BMS_MaxAITasks_H" text="CPU budget for the AI Scheduler. Lower = smoother FPS, slower AI updates."/>
+        <string id="BMS_AsyncAI" text="Allow Async AI (Experimental)"/>
+        <string id="BMS_AsyncAI_H" text="Experimental: offloads non-critical AI tasks to background threads. May cause rare race conditions."/>
+        <string id="BMS_SpatialAI" text="Spatial Awareness"/>
+        <string id="BMS_SpatialAI_H" text="AI factors in territory control, battle history, and proximity when making decisions."/>
+        <string id="BMS_AIRecruit" text="AI Recruit Count"/>
+        <string id="BMS_AIRecruit_H" text="Troops recruited by AI per reinforcement cycle."/>
+        <string id="BMS_UpgradeXp" text="Upgrade XP Requirement"/>
+        <string id="BMS_UpgradeXp_H" text="XP accumulated before a militia can upgrade its troops."/>
+        <string id="BMS_StrongThreshold" text="Strong Party Threshold"/>
+        <string id="BMS_StrongThreshold_H" text="Troop count at which AI considers a party 'strong' for strategic planning."/>
+        <string id="BMS_WealthyThreshold" text="Wealthy Threshold"/>
+        <string id="BMS_WealthyThreshold_H" text="Gold amount at which AI considers itself 'wealthy' and pursues aggressive expansion."/>
+
+        <!-- Career Tier Names -->
+        <string id="BM_Tier_Outlaw" text="Outlaw"/>
+        <string id="BM_Tier_Rebel" text="Rebel"/>
+        <string id="BM_Tier_Warlord" text="Famous Bandit"/>
+        <string id="BM_Tier_MinorLord" text="Warlord"/>
+        <string id="BM_Tier_Recognized" text="Sovereign"/>
+        <string id="BM_Tier_Conqueror" text="Conqueror"/>
+ 
+        <!-- Special Titles -->
+        <string id="BM_MinorLord" text="Warlord {NAME}"/>
+        <string id="BM_WarlordTitle" text="Warlord {NAME}"/>
+        <string id="BM_BanditLord" text="Bandit Lord"/>
+        <string id="BM_Conqueror" text="The Conqueror"/>
+        <string id="BM_ConquerorArmy" text="The Conqueror's Army"/>
+
+        <!-- NPC Voice Labels -->
+        <string id="BM_NPC_Merchant" text="Merchant"/>
+        <string id="BM_NPC_Soldier" text="Soldier"/>
+        <string id="BM_NPC_Elder" text="Elder"/>
+        <string id="BM_NPC_Spy" text="Spy"/>
+        <string id="BM_NPC_Child" text="Child"/>
+        <string id="BM_NPC_Bard" text="Bard"/>
+        <string id="BM_NPC_Villager" text="Villager"/>
+        <string id="BM_NPC_Fallback" text="I'm just a villager, I don't know anything."/>
+    </strings>
+</base>

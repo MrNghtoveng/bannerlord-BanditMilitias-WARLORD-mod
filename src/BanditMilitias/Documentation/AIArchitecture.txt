@@ -1,0 +1,26 @@
+AI Architecture
+
+Bandit Militias: WARLORD Edition does not use one single AI model.
+It combines:
+
+- strategic reasoning
+- tactical decision rules
+- scheduler-driven execution
+- telemetry and learning support
+- world-context systems
+- patch-based integration
+
+MAIN SYSTEMS
+
+- BanditBrain
+- WarlordSystem
+- HTNEngine
+- MilitiaDecider
+- SwarmCoordinator
+- AdaptiveAIDoctrineSystem
+- AILearningSystem
+- PlayerTracker
+- FearSystem
+- SpatialGridSystem
+- PartyCleanupSystem
+- Harmony patches

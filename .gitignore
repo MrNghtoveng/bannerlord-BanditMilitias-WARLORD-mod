@@ -1,0 +1,56 @@
+# Build output
+bin/
+obj/
+dist/
+TestResults/
+
+# Nested build output
+**/bin/
+**/obj/
+**/dist/
+**/TestResults/
+
+# IDE
+.vs/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Rider / ReSharper
+_ReSharper*/
+*.DotSettings.user
+
+# Logs and local diagnostics
+*.log
+*.etl
+*.tmp
+*.cache
+*.bak
+*.pidb
+*.svclog
+
+# Archives and local exports
+*.zip
+*.7z
+*.rar
+
+# Local Bannerlord/dev data
+Data/
+Reports/
+ML/
+TestSim/
+session_*/
+BanditMilitias_Dev/
+adaptive_doctrine_*.csv
+CleanupHistory.csv
+Events.json
+Battles.csv
+BanditMilitias.log
+BanditMilitias_AIDecisions.log
+BanditMilitias_FullSim.txt
+
+# OS
+Thumbs.db
+Desktop.ini

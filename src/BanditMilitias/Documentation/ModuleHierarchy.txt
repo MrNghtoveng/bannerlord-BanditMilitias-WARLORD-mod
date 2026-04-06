@@ -1,0 +1,48 @@
+BANDIT MILITIAS: WARLORD - MODUL HIYERARSISI
+
+Bu dosya, projedeki ana sistem gruplarini ve sorumluluklarini kisa ama gercekci
+bir sekilde ozetler.
+
+1. INTELLIGENCE
+- Strategic: yuksek seviyeli hedef ve durus kararleri
+- Tactical: sahaya yakin anlik karar kurallari
+- Swarm: birden fazla grubun koordinasyonu
+- ML: veri toplama ve ogrenme destek katmani
+- Narrative: warlord kimligi ve hikaye destegi
+- AI / Logging: davranisa yakin yardimci katmanlar
+
+2. SYSTEMS
+- Spawning: yeni milis partilerinin olusumu
+- Scheduling: AI islerini kuyruga koyma ve zamana yayma
+- Cleanup: zayif, bozulmus veya gereksiz partileri azaltma
+- Grid: uzamsal sorgular ve komsuluk hesaplari
+- Tracking: oyuncu ve dunya olaylarini izleme
+- Raiding / Fear / Combat: baskin, korku ve savas baglantili davranislar
+- Progression / Economy / Logistics: warlord ilerlemesi ve uzun vadeli buyume
+- Diagnostics: runtime test hub ve teknik gozlem araci
+- Events / Enhancement / Seasonal / Crisis: destekleyici sistem gruplari
+
+3. INFRASTRUCTURE
+- save baglama ve kayit yardimcilari
+- uyumluluk ve koruma katmanlari
+- MCM ve opsiyonel entegrasyonlar
+- ortak altyapi yardimcilari
+
+4. CORE
+- olaylar, temel sozlesmeler ve ortak yapitaslari
+
+5. COMPONENTS
+- partilere eklenen mod verileri
+
+6. BEHAVIORS
+- Bannerlord tick akisina baglanan davranis siniflari
+
+7. PATCHES
+- Harmony ile motor davranisina yapilan mudahaleler
+
+8. GUI
+- oyuncuya bilgi gosteren arayuz katmani
+
+9. TEST VE DOKUMANTASYON
+- BanditMilitias.Tests: masaustu testleri
+- Documentation: mimari ve akis notlari

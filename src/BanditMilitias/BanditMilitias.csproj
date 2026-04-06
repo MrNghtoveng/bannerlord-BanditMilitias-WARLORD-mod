@@ -1,0 +1,133 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Version>5.0.0</Version>
+    <TargetFramework>net472</TargetFramework>
+    <Nullable>enable</Nullable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <LangVersion>latest</LangVersion>
+    <BaseOutputPath>bin/</BaseOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <PlatformTarget>x64</PlatformTarget>
+    <Authors>Developer</Authors>
+    <Product>BanditMilitias</Product>
+    <AssemblyName>BanditMilitias</AssemblyName>
+    <Description>BanditMilitias Warlord Edition v5 - Clean Rewrite</Description>
+    <NoWarn>$(NoWarn);NU1900</NoWarn>
+    <UseMcm>true</UseMcm>
+    <AutoDeployToGame>false</AutoDeployToGame>
+    <PrepareVortexPackage>true</PrepareVortexPackage>
+    <VortexPackageDir>$(MSBuildProjectDirectory)\dist\BanditMilitias</VortexPackageDir>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Default launcher path detection:
+         Epic Games and Steam are both supported here.
+         If neither path matches the local installation, set BANNERLORD_GAME_DIR manually. -->
+    <BANNERLORD_GAME_DIR Condition="'$(BANNERLORD_GAME_DIR)' == '' and Exists('C:\Program Files\Epic Games\MountAndBlade2')">C:\Program Files\Epic Games\MountAndBlade2</BANNERLORD_GAME_DIR>
+    <BANNERLORD_GAME_DIR Condition="'$(BANNERLORD_GAME_DIR)' == '' and Exists('C:\Program Files (x86)\Steam\steamapps\common\Mount &amp; Blade II Bannerlord')">C:\Program Files (x86)\Steam\steamapps\common\Mount &amp; Blade II Bannerlord</BANNERLORD_GAME_DIR>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <BANNERLORD_REFERENCE_DIR Condition="'$(BANNERLORD_REFERENCE_DIR)' == ''">$(BANNERLORD_GAME_DIR)\bin\Win64_Shipping_Client</BANNERLORD_REFERENCE_DIR>
+    <BANNERLORD_REFERENCE_DIR Condition="!Exists('$(BANNERLORD_REFERENCE_DIR)\TaleWorlds.Core.dll') and Exists('$(BANNERLORD_GAME_DIR)\Modules\BetterCore\bin\Win64_Shipping_Client\TaleWorlds.Core.dll')">$(BANNERLORD_GAME_DIR)\Modules\BetterCore\bin\Win64_Shipping_Client</BANNERLORD_REFERENCE_DIR>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <DebugSymbols>true</DebugSymbols>
+    <DebugType>full</DebugType>
+    <Optimize>false</Optimize>
+    <OutputPath>bin/Debug/Win64_Shipping_Client/</OutputPath>
+    <DefineConstants>DEBUG;TRACE</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>pdbonly</DebugType>
+    <Optimize>true</Optimize>
+    <OutputPath>bin/Release/Win64_Shipping_Client/</OutputPath>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="$(BANNERLORD_REFERENCE_DIR)\TaleWorlds.*.dll"
+               Exclude="$(BANNERLORD_REFERENCE_DIR)\TaleWorlds.Native.dll">
+      <HintPath>%(Identity)</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="$(BANNERLORD_GAME_DIR)\Modules\Native\bin\Win64_Shipping_Client\*.dll">
+      <HintPath>%(Identity)</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="$(BANNERLORD_GAME_DIR)\Modules\SandBox\bin\Win64_Shipping_Client\*.dll">
+      <HintPath>%(Identity)</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="$(BANNERLORD_GAME_DIR)\Modules\StoryMode\bin\Win64_Shipping_Client\*.dll">
+      <HintPath>%(Identity)</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(BANNERLORD_REFERENCE_DIR)\TaleWorlds.DotNet.dll') and Exists('$(BANNERLORD_GAME_DIR)\Modules\SaveCleaner\bin\Win64_Shipping_Client\TaleWorlds.DotNet.dll')">
+    <Reference Include="$(BANNERLORD_GAME_DIR)\Modules\SaveCleaner\bin\Win64_Shipping_Client\TaleWorlds.DotNet.dll">
+      <HintPath>$(BANNERLORD_GAME_DIR)\Modules\SaveCleaner\bin\Win64_Shipping_Client\TaleWorlds.DotNet.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" />
+    <PackageReference Include="System.Numerics.Vectors" Version="4.6.1" />
+    <!-- Microsoft.ML kaldırıldı: MilitiaMLEngine.Initialize() hiçbir yerde çağrılmıyor,
+         _model her zaman null kalıyor. ~60MB gereksiz DLL yükü ortadan kalktı.
+         Yeniden etkinleştirmek için: #if ML_ENABLED tanımlayın ve bu satırı geri ekleyin.
+         <PackageReference Include="Microsoft.ML" Version="1.7.1" /> -->
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="System.CodeDom" Version="4.7.0" />
+  </ItemGroup>
+
+  <PropertyGroup Condition="'$(UseMcm)' == 'true'">
+    <DefineConstants>$(DefineConstants);MCM_PRESENT</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseMcm)' == 'true'">
+    <PackageReference Include="Bannerlord.MCM" Version="5.11.3" PrivateAssets="none" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Microsoft.CSharp" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="ModuleData\**\*.*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="BanditMilitias.Tests\**\*.cs" />
+    <None Remove="BanditMilitias.Tests\**\*" />
+  </ItemGroup>
+
+  <Target Name="PrepareVortexPackage" AfterTargets="Build" Condition="'$(PrepareVortexPackage)' == 'true'">
+    <MakeDir Directories="$(VortexPackageDir)\bin\Win64_Shipping_Client" />
+    <MakeDir Directories="$(VortexPackageDir)\ModuleData" />
+    <Copy SourceFiles="$(MSBuildProjectDirectory)\SubModule.xml" DestinationFolder="$(VortexPackageDir)\" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <_Bins Include="$(TargetDir)*.dll"
+             Exclude="$(TargetDir)MCMv5.dll;$(TargetDir)TaleWorlds*.dll" />
+      <_Bins Include="$(TargetDir)*.pdb"
+             Exclude="$(TargetDir)MCMv5.pdb;$(TargetDir)TaleWorlds*.pdb" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_Bins)" DestinationFiles="@(_Bins->'$(VortexPackageDir)\bin\Win64_Shipping_Client\%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <_ModuleDataFiles Include="$(MSBuildProjectDirectory)\ModuleData\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ModuleDataFiles)" DestinationFiles="@(_ModuleDataFiles->'$(VortexPackageDir)\ModuleData\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+  </Target>
+
+  <Target Name="ValidateBannerlordGameDir" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(BANNERLORD_REFERENCE_DIR)' == '' or !Exists('$(BANNERLORD_REFERENCE_DIR)\TaleWorlds.Core.dll')"
+           Text="Bannerlord reference assemblies not found. Default Steam/Epic path detection failed; set BANNERLORD_GAME_DIR or BANNERLORD_REFERENCE_DIR." />
+  </Target>
+
+</Project>

@@ -1,0 +1,114 @@
+﻿using BanditMilitias.Core.Components;
+using BanditMilitias.Debug;
+using BanditMilitias.Intelligence.Strategic;
+using System;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Actions;
+using TaleWorlds.Core;
+using TaleWorlds.Library;
+
+namespace BanditMilitias.Systems.Events
+{
+
+    [BanditMilitias.Core.Components.AutoRegister]
+    public class JailbreakMissionSystem : MilitiaModuleBase
+    {
+        public override string ModuleName => "JailbreakMissionSystem";
+        public override bool IsEnabled => Settings.Instance?.EnableJailbreakSystem ?? true;
+        public override int Priority => 59;
+
+        private static readonly Lazy<JailbreakMissionSystem> _instance = new Lazy<JailbreakMissionSystem>(() => new JailbreakMissionSystem());
+        public static JailbreakMissionSystem Instance => _instance.Value;
+
+        private bool _isInitialized = false;
+
+        private JailbreakMissionSystem() { }
+
+        public override void Initialize()
+        {
+            if (_isInitialized) return;
+            _isInitialized = true;
+            DebugLogger.Info("Jailbreak", "JailbreakMissionSystem initialized.");
+        }
+
+        public override void Cleanup()
+        {
+            _isInitialized = false;
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            ProcessCaptiveWarlords();
+        }
+
+        private void ProcessCaptiveWarlords()
+        {
+            var warlords = WarlordSystem.Instance.GetAllWarlords();
+
+            foreach (var warlord in warlords)
+            {
+                if (warlord.LinkedHero == null || !warlord.IsAlive) continue;
+
+                if (warlord.LinkedHero.IsPrisoner)
+                {
+                    AttemptJailbreak(warlord);
+                }
+            }
+        }
+
+        private void AttemptJailbreak(Warlord warlord)
+        {
+
+            float baseEscapeChance = 0.05f;
+
+            if (warlord.Gold > 10000) baseEscapeChance += 0.10f;
+            else if (warlord.Gold > 3000) baseEscapeChance += 0.05f;
+
+            if (warlord.DaysActive > 100) baseEscapeChance += 0.05f;
+
+            if (MBRandom.RandomFloat < baseEscapeChance)
+            {
+
+                int bribeCost = (int)(warlord.Gold * 0.2f);
+                if (warlord.Gold >= bribeCost)
+                {
+                    warlord.Gold -= bribeCost;
+                }
+
+                EndCaptivityAction.ApplyByEscape(warlord.LinkedHero, null);
+
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    InformationManager.DisplayMessage(new InformationMessage(
+                        $"?? Jailbreak! {warlord.Name}'s loyal agents have orchestrated a successful prison break!",
+                        Colors.Green));
+
+                    DebugLogger.Info("Jailbreak", $"{warlord.Name} escaped captivity. Bribe cost: {bribeCost}g.");
+                }
+            }
+            else
+            {
+
+                if (Settings.Instance?.TestingMode == true && MBRandom.RandomFloat < 0.1f)
+                {
+                    DebugLogger.Info("Jailbreak", $"Jailbreak attempt for {warlord.Name} failed.");
+                }
+            }
+        }
+
+        public override void SyncData(IDataStore dataStore)
+        {
+
+        }
+
+        public override string GetDiagnostics()
+        {
+            var captiveCount = WarlordSystem.Instance.GetAllWarlords().Count(w => w.LinkedHero?.IsPrisoner == true);
+            return $"JailbreakSystem:\n" +
+                   $"  Captive Warlords: {captiveCount}";
+        }
+    }
+}

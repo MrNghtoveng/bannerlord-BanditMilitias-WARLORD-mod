@@ -1,0 +1,57 @@
+<Prefab>
+  <Window>
+    <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent">
+      <Children>
+        
+        <!-- Standard Bannerlord UI Panel Background -->
+        <ListPanel WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" SuggestedWidth="500" SuggestedHeight="300" 
+                   HorizontalAlignment="Center" VerticalAlignment="Center" 
+                   Sprite="BlankWhiteSquare_9" Color="#111111E6">
+          <Children>
+            
+            <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" MarginLeft="20" MarginRight="20" MarginTop="20" MarginBottom="20">
+              <Children>
+                <ListPanel WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" StackLayout.LayoutMethod="VerticalBottomToTop">
+                  <Children>
+                    
+                    <!-- Close Button -->
+                    <ButtonWidget Command.Click="ExecuteClose" WidthSizePolicy="Fixed" HeightSizePolicy="Fixed" 
+                                  SuggestedWidth="150" SuggestedHeight="40" HorizontalAlignment="Center" 
+                                  Brush="Button.Normal">
+                      <Children>
+                        <TextWidget Text="{=BM_Close}Close" WidthSizePolicy="StretchToParent" HeightSizePolicy="StretchToParent" Brush="Button.Text" />
+                      </Children>
+                    </ButtonWidget>
+
+                    <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="20" /> <!-- Spacer -->
+
+                    <!-- Troop Count -->
+                    <TextWidget Text="@TroopCountText" WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="30" 
+                                Brush="Concept.Text" HorizontalAlignment="Center" />
+
+                    <!-- Estimated Power -->
+                    <TextWidget Text="@PowerText" WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="30" 
+                                Brush="Concept.Text" HorizontalAlignment="Center" />
+
+                    <!-- Leader Name -->
+                    <TextWidget Text="@LeaderName" WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="30" 
+                                Brush="Concept.Text" HorizontalAlignment="Center" />
+
+                    <Widget WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="20" /> <!-- Spacer -->
+
+                    <!-- Title -->
+                    <TextWidget Text="@TitleText" WidthSizePolicy="StretchToParent" HeightSizePolicy="Fixed" SuggestedHeight="50" 
+                                Brush="Title.Text" HorizontalAlignment="Center" />
+                    
+                  </Children>
+                </ListPanel>
+              </Children>
+            </Widget>
+
+          </Children>
+        </ListPanel>
+
+      </Children>
+    </Widget>
+  </Window>
+</Prefab>
