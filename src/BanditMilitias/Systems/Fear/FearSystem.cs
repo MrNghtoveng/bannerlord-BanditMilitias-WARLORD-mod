@@ -172,6 +172,9 @@ namespace BanditMilitias.Systems.Fear
                 }
             }
 
+            // HİBRİT AI: Pasif Korku Aurasi Güncellemesi
+            UpdatePassiveFearAura();
+
             if (Settings.Instance?.TestingMode == true && betrayalsToday > 0)
                 DebugLogger.Info("FearSystem", $"Daily: {betrayalsToday} betrayal(s) triggered.");
         }
@@ -500,6 +503,65 @@ namespace BanditMilitias.Systems.Fear
             return $"FearSystem ({(_isInitialized ? "Active" : "Initializing")}):\n" +
                    $"  {_cachedDiagnosticSnapshot}\n" +
                    $"  Last Snapshot: {_lastSnapshotTime:HH:mm:ss}";
+        }
+
+        /// <summary>
+        /// HİBRİT AI: Haydut varlığından (Tier/Sayı) kaynaklanan pasif korku üretimi.
+        /// Yağma olmasa bile bölgedeki güçlü haydut birlikleri korku saçar.
+        /// </summary>
+        public void UpdatePassiveFearAura()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            foreach (var hideout in ModuleManager.Instance.HideoutCache)
+            {
+                if (hideout == null || !hideout.IsActive) continue;
+
+                float auraPower = 0f;
+                int linkedMilitias = 0;
+
+                foreach (var party in ModuleManager.Instance.ActiveMilitias)
+                {
+                    if (party == null || !party.IsActive) continue;
+                    var comp = party.PartyComponent as BanditMilitias.Components.MilitiaPartyComponent;
+                    if (comp != null && comp.HomeSettlement == hideout)
+                    {
+                        linkedMilitias++;
+                        // Asker sayısı + Tier çarpanı (Kalite korkuyu artırır)
+                        foreach (var troop in party.MemberRoster.GetTroopRoster())
+                        {
+                            if (troop.Character != null)
+                                auraPower += troop.Number * (troop.Character.Tier * 0.20f);
+                        }
+                    }
+                }
+
+                if (linkedMilitias > 0 && auraPower > 5f)
+                {
+                    var hideoutPos = CompatibilityLayer.GetSettlementPosition(hideout);
+                    var nearby = ModuleManager.Instance.GetNearbySettlements(hideoutPos, 40f, Infrastructure.SettlementType.Any);
+
+                    foreach (var settlement in nearby)
+                    {
+                        if (settlement == null || (!settlement.IsVillage && !settlement.IsTown)) continue;
+                        
+                        var state = GetOrCreateState(settlement.StringId);
+                        float currentFear = state.Fear;
+
+                        // Günlük pasif artış (Logaritmik fren ile)
+                        float fearGain = MathF.Clamp(auraPower * 0.003f, 0f, 0.035f);
+                        float resistance = 1.0f - (currentFear / 1.0f);
+                        float finalGain = fearGain * resistance;
+
+                        state.Fear = MathF.Clamp(state.Fear + finalGain, 0f, 1f);
+                        
+                        if (Settings.Instance?.TestingMode == true && finalGain > 0.001f)
+                        {
+                            DebugLogger.TestLog($"[AURA] {hideout.Name}, {settlement.Name} üzerine {finalGain:P1} pasif korku yaydı.");
+                        }
+                    }
+                }
+            }
         }
     }
 }

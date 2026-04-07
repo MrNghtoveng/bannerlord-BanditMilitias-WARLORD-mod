@@ -10,7 +10,8 @@ namespace BanditMilitias.Intelligence.Tactical
     {
         public ExecuteTuranDoctrineTask() : base("ExecuteTuran") { }
 
-        public override bool CheckPreconditions(WorldState state) => state.GetFloat("ClosestEnemyDistance") > 40f;
+        public override bool CheckPreconditions(WorldState state)
+            => state.GetBool("IsTuranDoctrine") && state.GetFloat("ClosestEnemyDistance") > 40f;
 
         public override Queue<PrimitiveTask> Decompose(WorldState state)
         {
@@ -19,8 +20,10 @@ namespace BanditMilitias.Intelligence.Tactical
             plan.Enqueue(new FormationSplitTask());
             // 2. Center group retreats to lure
             plan.Enqueue(new MockRetreatTask());
-            // 3. Hold until wings are in position
-            plan.Enqueue(new WaitUntilEnemyCloseTask(15f));
+            // 3. Wings close the trap while center keeps baiting
+            plan.Enqueue(new TuranManeuverTask());
+            // 4. Final trigger window before vanilla melee takeover
+            plan.Enqueue(new WaitUntilEnemyCloseTask(12f));
             return plan;
         }
     }
@@ -35,7 +38,8 @@ namespace BanditMilitias.Intelligence.Tactical
         {
             var plan = new Queue<PrimitiveTask>();
             plan.Enqueue(new SetArrangementTask(ArrangementOrder.ArrangementOrderSquare));
-            // In a real implementation, we'd split into 2 concentric squares
+            plan.Enqueue(new WaitUntilEnemyCloseTask(90f));
+            plan.Enqueue(new DeepShieldWallTask());
             plan.Enqueue(new WaitUntilEnemyCloseTask(10f));
             return plan;
         }
@@ -53,6 +57,8 @@ namespace BanditMilitias.Intelligence.Tactical
             // Set V-shape (simulated by Shield Wall and directional hold)
             plan.Enqueue(new SetArrangementTask(ArrangementOrder.ArrangementOrderShieldWall));
             plan.Enqueue(new MoveToTacticalPositionTask());
+            plan.Enqueue(new WaitUntilEnemyCloseTask(90f));
+            plan.Enqueue(new DeepShieldWallTask());
             plan.Enqueue(new WaitUntilEnemyCloseTask(25f));
             return plan;
         }

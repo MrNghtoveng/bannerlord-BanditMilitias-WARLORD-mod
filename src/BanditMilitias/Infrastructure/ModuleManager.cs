@@ -466,6 +466,7 @@ namespace BanditMilitias.Infrastructure
                     _campaignEventsRegistered = true;
                 }
 
+                RunModuleSessionStartCore();
                 _sessionBootstrapComplete = true;
             }
         }
@@ -487,6 +488,25 @@ namespace BanditMilitias.Infrastructure
                     DebugLogger.Error("ModuleManager",
                         $"[RegisterCampaignEvents] {ResolveModuleName(module)}: {ex.Message}");
                     BanditMilitias.Core.Registry.ModuleRegistry.Instance.MarkFailed(module, ex.Message);
+                }
+            }
+        }
+
+        private void RunModuleSessionStartCore()
+        {
+            var enabledModules = _modules.Where(m => m.IsEnabled).ToList();
+            enabledModules.Sort((a, b) => b.Priority.CompareTo(a.Priority));
+
+            foreach (var module in enabledModules)
+            {
+                try
+                {
+                    module.OnSessionStart();
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Error("ModuleManager",
+                        $"[OnSessionStart] {ResolveModuleName(module)}: {ex.Message}");
                 }
             }
         }

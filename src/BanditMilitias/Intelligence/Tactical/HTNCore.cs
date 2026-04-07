@@ -122,10 +122,17 @@ namespace BanditMilitias.Intelligence.Tactical
         {
             if (formation == null) return;
 
-            // If we don't have an executing task but have a plan, dequeue the next.
-            if (_executingTask == null && _currentPlan.Count > 0)
+            // If we don't have an executing task but have a plan, dequeue the next
+            // task whose preconditions still hold in the latest world state.
+            while (_executingTask == null && _currentPlan.Count > 0)
             {
-                _executingTask = _currentPlan.Dequeue();
+                PrimitiveTask candidate = _currentPlan.Dequeue();
+                if (!candidate.CheckPreconditions(state))
+                {
+                    continue;
+                }
+
+                _executingTask = candidate;
                 _executingTask.Start(formation);
             }
 

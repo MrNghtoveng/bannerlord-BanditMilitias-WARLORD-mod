@@ -381,7 +381,7 @@ namespace BanditMilitias.Systems.Spawning
         public static HardcoreDynamicHideoutSystem Instance => _instance.Value;
 
         public override string ModuleName => "HardcoreDynamicHideoutSystem";
-        public override bool IsEnabled => Settings.Instance?.EnableHardcoreDynamicHideouts ?? false;
+        public override bool IsEnabled => Settings.Instance?.EnableHardcoreDynamicHideouts ?? true;
         public override int Priority => 86;
 
         private const float MIN_HIDEOUT_DISTANCE = 50f;

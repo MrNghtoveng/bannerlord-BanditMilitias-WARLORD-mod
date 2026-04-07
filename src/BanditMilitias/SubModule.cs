@@ -453,6 +453,7 @@ namespace BanditMilitias
                 RegisterSafe(() => Systems.Raiding.MilitiaRaidSystem.Instance, nameof(Systems.Raiding.MilitiaRaidSystem));
                 RegisterSafe(() => Systems.Logistics.WarlordLogisticsSystem.Instance, nameof(Systems.Logistics.WarlordLogisticsSystem));
                 RegisterSafe(() => Systems.AI.AdaptiveAIDoctrineSystem.Instance, nameof(Systems.AI.AdaptiveAIDoctrineSystem));
+                RegisterSafe(() => Systems.AI.MilitiaMemorySystem.Instance, nameof(Systems.AI.MilitiaMemorySystem), critical: true);
 
                 RegisterSafe(() => new Systems.Scheduling.AISchedulerSystem(), nameof(Systems.Scheduling.AISchedulerSystem), critical: true);
                 RegisterSafe(() => new Systems.Cleanup.PartyCleanupSystem(), nameof(Systems.Cleanup.PartyCleanupSystem), critical: true);
@@ -461,7 +462,7 @@ namespace BanditMilitias
                 RegisterSafe(() => Systems.Tracking.WarActivityTracker.Instance, nameof(Systems.Tracking.WarActivityTracker));
                 RegisterSafe(() => Systems.Tracking.CaravanActivityTracker.Instance, nameof(Systems.Tracking.CaravanActivityTracker));
                 RegisterSafe(() => Systems.Enhancement.BanditEnhancementSystem.Instance, nameof(Systems.Enhancement.BanditEnhancementSystem));
-                RegisterSafe(() => Systems.Enhancement.HeroicFeatsSystem.Instance, nameof(Systems.Enhancement.HeroicFeatsSystem));
+                RegisterSafe(() => BanditMilitias.Systems.Heroics.HeroicFeatsSystem.Instance, nameof(BanditMilitias.Systems.Heroics.HeroicFeatsSystem));
                 RegisterSafe(() => Systems.Spawning.DynamicHideoutSystem.Instance, nameof(Systems.Spawning.DynamicHideoutSystem), critical: true);
                 RegisterSafe(() => Systems.Spawning.HardcoreDynamicHideoutSystem.Instance, nameof(Systems.Spawning.HardcoreDynamicHideoutSystem));
                 RegisterSafe(() => Systems.Diplomacy.ExtortionSystem.Instance, nameof(Systems.Diplomacy.ExtortionSystem));
@@ -731,68 +732,47 @@ namespace BanditMilitias
                 Infrastructure.FileLogger.Log($"Registered campaign behavior: {behaviorName}");
             }
 
-            try
+            static bool TryCreateBehaviorRegistrar(IGameStarter starter, out Action<CampaignBehaviorBase>? register)
             {
-                if (gameStarter is CampaignGameStarter campaignStarter)
+                register = null;
+
+                if (starter is CampaignGameStarter campaignStarter)
                 {
-                    AddBehaviorSafe(campaignStarter.AddBehavior, new Behaviors.MilitiaBehavior(), nameof(Behaviors.MilitiaBehavior));
-                    AddBehaviorSafe(campaignStarter.AddBehavior, new Behaviors.MilitiaHideoutCampaignBehavior(), nameof(Behaviors.MilitiaHideoutCampaignBehavior));
-                    AddBehaviorSafe(campaignStarter.AddBehavior, new Behaviors.MilitiaRewardCampaignBehavior(), nameof(Behaviors.MilitiaRewardCampaignBehavior));
-                    AddBehaviorSafe(campaignStarter.AddBehavior, new Behaviors.MilitiaDiplomacyCampaignBehavior(), nameof(Behaviors.MilitiaDiplomacyCampaignBehavior));
-                    AddBehaviorSafe(campaignStarter.AddBehavior, new Behaviors.WarlordCampaignBehavior(), nameof(Behaviors.WarlordCampaignBehavior));
+                    register = campaignStarter.AddBehavior;
                     return true;
                 }
 
-                var addBehaviorMethod = gameStarter.GetType().GetMethod(
-                    "AddBehavior",
-                    new[] { typeof(CampaignBehaviorBase) })
-                    ?? gameStarter.GetType().GetMethod("AddBehavior");
-
-                if (addBehaviorMethod == null)
-                {
-
-                    if (gameStarter.GetType().Name.Contains("SandBox") || gameStarter.GetType().Name.Contains("Sandbox"))
+                var addBehaviorMethod = starter.GetType()
+                    .GetMethods(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)
+                    .FirstOrDefault(m =>
                     {
-                        try
-                        {
-                            dynamic starter = gameStarter;
-                            AddBehaviorSafe(starter.AddBehavior, new Behaviors.MilitiaBehavior(), nameof(Behaviors.MilitiaBehavior));
-                            AddBehaviorSafe(starter.AddBehavior, new Behaviors.MilitiaHideoutCampaignBehavior(), nameof(Behaviors.MilitiaHideoutCampaignBehavior));
-                            AddBehaviorSafe(starter.AddBehavior, new Behaviors.MilitiaRewardCampaignBehavior(), nameof(Behaviors.MilitiaRewardCampaignBehavior));
-                            AddBehaviorSafe(starter.AddBehavior, new Behaviors.MilitiaDiplomacyCampaignBehavior(), nameof(Behaviors.MilitiaDiplomacyCampaignBehavior));
-                            AddBehaviorSafe(starter.AddBehavior, new Behaviors.WarlordCampaignBehavior(), nameof(Behaviors.WarlordCampaignBehavior));
-                            return true;
-                        }
-                        catch (Exception innerEx)
-                        {
-                            Infrastructure.FileLogger.LogError($"Dynamic behavior registration failed: {innerEx}");
-                            DebugLogger.Error("SubModule", $"Dynamic behavior registration failed: {innerEx.Message}");
-                            return false;
-                        }
-                    }
+                        if (!string.Equals(m.Name, "AddBehavior", StringComparison.Ordinal)) return false;
+
+                        var parameters = m.GetParameters();
+                        return parameters.Length == 1
+                               && parameters[0].ParameterType.IsAssignableFrom(typeof(CampaignBehaviorBase));
+                    });
+
+                if (addBehaviorMethod == null) return false;
+
+                register = behavior => _ = addBehaviorMethod.Invoke(starter, new object[] { behavior });
+                return true;
+            }
+
+            try
+            {
+                if (!TryCreateBehaviorRegistrar(gameStarter, out var registerBehavior) || registerBehavior == null)
+                {
+                    Infrastructure.FileLogger.LogError(
+                        $"RegisterCampaignBehaviors: AddBehavior method not found on {gameStarter.GetType().FullName}");
                     return false;
                 }
 
-                AddBehaviorSafe(
-                    behavior => _ = addBehaviorMethod.Invoke(gameStarter, new object[] { behavior }),
-                    new Behaviors.MilitiaBehavior(),
-                    nameof(Behaviors.MilitiaBehavior));
-                AddBehaviorSafe(
-                    behavior => _ = addBehaviorMethod.Invoke(gameStarter, new object[] { behavior }),
-                    new Behaviors.MilitiaHideoutCampaignBehavior(),
-                    nameof(Behaviors.MilitiaHideoutCampaignBehavior));
-                AddBehaviorSafe(
-                    behavior => _ = addBehaviorMethod.Invoke(gameStarter, new object[] { behavior }),
-                    new Behaviors.MilitiaRewardCampaignBehavior(),
-                    nameof(Behaviors.MilitiaRewardCampaignBehavior));
-                AddBehaviorSafe(
-                    behavior => _ = addBehaviorMethod.Invoke(gameStarter, new object[] { behavior }),
-                    new Behaviors.MilitiaDiplomacyCampaignBehavior(),
-                    nameof(Behaviors.MilitiaDiplomacyCampaignBehavior));
-                AddBehaviorSafe(
-                    behavior => _ = addBehaviorMethod.Invoke(gameStarter, new object[] { behavior }),
-                    new Behaviors.WarlordCampaignBehavior(),
-                    nameof(Behaviors.WarlordCampaignBehavior));
+                AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaBehavior(), nameof(Behaviors.MilitiaBehavior));
+                AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaHideoutCampaignBehavior(), nameof(Behaviors.MilitiaHideoutCampaignBehavior));
+                AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaRewardCampaignBehavior(), nameof(Behaviors.MilitiaRewardCampaignBehavior));
+                AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaDiplomacyCampaignBehavior(), nameof(Behaviors.MilitiaDiplomacyCampaignBehavior));
+                AddBehaviorSafe(registerBehavior, new Behaviors.WarlordCampaignBehavior(), nameof(Behaviors.WarlordCampaignBehavior));
                 return true;
             }
             catch (Exception ex)

@@ -185,10 +185,11 @@ namespace BanditMilitias.Systems.Progression
                 LegitimacyLevel.Recognized => MIN_GOLD_RECOGNIZED,
                 _ => 0
             };
+            // HİBRİT AI: Dinamik asker gereksinimi hesapla
             int targetTroops = drive.NextLevel switch {
-                LegitimacyLevel.FamousBandit => MIN_TROOPS_FAMOUS,
-                LegitimacyLevel.Warlord => MIN_TROOPS_WARLORD,
-                LegitimacyLevel.Recognized => MIN_TROOPS_RECOGNIZED,
+                LegitimacyLevel.FamousBandit => AscensionEvaluator.Instance.GetDynamicTroopRequirement(warlord, MIN_TROOPS_FAMOUS),
+                LegitimacyLevel.Warlord => AscensionEvaluator.Instance.GetDynamicTroopRequirement(warlord, MIN_TROOPS_WARLORD),
+                LegitimacyLevel.Recognized => AscensionEvaluator.Instance.GetDynamicTroopRequirement(warlord, MIN_TROOPS_RECOGNIZED),
                 _ => 0
             };
 
@@ -262,20 +263,25 @@ namespace BanditMilitias.Systems.Progression
             // FIX-7: Alternatif Terfi Yolları (Yol A/B/C)
             // Savaşçı (Yüksek Asker), Tüccar (Yüksek Altın), Diplomat (Yüksek Puan/Legitimacy)
 
+            // HİBRİT AI: Dinamik asker gereksinimlerini al
+            int dynFamous = AscensionEvaluator.Instance.GetDynamicTroopRequirement(warlord, MIN_TROOPS_FAMOUS);
+            int dynWarlord = AscensionEvaluator.Instance.GetDynamicTroopRequirement(warlord, MIN_TROOPS_WARLORD);
+            int dynRecognized = AscensionEvaluator.Instance.GetDynamicTroopRequirement(warlord, MIN_TROOPS_RECOGNIZED);
+
             // RECOGNIZED
-            bool isWarrior_Rec = (pts >= THRESH_TANINMIS * 0.8f && troops >= MIN_TROOPS_RECOGNIZED);
+            bool isWarrior_Rec = (pts >= THRESH_TANINMIS * 0.8f && troops >= dynRecognized);
             bool isMerchant_Rec = (pts >= THRESH_TANINMIS * 0.6f && gold >= MIN_GOLD_RECOGNIZED);
-            bool isDiplomat_Rec = (pts >= THRESH_TANINMIS * 1.5f && (gold >= MIN_GOLD_RECOGNIZED / 2 || troops >= MIN_TROOPS_RECOGNIZED / 2));
+            bool isDiplomat_Rec = (pts >= THRESH_TANINMIS * 1.5f && (gold >= MIN_GOLD_RECOGNIZED / 2 || troops >= dynRecognized / 2));
 
             // WARLORD
-            bool isWarrior_War = (pts >= THRESH_WARLORD * 0.8f && troops >= MIN_TROOPS_WARLORD);
+            bool isWarrior_War = (pts >= THRESH_WARLORD * 0.8f && troops >= dynWarlord);
             bool isMerchant_War = (pts >= THRESH_WARLORD * 0.6f && gold >= MIN_GOLD_WARLORD);
-            bool isDiplomat_War = (pts >= THRESH_WARLORD * 1.4f && (gold >= MIN_GOLD_WARLORD / 2 || troops >= MIN_TROOPS_WARLORD / 2));
+            bool isDiplomat_War = (pts >= THRESH_WARLORD * 1.4f && (gold >= MIN_GOLD_WARLORD / 2 || troops >= dynWarlord / 2));
 
             // FAMOUS BANDIT
-            bool isWarrior_Fam = (pts >= THRESH_FAMOUS * 0.8f && troops >= MIN_TROOPS_FAMOUS);
+            bool isWarrior_Fam = (pts >= THRESH_FAMOUS * 0.8f && troops >= dynFamous);
             bool isMerchant_Fam = (pts >= THRESH_FAMOUS * 0.6f && gold >= MIN_GOLD_FAMOUS);
-            bool isDiplomat_Fam = (pts >= THRESH_FAMOUS * 1.3f && (gold >= MIN_GOLD_FAMOUS / 2 || troops >= MIN_TROOPS_FAMOUS / 2));
+            bool isDiplomat_Fam = (pts >= THRESH_FAMOUS * 1.3f && (gold >= MIN_GOLD_FAMOUS / 2 || troops >= dynFamous / 2));
 
             if (isWarrior_Rec || isMerchant_Rec || isDiplomat_Rec) newLevel = LegitimacyLevel.Recognized;
             else if (isWarrior_War || isMerchant_War || isDiplomat_War) newLevel = LegitimacyLevel.Warlord;

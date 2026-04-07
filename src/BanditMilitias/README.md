@@ -57,6 +57,19 @@ Warlord kariyer sistemi, grupların güç kazandıkça geçtiği 6 aşamalı bir
 - **Operasyonel katman:** `MilitiaDecider`, `AISchedulerSystem`, `SwarmCoordinator`, `AdaptiveAIDoctrineSystem`
 - **Dünya ve performans katmanı:** `SpatialGridSystem`, `PartyCleanupSystem`, `PlayerTracker`, `FearSystem`
 
+### EventBus ve Aktivasyon
+
+- `EventBus`, mod yüklenirken temizlenir ve modüller kaydedildikten sonra `ModuleManager.InitializeAll()` ile subscriber bağlantıları açılır.
+- Deferred initialization yüzünden bazı EventBus zincirleri oyun oturumu açılır açılmaz değil, `RunDeferredSystemInit()` ve session bootstrap tamamlandıktan sonra tam kapasite çalışır.
+- Runtime sırasında kuyruk `SubModule.OnApplicationTick()` içinde işlenir. Aşırı hata fırtınasında veya emergency stop durumunda EventBus bilinçli olarak devre dışı bırakılır ve kuyruk boşaltılır.
+
+### Son Güncellemeler
+
+- `MilitiaHideoutCampaignBehavior` artık terk edilmiş sığınaklar için günlük yeniden dolum mantığını kullanır.
+- `MilitiaRewardCampaignBehavior` oyuncuya verilen milis ödülünü ertesi güne kuyruklayarak öder.
+- Taktik HTN katmanında primitive task precondition kontrolleri aktif; `TuranManeuverTask` ve `DeepShieldWallTask` artık gerçek doktrin planlarına bağlanmıştır.
+- Yeni MCM ayarları: `Hideout Replenish Chance` ve `Bounty Gold Per Troop`.
+
 ### Gereksinimler ve Kurulum
 
 Gerekli modlar:
@@ -160,6 +173,19 @@ The warlord career system uses a 6-stage progression structure that reflects how
 - **Strategic layer:** `BanditBrain`, `WarlordSystem`, `HTNEngine`
 - **Operational layer:** `MilitiaDecider`, `AISchedulerSystem`, `SwarmCoordinator`, `AdaptiveAIDoctrineSystem`
 - **World and performance layer:** `SpatialGridSystem`, `PartyCleanupSystem`, `PlayerTracker`, `FearSystem`
+
+### EventBus and Activation
+
+- The `EventBus` is cleared during module load, then module subscribers come online once `ModuleManager.InitializeAll()` runs.
+- Because heavy systems use deferred initialization, some EventBus chains are intentionally delayed until `RunDeferredSystemInit()` and session bootstrap complete.
+- The deferred queue is pumped from `SubModule.OnApplicationTick()`. During tick-storm recovery or emergency stop, the bus is intentionally disabled and the queue is drained.
+
+### Recent Wiring Updates
+
+- `MilitiaHideoutCampaignBehavior` now uses a daily abandoned-hideout replenishment flow.
+- `MilitiaRewardCampaignBehavior` now queues player militia bounty payouts for the next daily tick.
+- The tactical HTN layer now honors primitive task preconditions; `TuranManeuverTask` and `DeepShieldWallTask` are now wired into live doctrine plans.
+- New MCM settings: `Hideout Replenish Chance` and `Bounty Gold Per Troop`.
 
 ### Requirements and Installation
 

@@ -407,6 +407,52 @@ namespace BanditMilitias.Systems.Territory
         public List<Intelligence.Strategic.BattleSite> GetRecentBattleSites()
             => new List<Intelligence.Strategic.BattleSite>(_battleSites);
 
+        public int GetMilitiaCountForHideout(Settlement hideout)
+        {
+            if (hideout == null) return 0;
+
+            if (_territoryMap.TryGetValue(hideout, out var info))
+            {
+                return info.MilitiaCount;
+            }
+
+            var occupants = GetPartiesInRadius(
+                CompatibilityLayer.GetSettlementPosition(hideout),
+                TERRITORY_RADIUS);
+
+            _territoryMap[hideout] = new TerritoryInfo
+            {
+                Hideout = hideout,
+                Occupants = occupants,
+                MilitiaCount = occupants.Count,
+                ControlStrength = Math.Min(occupants.Count / 8f, 1f),
+                LastUpdate = CampaignTime.Now
+            };
+
+            return occupants.Count;
+        }
+
+        public void RegisterMilitiaPresence(Settlement hideout, MobileParty militia)
+        {
+            if (hideout == null || militia == null) return;
+
+            if (!_territoryMap.TryGetValue(hideout, out var info))
+            {
+                info = new TerritoryInfo { Hideout = hideout };
+                _territoryMap[hideout] = info;
+            }
+
+            info.Occupants ??= new List<MobileParty>();
+            if (!info.Occupants.Contains(militia))
+            {
+                info.Occupants.Add(militia);
+            }
+
+            info.MilitiaCount = info.Occupants.Count;
+            info.ControlStrength = Math.Min(info.MilitiaCount / 8f, 1f);
+            info.LastUpdate = CampaignTime.Now;
+        }
+
         // ── Event handlers ────────────────────────────────────────────
         private void OnMilitiaKilled(MilitiaKilledEvent e)
         {

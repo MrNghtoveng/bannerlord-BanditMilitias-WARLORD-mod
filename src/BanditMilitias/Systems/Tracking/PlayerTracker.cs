@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Core.Config;
+using BanditMilitias.Core.Config;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
@@ -554,6 +554,9 @@ namespace BanditMilitias.Systems.Tracking
         {
             _ = dataStore.SyncData("_behaviorModel", ref _behaviorModel);
             _ = dataStore.SyncData("_hideoutReputations", ref _hideoutReputations);
+
+            if (_behaviorModel == null) _behaviorModel = new PlayerBehaviorModel();
+            if (_hideoutReputations == null) _hideoutReputations = new Dictionary<string, HideoutReputation>();
 
             if (dataStore.IsSaving)
             {

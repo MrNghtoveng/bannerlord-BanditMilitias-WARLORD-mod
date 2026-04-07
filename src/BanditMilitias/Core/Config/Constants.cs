@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Debug;
+using BanditMilitias.Debug;
 using System.Collections.Generic;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
@@ -50,10 +50,10 @@ namespace BanditMilitias.Core.Config
         // Spawning
         public const float SPAWN_CHANCE_MIN = 0.55f;
         public const float SPAWN_CHANCE_MAX = 0.75f;
-        public const int SPAWN_TROOP_MIN = 12;
-        public const int SPAWN_TROOP_MAX = 24;
-        public const int SPAWN_TROOP_HARD_MIN = 8;
-        public const int SPAWN_TROOP_HARD_MAX = 50;
+        public const int SPAWN_TROOP_MIN = 8;
+        public const int SPAWN_TROOP_MAX = 200;
+        public const int SPAWN_TROOP_HARD_MIN = 4;
+        public const int SPAWN_TROOP_HARD_MAX = 300;
         public const float COOLDOWN_HOURS = 24f;
         public const float FAILURE_COOLDOWN_H = 6f;
         public const int ACTIVATION_DELAY_DAYS = 2;

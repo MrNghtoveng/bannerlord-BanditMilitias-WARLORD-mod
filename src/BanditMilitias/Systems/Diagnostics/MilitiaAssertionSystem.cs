@@ -34,7 +34,7 @@ namespace BanditMilitias.Systems.Diagnostics
                           ?? new MilitiaAssertionSystem();
 
         public override string ModuleName => "MilitiaAssertionSystem";
-        public override bool IsEnabled => Settings.Instance?.TestingMode ?? false;
+        public override bool IsEnabled => true;
         public override int Priority => 85;
 
         // ── Eşik değerleri ────────────────────────────────────────

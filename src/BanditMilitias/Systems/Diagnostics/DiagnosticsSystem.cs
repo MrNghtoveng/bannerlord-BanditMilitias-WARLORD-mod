@@ -19,7 +19,7 @@ namespace BanditMilitias.Systems.Diagnostics
 
         private const double CRITICAL_FRAME_TIME_MS = 3.0;
 
-        private static readonly Dictionary<string, Stopwatch> _activeScopes = new();
+        private static readonly Dictionary<string, long> _startTimestamps = new();
         private static readonly Dictionary<string, double> _averageTimes = new();
         private static readonly Dictionary<string, long> _callCounts = new();
 
@@ -30,19 +30,18 @@ namespace BanditMilitias.Systems.Diagnostics
         [Conditional("DEBUG"), Conditional("RELEASE")]
         public static void StartScope(string scopeName)
         {
-            var sw = new Stopwatch();
-            _activeScopes[scopeName] = sw;
-            sw.Start();
+            _startTimestamps[scopeName] = Stopwatch.GetTimestamp();
         }
 
         [Conditional("DEBUG"), Conditional("RELEASE")]
         public static void EndScope(string scopeName)
         {
-            if (_activeScopes.TryGetValue(scopeName, out var sw))
+            if (_startTimestamps.TryGetValue(scopeName, out long startTicks))
             {
-                _ = _activeScopes.Remove(scopeName);
-                sw.Stop();
-                double elapsedMs = sw.Elapsed.TotalMilliseconds;
+                long endTicks = Stopwatch.GetTimestamp();
+                _ = _startTimestamps.Remove(scopeName);
+                
+                double elapsedMs = (endTicks - startTicks) * 1000.0 / Stopwatch.Frequency;
 
                 if (_averageTimes.TryGetValue(scopeName, out double oldAvg))
                     _averageTimes[scopeName] = (oldAvg * 0.95) + (elapsedMs * 0.05);
@@ -188,7 +187,14 @@ namespace BanditMilitias.Systems.Diagnostics
             sb.AppendLine($"  World Age        : {worldAge:F1} days  (Required: {requiredDays}d)");
             sb.AppendLine($"  Activation Switch: {(isDelayed ? "DELAYED (Passive)" : "ENERGIZED (Active)")}");
             sb.AppendLine($"  Game Init        : {(CompatibilityLayer.IsGameFullyInitialized() ? "READY" : "WAITING")}");
-            sb.AppendLine($"  Global Parties   : {totalParties} / {globalLimit} ({partyFillPct:F1}%) [{(totalParties > globalLimit ? "BLOCKED" : "OK")}]");
+            sb.AppendLine($"  Global Parties   : {totalParties} / {globalLimit} ({partyFillPct:F1}%) [{(totalParties > globalLimit ? "SUSPENDED" : "OK")}]");
+            
+            // YENİ: Spawn Status Özeti
+            bool isPopCritical = (ModuleManager.Instance?.GetMilitiaCount() ?? 0) < 10;
+            string spawnStatus = (totalParties > globalLimit) 
+                ? (isPopCritical ? "FORCE_RECOVERY (Limit Exceeded but Pop Low)" : "BLOCKED (Limit Exceeded)")
+                : "HEALTHY";
+            sb.AppendLine($"  Spawn Status     : {spawnStatus}");
             sb.AppendLine($"  Troop Tier Access: {tierAccess}");
             if (isDelayed)
             {

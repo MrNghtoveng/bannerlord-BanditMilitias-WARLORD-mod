@@ -2,7 +2,7 @@
 <Module>
     <Name value="Bandit Militias"/>
     <Id value="BanditMilitias"/>
-    <Version value="v5.0.0"/>
+    <Version value="v5.1.0"/>
     <SingleplayerModule value="true"/>
     <MultiplayerModule value="false"/>
 
@@ -21,9 +21,11 @@
         <DependedModuleMetadata Id="Native" Order="LoadBefore" />
         <DependedModuleMetadata Id="SandBoxCore" Order="LoadBefore" />
         <DependedModuleMetadata Id="Sandbox" Order="LoadBefore" />
+        <DependedModuleMetadata Id="StoryMode" Order="LoadBefore" Optional="true" />
         <DependedModuleMetadata Id="Bannerlord.Harmony" Order="LoadBefore" />
         <DependedModuleMetadata Id="Bannerlord.UIExtenderEx" Order="LoadBefore" />
         <DependedModuleMetadata Id="Bannerlord.ButterLib" Order="LoadBefore" />
+        <DependedModuleMetadata Id="MCMv5" Order="LoadBefore" Optional="true" />
     </DependedModuleMetadatas>
 
     <SubModules>

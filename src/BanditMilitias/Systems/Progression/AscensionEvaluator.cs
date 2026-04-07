@@ -224,6 +224,25 @@ namespace BanditMilitias.Systems.Progression
             rec.DaysSinceLastPromotion++;
         }
 
+        /// <summary>
+        /// HİBRİT AI: Terfi için gereken asker sayısını dinamik olarak hesaplar.
+        /// Tecrübeli liderler (Survival/Combat) daha az askerle meşruiyet kazanabilir.
+        /// </summary>
+        public int GetDynamicTroopRequirement(Warlord warlord, int originalThreshold)
+        {
+            if (!IsEnabled) return originalThreshold;
+            
+            var rec = GetOrCreate(warlord.StringId);
+            
+            // Formül: Dinamik_Eşik = Sabit_Eşik - (SurvivalScore * 0.5) - (CombatScore * 0.2)
+            float reduction = (rec.SurvivalScore * 0.5f) + (rec.CombatScore * 0.2f);
+            
+            int dynamicThreshold = (int)(originalThreshold - reduction);
+            
+            // Kural: Eşik asla 25'in altına düşmez (Kritik kitle koruması).
+            return Math.Max(25, dynamicThreshold);
+        }
+
         // ── Kayıt Erişimi ─────────────────────────────────────────────────────────
 
         public AscensionRecord GetOrCreate(string warlordId)

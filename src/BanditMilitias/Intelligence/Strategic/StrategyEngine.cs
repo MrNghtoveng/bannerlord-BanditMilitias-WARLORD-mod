@@ -1,9 +1,12 @@
-using BanditMilitias.Systems.Grid;
+using System;
+using System.Linq;
+using System.Collections.Generic;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Debug;
 using BanditMilitias.Intelligence.ML;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Components;
+using BanditMilitias.Systems.Grid;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 
@@ -82,5 +85,52 @@ namespace BanditMilitias.Intelligence.Strategic
             TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
             Reason = $"QiRL-{action}"
         };
+
+        /// <summary>
+        /// HİBRİT AI: Bölgesel Çaresizlik Doktrini (Incubation).
+        /// Eğer sığınağa bağlı toplam haydut gücü kritik eşiğin altındaysa,
+        /// tüm birimlere geri çekilip kuluçkaya yatma (güç toplama) emri verilir.
+        /// </summary>
+        public static void EvaluateRegionalStrategy(Settlement hideout)
+        {
+            if (hideout == null || !hideout.IsHideout) return;
+
+            var linkedMilitias = ModuleManager.Instance.ActiveMilitias
+                .Where(p => (p.PartyComponent as MilitiaPartyComponent)?.HomeSettlement == hideout && p.IsActive)
+                .ToList();
+
+            if (linkedMilitias.Count == 0) return;
+
+            int totalTroops = linkedMilitias.Sum(m => m.MemberRoster.TotalManCount);
+
+            // Çaresizlik Eşiği: Toplam 35 askerden azsa bu bölge 'infaz' bölgesidir.
+            if (totalTroops < 35)
+            {
+                foreach (var party in linkedMilitias)
+                {
+                    var comp = party.PartyComponent as MilitiaPartyComponent;
+                    if (comp == null) continue;
+
+                    // Eğer zaten sığınakta değilse veya başka bir kritik emir yoksa geri çağır
+                    if (party.CurrentSettlement != hideout)
+                    {
+                        comp.CurrentOrder = new StrategicCommand
+                        {
+                            Type = CommandType.Defend,
+                            TargetLocation = CompatibilityLayer.GetSettlementPosition(hideout),
+                            Reason = "DesperationDoctrine:RetreatToSafety"
+                        };
+                        
+                        // Yapay zekayı 12-18 saat uyutarak pusuya yatır (Pusuda toparlansınlar)
+                        comp.SleepFor(TaleWorlds.Core.MBRandom.RandomFloatRanged(12f, 18f));
+                    }
+                }
+
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    DebugLogger.TestLog($"[STRATEGY] {hideout.Name} bölgesinde ÇARESİZLİK DOKTRİNİ aktif. {linkedMilitias.Count} parti kuluçkaya çekildi.");
+                }
+            }
+        }
     }
 }

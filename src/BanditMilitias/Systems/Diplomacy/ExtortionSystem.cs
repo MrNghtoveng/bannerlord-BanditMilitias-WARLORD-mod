@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Core.Events;
+using BanditMilitias.Core.Events;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using System;
@@ -89,6 +89,8 @@ namespace BanditMilitias.Systems.Diplomacy
 
         public bool WillYield(Hero warlordHero, Settlement targetVillage)
         {
+            if (warlordHero == null || targetVillage == null) return false;
+            
             float intimidation = CalculateIntimidation(warlordHero, targetVillage);
             float resistance = CalculateResistance(targetVillage);
 
@@ -101,10 +103,12 @@ namespace BanditMilitias.Systems.Diplomacy
 
         public int ExecuteExtortion(Hero warlordHero, Settlement targetVillage)
         {
-            if (warlordHero == null || targetVillage == null) return 0;
+            if (warlordHero == null || targetVillage == null || targetVillage.Village == null) return 0;
 
             int demand = CalculateTributeAmount(targetVillage, warlordHero);
-            int payment = Math.Min(targetVillage.Village.Bound?.Town?.Gold ?? demand, demand);
+            
+            int cityGold = targetVillage.Village.Bound?.Town?.Gold ?? 0;
+            int payment = Math.Min(cityGold > 0 ? cityGold : demand, demand);
 
             GiveGoldAction.ApplyBetweenCharacters(null, warlordHero, payment);
 

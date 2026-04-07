@@ -245,6 +245,8 @@
         <string id="BMS_FormCooldown_H" text="Minimum days between hideout formation attempts."/>
         <string id="BMS_PatrolDensity" text="Max Patrol Density"/>
         <string id="BMS_PatrolDensity_H" text="Formation is blocked when lord patrol density exceeds this value. Higher = easier formation."/>
+        <string id="BMS_HideoutReplenishChance" text="Hideout Replenish Chance"/>
+        <string id="BMS_HideoutReplenishChance_H" text="Daily chance for an abandoned hideout to attract nearby bandit parties back to it."/>
 
         <!-- Settings: Warlords & AI -->
         <string id="BMS_EnableWarlords" text="Enable Warlords"/>
@@ -311,6 +313,8 @@
         <string id="BMS_WarlordLoot_H" text="Additional loot multiplier exclusive to Warlord battles."/>
         <string id="BMS_HardBattle" text="Hard Battle Bonus"/>
         <string id="BMS_HardBattle_H" text="Reward multiplier for hard-fought battles. 2.0 = double rewards."/>
+        <string id="BMS_BountyGoldPerTroop" text="Bounty Gold Per Troop"/>
+        <string id="BMS_BountyGoldPerTroop_H" text="Delayed militia bounty reward paid per defeated troop on the next daily tick."/>
         <string id="BMS_AttrRewards" text="Attribute &amp; Focus Rewards"/>
         <string id="BMS_AttrRewards_H" text="Small chance to gain an Attribute or Focus point from very challenging battles."/>
         <string id="BMS_QualityDrops" text="Quality Item Drops"/>

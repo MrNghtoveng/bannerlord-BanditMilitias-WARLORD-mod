@@ -206,7 +206,7 @@ namespace BanditMilitias.Systems.Cleanup
             }
 
             int totalParties = Campaign.Current?.MobileParties?.Count ?? 0;
-            if (totalParties > GetHardCrowdingThreshold() && _hourlyTickCounter % 3 == 0)
+            if (totalParties > GetHardCrowdingThreshold() && _hourlyTickCounter % 168 == 0)
             {
                 GlobalThinning(totalParties, emergencyMode: totalParties > GetGlobalPartyLimit(), hourlyMode: true);
             }
@@ -461,9 +461,12 @@ namespace BanditMilitias.Systems.Cleanup
             CampaignEvents.MobilePartyDestroyed.ClearListeners(this);
         }
 
+        private int _dailyTickCounter = 0;
         public void DailyCleanup()
         {
             if (Campaign.Current == null || !Campaign.Current.GameStarted) return;
+            _dailyTickCounter++;
+            if (_dailyTickCounter % 7 != 0) return; // Haftada bir temizlik (Kullanıcı talebi)
             PerformDeepClean();
         }
 
@@ -1003,10 +1006,10 @@ namespace BanditMilitias.Systems.Cleanup
             // ActualClan tamamen yok
             if (party.ActualClan == null) return true;
 
-            // HomeSettlement yok veya inactive
+            // HomeSettlement yok veya inactive (Raw check: Inactive olsa bile kalıcı silinmemeli)
             if (party.PartyComponent is MilitiaPartyComponent comp)
             {
-                var home = comp.GetHomeSettlement();
+                var home = comp.GetHomeSettlementRaw();
                 if (home == null) return true;
             }
 

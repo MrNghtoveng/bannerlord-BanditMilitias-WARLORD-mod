@@ -69,6 +69,12 @@ namespace BanditMilitias.Infrastructure
 
             // ── v5.1 Yeni Sistemler ────────────────────────────────────
             AddClassDefinition(typeof(WarlordWorkshop), 90);
+
+            // ── v5.5 Hafıza Sistemi (Plan 6e83e5ce) ─────────────────────
+            AddClassDefinition(typeof(MilitiaMemoryData), 200);
+            AddClassDefinition(typeof(KnownSettlementMemory), 201);
+            AddClassDefinition(typeof(StrategicLocationMemory), 202);
+            AddClassDefinition(typeof(ThreatMemory), 203);
         }
 
         protected override void DefineContainerDefinitions()
@@ -122,6 +128,11 @@ namespace BanditMilitias.Infrastructure
             // ── v5.1 Yeni Sistemler ────────────────────────────────────
             ConstructContainerDefinition(typeof(List<WarlordWorkshop>));
             ConstructContainerDefinition(typeof(Dictionary<string, List<WarlordWorkshop>>));
+
+            // ── v5.5 Hafıza Sistemi ────────────────────────────────────
+            ConstructContainerDefinition(typeof(List<KnownSettlementMemory>));
+            ConstructContainerDefinition(typeof(List<StrategicLocationMemory>));
+            ConstructContainerDefinition(typeof(List<ThreatMemory>));
         }
 
         protected override void DefineEnumTypes()

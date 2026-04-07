@@ -27,10 +27,10 @@ namespace BanditMilitias
         [SettingPropertyGroup("{=BMSG_Spawn}1. Spawning & Population")]
         public int MaxTotalMilitias { get; set; } = 200;
 
-        [SettingPropertyInteger("{=BMS_GlobalPartyLimit}Global Performance Party Limit", 1000, 5000, "0 parties", Order = 2, RequireRestart = false,
+        [SettingPropertyInteger("{=BMS_GlobalPartyLimit}Global Performance Party Limit", 1000, 10000, "0 parties", Order = 2, RequireRestart = false,
             HintText = "{=BMS_GlobalPartyLimit}Map-wide total party count (including lords) at which spawning is suspended to protect FPS.")]
         [SettingPropertyGroup("{=BMSG_Spawn}1. Spawning & Population")]
-        public int GlobalPerformancePartyLimit { get; set; } = 3000;
+        public int GlobalPerformancePartyLimit { get; set; } = 4000;
 
         [SettingPropertyInteger("{=BMS_HideoutCooldown}Respawn Cooldown (Days)", 1, 30, "0 days", Order = 3, RequireRestart = false,
             HintText = "{=BMS_HideoutCooldown_H}Days to wait after a militia is destroyed before a new one spawns from the same hideout.")]
@@ -60,7 +60,7 @@ namespace BanditMilitias
         [SettingPropertyBool("{=BMS_HardcoreHideout}Hardcore Dynamic Hideouts", Order = 1, RequireRestart = false,
             HintText = "{=BMS_HardcoreHideout_H}EXPERIMENTAL: Dynamically injects completely new hideout settlements into the map mid-game. Warning: Can cause save instability.")]
         [SettingPropertyGroup("{=BMSG_DynHideout}1. Spawning & Population/Dynamic Hideouts")]
-        public bool EnableHardcoreDynamicHideouts { get; set; } = false;
+        public bool EnableHardcoreDynamicHideouts { get; set; } = true;
 
         [SettingPropertyInteger("{=BMS_MinParties}Min Parties for Formation", 2, 20, "0 parties", Order = 1, RequireRestart = false,
             HintText = "{=BMS_MinParties_H}Number of nearby bandit parties required to trigger a new hideout.")]
@@ -76,6 +76,11 @@ namespace BanditMilitias
             HintText = "{=BMS_PatrolDensity_H}Formation is blocked when lord patrol density exceeds this value. Higher = easier formation.")]
         [SettingPropertyGroup("{=BMSG_DynHideout}1. Spawning & Population/Dynamic Hideouts")]
         public float MaxPatrolDensityForHideout { get; set; } = 1.0f;
+
+        [SettingPropertyFloatingInteger("{=BMS_HideoutReplenishChance}Hideout Replenish Chance", 0.00f, 1.00f, "0.00", Order = 4, RequireRestart = false,
+            HintText = "{=BMS_HideoutReplenishChance_H}Daily chance for an abandoned hideout to attract nearby bandit parties back to it.")]
+        [SettingPropertyGroup("{=BMSG_DynHideout}1. Spawning & Population/Dynamic Hideouts")]
+        public float HideoutReplenishChance { get; set; } = 0.05f;
 
         [SettingPropertyBool("{=BMS_EnableWarlords}Enable Warlords", Order = 0, RequireRestart = false,
             HintText = "{=BMS_EnableWarlords_H}Powerful 'Anti-Hero' warlords emerge to command bandit forces. Disabling this reduces the mod to a simple spawn enhancer.")]
@@ -125,7 +130,7 @@ namespace BanditMilitias
         [SettingPropertyBool("{=BMS_ChaosNerf}Reduce Chaos (Nerf Excess Lords)", Order = 5, RequireRestart = false,
             HintText = "{=BMS_ChaosNerf_H}If Warlords exceed the cap, excess ones are weakened to Famous Bandit level — making them easier to eliminate.")]
         [SettingPropertyGroup("{=BMSG_Promotion}2. Warlord & AI/Promotion")]
-        public bool EnableChaosNerf { get; set; } = false;
+        public bool EnableChaosNerf { get; set; } = true;
 
         [SettingPropertyBool("{=BMS_AlwaysSpawnCaptain}Always Spawn Captain", Order = 6, RequireRestart = false,
             HintText = "{=BMS_AlwaysSpawnCaptain_H}If enabled, EVERY new militia party will spawn with a Captain Hero. If disabled, captains will spawn randomly.")]
@@ -232,10 +237,15 @@ namespace BanditMilitias
         [SettingPropertyGroup("{=BMSG_Rewards}4. Combat & Loot/Rewards & Multipliers")]
         public float HardBattleBonusMultiplier { get; set; } = 2.0f;
 
+        [SettingPropertyInteger("{=BMS_BountyGoldPerTroop}Bounty Gold Per Troop", 0, 500, "0 gold", Order = 4, RequireRestart = false,
+            HintText = "{=BMS_BountyGoldPerTroop_H}Delayed militia bounty reward paid per defeated troop on the next daily tick.")]
+        [SettingPropertyGroup("{=BMSG_Rewards}4. Combat & Loot/Rewards & Multipliers")]
+        public int BountyGoldPerTroop { get; set; } = 25;
+
         [SettingPropertyBool("{=BMS_AttrRewards}Attribute & Focus Rewards", Order = 0, RequireRestart = false,
             HintText = "{=BMS_AttrRewards_H}Small chance to gain an Attribute or Focus point from very challenging battles.")]
         [SettingPropertyGroup("{=BMSG_HeroicFeats}4. Combat & Loot/Heroic Feats", GroupOrder = 2)]
-        public bool EnableHeroicAttributes { get; set; } = false;
+        public bool EnableHeroicAttributes { get; set; } = true;
 
         [SettingPropertyBool("{=BMS_QualityDrops}Quality Item Drops", Order = 1, RequireRestart = false,
             HintText = "{=BMS_QualityDrops_H}Chance to receive high-quality item drops from difficult battles.")]
@@ -503,10 +513,11 @@ namespace BanditMilitias
 
             HideoutCooldownDays = (int)MathF.Clamp(HideoutCooldownDays, 1, 30);
             MaxTotalMilitias = (int)MathF.Clamp(MaxTotalMilitias, 10, 500);
-            GlobalPerformancePartyLimit = (int)MathF.Clamp(GlobalPerformancePartyLimit, 1000, 5000);
+            GlobalPerformancePartyLimit = (int)MathF.Clamp(GlobalPerformancePartyLimit, 1000, 10000);
             ActivationDelay = (int)MathF.Clamp(ActivationDelay, 2, 30);
             HideoutFormationCooldown = (int)MathF.Clamp(HideoutFormationCooldown, 1, 90);
             MaxPatrolDensityForHideout = MathF.Clamp(MaxPatrolDensityForHideout, 0f, 5f);
+            HideoutReplenishChance = MathF.Clamp(HideoutReplenishChance, 0f, 1f);
 
             MaxWarlordCount = (int)MathF.Clamp(MaxWarlordCount, 0, 100);
             WarlordMinTroops = (int)MathF.Clamp(WarlordMinTroops, 5, 500);
@@ -529,6 +540,7 @@ namespace BanditMilitias
             RenownRewardMultiplier = MathF.Clamp(RenownRewardMultiplier, 0.5f, 10.0f);
             WarlordRewardMultiplier = MathF.Clamp(WarlordRewardMultiplier, 1.0f, 10.0f);
             HardBattleBonusMultiplier = MathF.Clamp(HardBattleBonusMultiplier, 0.5f, 10.0f);
+            BountyGoldPerTroop = (int)MathF.Clamp(BountyGoldPerTroop, 0, 500);
             BanditSkillBoost = (int)MathF.Clamp(BanditSkillBoost, 0, 100);
             EquipmentQuality = (int)MathF.Clamp(EquipmentQuality, 0, 5);
 
@@ -580,16 +592,17 @@ namespace BanditMilitias
             // Spawning
             MilitiaSpawn = true;
             MaxTotalMilitias = 200;
-            GlobalPerformancePartyLimit = 3000;
+            GlobalPerformancePartyLimit = 4000;
             HideoutCooldownDays = 1;
             ActivationDelay = 2;
             EnableSeaRaiders = true;
             EnableCustomBanditNames = true;
             EnableDynamicHideouts = true;
-            EnableHardcoreDynamicHideouts = false;
+            EnableHardcoreDynamicHideouts = true;
             MinPartiesForHideout = 4;
             HideoutFormationCooldown = 30;
             MaxPatrolDensityForHideout = 1.0f;
+            HideoutReplenishChance = 0.05f;
 
             // Warlords & AI
             EnableWarlords = true;
@@ -626,6 +639,7 @@ namespace BanditMilitias
             RenownRewardMultiplier = 1.5f;
             WarlordRewardMultiplier = 2.0f;
             HardBattleBonusMultiplier = 2.0f;
+            BountyGoldPerTroop = 25;
             HeroItemRewards = true;
 
             // World
@@ -747,11 +761,11 @@ namespace BanditMilitias
             var settlementCount = Settlement.All?.Count(s => s.IsTown) ?? 0;
             var activeKingdoms = Kingdom.All?.Count(k => k?.IsEliminated == false) ?? 0;
 
-            // Formül: 5 + (seviye/5) + (şehir_sayısı/3) + (krallık/2)
-            var baseCount = 5 + (playerLevel / 5) + (settlementCount / 3) + (activeKingdoms / 2);
+            // Formül: 10 + (seviye/4) + (şehir_sayısı/2) + (krallık)
+            var baseCount = 10 + (playerLevel / 4) + (settlementCount / 2) + activeKingdoms;
 
-            // Min/max sınırları uygula (MathF.Clamp .NET Framework 4.7.2'de yok)
-            if (baseCount < 10) baseCount = 10;
+            // Min/max sınırları uygula
+            if (baseCount < 20) baseCount = 20;
             if (baseCount > Settings.Instance.MaxTotalMilitias)
                 baseCount = Settings.Instance.MaxTotalMilitias;
 

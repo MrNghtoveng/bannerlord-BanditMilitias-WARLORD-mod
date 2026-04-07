@@ -86,12 +86,25 @@ namespace BanditMilitias.Debug
 
         private float _lastUpdate = 0f;
 
+        private static bool IsDiagnosticsOverlayAllowed()
+        {
+            return Settings.Instance?.TestingMode == true
+                || Settings.Instance?.ShowTestMessages == true
+                || Settings.Instance?.DevMode == true;
+        }
+
         public void Update()
         {
 
             if (Campaign.Current == null || Game.Current == null || Game.Current.GameStateManager == null) return;
 
             if (Game.Current.GameStateManager.ActiveState is not TaleWorlds.CampaignSystem.GameState.MapState) return;
+
+            if (!IsDiagnosticsOverlayAllowed())
+            {
+                _isVisible = false;
+                return;
+            }
 
             if (Input.IsKeyDown(InputKey.LeftShift) &&
                 Input.IsKeyDown(InputKey.LeftAlt) &&
@@ -153,6 +166,16 @@ namespace BanditMilitias.Debug
 
         public void Toggle()
         {
+            if (!IsDiagnosticsOverlayAllowed())
+            {
+                _isVisible = false;
+                InformationManager.DisplayMessage(
+                    new InformationMessage(
+                        "Bandit Debug Panel requires Test Mode, Dev Mode, or Show Debug Messages.",
+                        Colors.Yellow));
+                return;
+            }
+
             _isVisible = !_isVisible;
 
             InformationManager.DisplayMessage(

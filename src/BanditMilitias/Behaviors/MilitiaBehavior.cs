@@ -4,6 +4,7 @@ using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Systems.Combat;
 using BanditMilitias.Systems.Enhancement;
+using BanditMilitias.Systems.Heroics;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -452,6 +453,13 @@ namespace BanditMilitias.Behaviors
             try
             {
                 ModuleManager.Instance.OnHourlyTick();
+                
+                // HİBRİT AI: Bölgesel Strateji Analizi (Çaresizlik Doktrini)
+                foreach (var hideout in ModuleManager.Instance.HideoutCache)
+                {
+                    Intelligence.Strategic.StrategyEngine.EvaluateRegionalStrategy(hideout);
+                }
+
                 BanditMilitias.Systems.Diagnostics.SystemWatchdog.Instance.CheckSystems();
 
                 int interval = Settings.Instance?.AutoDiagnosticReportInterval ?? 0;
@@ -842,7 +850,19 @@ namespace BanditMilitias.Behaviors
             {
                 DebugLogger.Info("MilitiaBehavior", $"Migrating save v{fromVersion} -> v{CurrentSaveVersion}");
             }
-            // Reserved for future migrations.
+
+            if (fromVersion < 5)
+            {
+                // Reset cooldowns from very old versions as their scale might be incompatible
+                _hideoutCooldowns.Clear();
+                _hideoutFailureCooldowns.Clear();
+                _recentHideoutClearEvents.Clear();
+                
+                if (Settings.Instance?.TestingMode == true)
+                    DebugLogger.Info("MilitiaBehavior", "Old save detected (v<5). Cooldowns reset for safety.");
+            }
+
+            _saveVersion = CurrentSaveVersion;
         }
     }
 
@@ -851,126 +871,79 @@ namespace BanditMilitias.Behaviors
     public class MilitiaHideoutCampaignBehavior : CampaignBehaviorBase
     {
         private Dictionary<string, HideoutData> _hideoutData = new Dictionary<string, HideoutData>();
-
-        private const float FOOD_SHORTAGE_MORALE = -5f;
-        private const float FOOD_SURPLUS_MORALE = +2f;
-        private const float PASSIVE_XP_PER_DAY = 0.5f;
+        private int _saveVersion = 1;
 
         public override void RegisterEvents()
         {
-            CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
-            CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, OnSessionLaunched);
+            UnregisterEvents();
+            CampaignEvents.OnHideoutDeactivatedEvent.AddNonSerializedListener(this, OnHideoutDeactivated);
+            CampaignEvents.DailyTickSettlementEvent.AddNonSerializedListener(this, OnDailyTickSettlement);
+        }
+
+        private void UnregisterEvents()
+        {
+            try
+            {
+                MbEventExtensions.RemoveListenerSafe(
+                    CampaignEvents.OnHideoutDeactivatedEvent,
+                    this,
+                    (Action<Settlement>)OnHideoutDeactivated);
+                MbEventExtensions.RemoveListenerSafe(
+                    CampaignEvents.DailyTickSettlementEvent,
+                    this,
+                    (Action<Settlement>)OnDailyTickSettlement);
+            }
+            catch
+            {
+            }
         }
 
         public override void SyncData(IDataStore dataStore)
         {
-            _ = dataStore.SyncData("_hideoutData", ref _hideoutData);
-        }
-
-        private void OnSessionLaunched(CampaignGameStarter starter)
-        {
             _hideoutData ??= new Dictionary<string, HideoutData>();
+            _ = dataStore.SyncData("_hideoutData", ref _hideoutData);
+            _ = dataStore.SyncData("_bm_hideout_behavior_version", ref _saveVersion);
         }
 
-        private void OnDailyTick()
+        private void OnHideoutDeactivated(Settlement hideout)
         {
-            // BUG-01 FIX: Tüm aktif sığınaklara günlük işlem uygula.
-            // Garnizon beslenmesi, XP kazanımı ve komutan gelişimi bu metot üzerinden tetiklenir.
-            if (_hideoutData == null || _hideoutData.Count == 0) return;
+            if (hideout == null || !hideout.IsHideout) return;
+            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
 
-            foreach (var kvp in _hideoutData)
+            try
             {
-                if (kvp.Value == null) continue;
-                try
+                if (Settings.Instance?.TestingMode == true)
                 {
-                    ProcessHideoutDaily(kvp.Key, kvp.Value);
-                }
-                catch (Exception ex)
-                {
-                    BanditMilitias.Debug.DebugLogger.Warning(
+                    DebugLogger.Info(
                         "MilitiaHideoutCampaignBehavior",
-                        $"ProcessHideoutDaily failed for {kvp.Key}: {ex.Message}");
+                        $"Hideout deactivated: {hideout.Name} ({hideout.StringId})");
                 }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error("HideoutBehavior", $"OnHideoutDeactivated error: {ex.Message}");
             }
         }
 
-        private void ProcessHideoutDaily(string hideoutId, HideoutData data)
+        private void OnDailyTickSettlement(Settlement settlement)
         {
-            if (data.Garrison == null || data.Garrison.TotalManCount == 0) return;
+            if (settlement == null || !settlement.IsHideout || !settlement.IsActive) return;
+            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (Campaign.Current == null) return;
 
-            int garrisonSize = data.Garrison.TotalManCount;
-
-            int foodRequired = System.Math.Max(1, garrisonSize / 5);
-
-            int foodConsumed = 0;
-            if (data.StoredLoot != null)
+            try
             {
-                for (int i = data.StoredLoot.Count - 1; i >= 0 && foodConsumed < foodRequired; i--)
-                {
-                    var itemElement = data.StoredLoot.GetElementCopyAtIndex(i);
-                    if (itemElement.EquipmentElement.Item != null && itemElement.EquipmentElement.Item.IsFood)
-                    {
-                        int amountToConsume = System.Math.Min(itemElement.Amount, foodRequired - foodConsumed);
-                        _ = data.StoredLoot.AddToCounts(itemElement.EquipmentElement.Item, -amountToConsume);
-                        foodConsumed += amountToConsume;
-                    }
-                }
+                TryReplenishAbandonedHideout(settlement);
             }
-
-            var hideout = Settlement.Find(hideoutId);
-
-            var villageCache = BanditMilitias.Infrastructure.ModuleManager.Instance.VillageCache;
-            int nearbyVillages = hideout != null
-                ? villageCache.Count(s => s.GatePosition.DistanceSquared(hideout.GatePosition) < 900f)
-                : 0;
-            int foragers = System.Math.Min(garrisonSize / 2, 10);
-            int foraged = (int)(foragers * (0.3f + nearbyVillages * 0.1f));
-            foodConsumed = System.Math.Min(foodRequired, foodConsumed + foraged);
-
-            if (foodConsumed < foodRequired)
+            catch (Exception ex)
             {
-
-                data.Morale = TaleWorlds.Library.MathF.Clamp(data.Morale + FOOD_SHORTAGE_MORALE, 0f, 100f);
-
-                int starvingMen = (foodRequired - foodConsumed) * 5;
-                int woundedCount = 0;
-                for (int i = 0; i < data.Garrison.Count && woundedCount < starvingMen; i++)
-                {
-                    var element = data.Garrison.GetElementCopyAtIndex(i);
-                    if (element.Number - element.WoundedNumber > 0)
-                    {
-                        int woundAmount = System.Math.Min(element.Number - element.WoundedNumber, starvingMen - woundedCount);
-                        data.Garrison.WoundTroop(element.Character, woundAmount);
-                        woundedCount += woundAmount;
-                    }
-                }
-            }
-            else
-            {
-
-                if (foodConsumed >= foodRequired * 2)
-                    data.Morale = TaleWorlds.Library.MathF.Clamp(data.Morale + FOOD_SURPLUS_MORALE, 0f, 100f);
-
-                int totalXp = garrisonSize * 10;
-                if (data.Garrison.Count > 0)
-                {
-                    int randomIdx = MBRandom.RandomInt(data.Garrison.Count);
-                    data.Garrison.AddXpToTroop(data.Garrison.GetCharacterAtIndex(randomIdx), totalXp);
-                }
-
-                if (data.CommanderHero != null)
-                {
-                    float xpGain = PASSIVE_XP_PER_DAY * (1f + garrisonSize * 0.01f);
-                    if (data.CommanderHero.GetSkillValue(DefaultSkills.Leadership) < 300)
-                        data.CommanderHero.AddSkillXp(DefaultSkills.Leadership, xpGain);
-                    if (data.CommanderHero.GetSkillValue(DefaultSkills.Tactics) < 200 && garrisonSize > 20)
-                        data.CommanderHero.AddSkillXp(DefaultSkills.Tactics, xpGain * 0.5f);
-                }
+                DebugLogger.Error("HideoutBehavior", $"OnDailyTickSettlement error: {ex.Message}");
             }
         }
 
         public HideoutData GetHideoutData(Settlement hideout)
         {
+            _hideoutData ??= new Dictionary<string, HideoutData>();
             if (hideout == null) return new HideoutData();
 
             if (!_hideoutData.ContainsKey(hideout.StringId))
@@ -1002,20 +975,103 @@ namespace BanditMilitias.Behaviors
             return 0;
         }
 
+        private static void TryReplenishAbandonedHideout(Settlement hideout)
+        {
+            bool alreadyOccupied = MobileParty.All.Any(p =>
+                p != null &&
+                p.IsBandit &&
+                p.CurrentSettlement == hideout);
+            if (alreadyOccupied) return;
+
+            if (MBRandom.RandomFloat > (Settings.Instance?.HideoutReplenishChance ?? 0.05f))
+                return;
+
+            Vec2 hideoutPosition = CompatibilityLayer.GetSettlementPosition(hideout);
+            if (!hideoutPosition.IsValid) return;
+
+            var nearbyBandits = MobileParty.All
+                .Where(p => p != null && p.IsBandit && p.CurrentSettlement == null)
+                .Select(p => new
+                {
+                    Party = p,
+                    Position = CompatibilityLayer.GetPartyPosition(p)
+                })
+                .Where(x => x.Position.IsValid && x.Position.Distance(hideoutPosition) < 80f)
+                .Select(x => x.Party)
+                .Take(3)
+                .ToList();
+
+            foreach (var bandit in nearbyBandits)
+            {
+                CompatibilityLayer.SetMoveGoToSettlement(bandit, hideout);
+            }
+
+            if (nearbyBandits.Count > 0 && Settings.Instance?.TestingMode == true)
+            {
+                DebugLogger.Info(
+                    "HideoutBehavior",
+                    $"Replenishing hideout '{hideout.Name}' with {nearbyBandits.Count} nearby bandit parties.");
+            }
+        }
+
     }
 
 
     // ── MilitiaRewardCampaignBehavior (inline) ──────────────────────────────
     public class MilitiaRewardCampaignBehavior : CampaignBehaviorBase
     {
+        private int _pendingPlayerRewardGold;
+        private CampaignTime _rewardPayoutReadyAt = CampaignTime.Zero;
+
         public override void RegisterEvents()
         {
+            UnregisterEvents();
             CampaignEvents.MapEventEnded.AddNonSerializedListener(this, OnMapEventEnded);
+            CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
+        }
+
+        private void UnregisterEvents()
+        {
+            try
+            {
+                MbEventExtensions.RemoveListenerSafe(CampaignEvents.MapEventEnded, this, (Action<MapEvent>)OnMapEventEnded);
+                MbEventExtensions.RemoveListenerSafe(CampaignEvents.DailyTickEvent, this, (Action)OnDailyTick);
+            }
+            catch
+            {
+            }
         }
 
         public override void SyncData(IDataStore dataStore)
         {
+            _ = dataStore.SyncData("_pendingPlayerRewardGold", ref _pendingPlayerRewardGold);
+            _ = dataStore.SyncData("_rewardPayoutReadyAt", ref _rewardPayoutReadyAt);
+        }
 
+        private void OnDailyTick()
+        {
+            if (_pendingPlayerRewardGold <= 0) return;
+            if (_rewardPayoutReadyAt != CampaignTime.Zero && CampaignTime.Now < _rewardPayoutReadyAt) return;
+            if (Hero.MainHero == null) return;
+
+            try
+            {
+                GiveGoldAction.ApplyBetweenCharacters(null, Hero.MainHero, _pendingPlayerRewardGold);
+
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    InformationManager.DisplayMessage(new InformationMessage(
+                        $"[BanditMilitias] Delayed militia bounty paid: +{_pendingPlayerRewardGold} gold",
+                        Colors.Green));
+                }
+
+                _pendingPlayerRewardGold = 0;
+                _rewardPayoutReadyAt = CampaignTime.Zero;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error("MilitiaRewardCampaignBehavior", $"Reward payout failed: {ex.Message}");
+            }
         }
 
         private void OnMapEventEnded(MapEvent mapEvent)
@@ -1052,7 +1108,6 @@ namespace BanditMilitias.Behaviors
 
             if (militiaParty != null && Hero.MainHero != null)
             {
-
                 float powerRatio = HeroicFeatsSystem.Instance.CalculatePowerRatio(
                     defeatedSide.LeaderParty,
                     mapEvent.GetMapEventSide(mapEvent.PlayerSide).LeaderParty);
@@ -1061,15 +1116,13 @@ namespace BanditMilitias.Behaviors
                 HeroicFeatsSystem.Instance.TryAwardFocusPoint(Hero.MainHero, powerRatio);
                 HeroicFeatsSystem.Instance.TryAwardHeroItem(Hero.MainHero, powerRatio);
 
-                int baseGold = defeatedSide.TroopCount * 50;
-                int finalGold = HeroicFeatsSystem.Instance.CalculateGoldWithUnderdogBonus(baseGold, powerRatio);
-
                 float baseRenown = 1.0f;
                 float bonusRenown = HeroicFeatsSystem.Instance.CalculateRenownWithUnderdogBonus(baseRenown, powerRatio) - baseRenown;
+                int bountyGold = System.Math.Max(0, defeatedSide.TroopCount * (Settings.Instance?.BountyGoldPerTroop ?? 25));
 
-                if (finalGold > 0)
+                if (bountyGold > 0)
                 {
-                    GiveGoldAction.ApplyBetweenCharacters(null, Hero.MainHero, finalGold);
+                    EnqueueReward(bountyGold);
                 }
 
                 if (bonusRenown > 0.5f && Clan.PlayerClan != null)
@@ -1077,7 +1130,7 @@ namespace BanditMilitias.Behaviors
                     Clan.PlayerClan.AddRenown(bonusRenown);
                 }
 
-                HeroicFeatsSystem.Instance.ShowUnderdogMessage(powerRatio, finalGold, bonusRenown);
+                HeroicFeatsSystem.Instance.ShowUnderdogMessage(powerRatio, bountyGold, bonusRenown);
             }
         }
 
@@ -1111,6 +1164,14 @@ namespace BanditMilitias.Behaviors
                     }
                 }
             }
+        }
+
+        private void EnqueueReward(int goldAmount)
+        {
+            if (goldAmount <= 0) return;
+
+            _pendingPlayerRewardGold += goldAmount;
+            _rewardPayoutReadyAt = CampaignTime.Now + CampaignTime.Days(1f);
         }
     }
 

@@ -35,6 +35,8 @@ Handles warlord-level identity, control, and progression.
 
 Used as an execution-oriented planning layer for converting high-level intent into action-like structures.
 
+It is the campaign-side execution bridge used by the bandit AI patch. It does not replace Bannerlord AI outright; instead it decides when the mod should take control and when vanilla behavior should continue.
+
 ## Tactical Systems
 
 ### `MilitiaDecider`
@@ -59,6 +61,23 @@ This is where swarm pressure and formation-style coordination appear.
 ### `AdaptiveAIDoctrineSystem`
 
 Applies doctrine-style adaptation based on context and observed threats.
+
+The doctrine choice is also forwarded into the mission layer, where `WarlordTacticalMissionBehavior` builds live HTN plans for battle formations.
+
+### `WarlordTacticalMissionBehavior`
+
+Mission-time tactical planner for warlord-led battles.
+
+- primes a lightweight `WorldState` before planning
+- converts doctrine choice into HTN compound tasks
+- now uses active primitive-task precondition checks
+- hands control back to vanilla battle AI once melee engagement starts
+
+The currently wired live doctrine tasks include:
+
+- ambush setup and hold
+- Turan bait-and-collapse behavior
+- defensive deep shield wall transitions for killbox / double-square style plans
 
 ## Learning, Telemetry, and Feedback
 
@@ -100,6 +119,17 @@ Not an AI brain by itself, but essential for keeping long-session world behavior
 The mod uses Harmony patches to intercept or redirect parts of Bannerlord's native bandit AI flow.
 
 This is how the custom decision layers can influence selected parties without rewriting the entire engine.
+
+### EventBus
+
+The internal `EventBus` is the runtime glue between campaign systems.
+
+- synchronous `Publish()` is used for immediate in-frame reactions
+- `PublishDeferred()` is used for queued, budgeted follow-up work
+- the deferred queue is pumped from `SubModule.OnApplicationTick()`
+- subscriber registration becomes fully active after deferred bootstrap completes
+
+In practice this means the bus is active in normal play, but intentionally delayed during early startup and intentionally disabled during emergency-stop conditions.
 
 ## What Counts As "AI" Here
 

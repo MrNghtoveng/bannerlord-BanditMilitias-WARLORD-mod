@@ -123,6 +123,8 @@ namespace BanditMilitias.Intelligence.Tactical
                         Colors.Cyan));
                 }
 
+                _worldState.SetFloat("ClosestEnemyDistance", 9999f);
+                _worldState.SetBool("IsEngagedInMelee", false);
                 _worldState.SetBool("IsAmbushDoctrine", doctrine == CounterDoctrine.HarassScreen);
                 _worldState.SetBool("IsTuranDoctrine", doctrine == CounterDoctrine.Turan);
 
@@ -130,6 +132,8 @@ namespace BanditMilitias.Intelligence.Tactical
                 Team? warlordTeam = Mission.Current.PlayerEnemyTeam ?? Mission.Current.Teams.FirstOrDefault();
                     
                 if (warlordTeam == null) return;
+
+                _worldState.SetBool("IsMeleeHeavy", IsMeleeHeavyTeam(warlordTeam));
 
                 foreach (Formation formation in warlordTeam.FormationsIncludingEmpty)
                 {
@@ -172,6 +176,12 @@ namespace BanditMilitias.Intelligence.Tactical
             // Ã‡ok hÄ±zlÄ± mesafe Ã¶lÃ§Ã¼mÃ¼ - sadece Formasyon ortalamalarÄ± Ã¼zerinden
             float minDistance = float.MaxValue;
             bool isInMelee = false;
+            int meleeUnits = _planners.Keys
+                .Where(f => f != null && f.CountOfUnits > 0 && !f.PhysicalClass.IsRanged())
+                .Sum(f => f.CountOfUnits);
+            int rangedUnits = _planners.Keys
+                .Where(f => f != null && f.CountOfUnits > 0 && f.PhysicalClass.IsRanged())
+                .Sum(f => f.CountOfUnits);
 
             foreach (var enemyAgent in Mission.Current.PlayerTeam.ActiveAgents)
             {
@@ -195,6 +205,25 @@ namespace BanditMilitias.Intelligence.Tactical
 
             _worldState.SetFloat("ClosestEnemyDistance", minDistance != float.MaxValue ? (float)Math.Sqrt(minDistance) : 9999f);
             _worldState.SetBool("IsEngagedInMelee", isInMelee);
+            _worldState.SetBool("IsMeleeHeavy", meleeUnits >= rangedUnits);
+        }
+
+        private static bool IsMeleeHeavyTeam(Team team)
+        {
+            int meleeUnits = 0;
+            int rangedUnits = 0;
+
+            foreach (Formation formation in team.FormationsIncludingEmpty)
+            {
+                if (formation == null || formation.CountOfUnits <= 0) continue;
+
+                if (formation.PhysicalClass.IsRanged())
+                    rangedUnits += formation.CountOfUnits;
+                else
+                    meleeUnits += formation.CountOfUnits;
+            }
+
+            return meleeUnits >= rangedUnits;
         }
 
         private void HandoverToVanillaAI()

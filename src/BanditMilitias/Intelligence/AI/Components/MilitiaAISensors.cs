@@ -1,5 +1,6 @@
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Systems.AI;
 using System.Collections.Generic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
@@ -42,10 +43,26 @@ namespace BanditMilitias.Intelligence.AI.Components
             {
                 if (p == _party || !p.IsActive) continue;
                 if (p.MapFaction == null || _party.MapFaction == null) continue;
+                
                 if (p.MapFaction.IsAtWarWith(_party.MapFaction))
+                {
                     _nearbyEnemies.Add(p);
+                    // Hafızayı güncelle: Bir düşman gördük, bunu diğer milislerle paylaş.
+                    MilitiaMemorySystem.Instance.UpdateThreat(p);
+                }
             }
             return _nearbyEnemies;
+        }
+
+        public List<ThreatMemory> GetThreatsFromMemory(float radius = 100f)
+        {
+            return MilitiaMemorySystem.Instance.GetNearbyThreats(_position, radius);
+        }
+
+        public float GetSettlementDanger(Settlement settlement)
+        {
+            var mem = MilitiaMemorySystem.Instance.GetSettlementMemory(settlement.StringId);
+            return mem?.DangerScore ?? 0f;
         }
 
         public List<MobileParty> GetNearbyFriendlies()

@@ -10,6 +10,7 @@ using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Library;
+using TaleWorlds.Core;
 
 namespace BanditMilitias.Intelligence.AI.Components
 {
@@ -48,6 +49,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             MilitiaAISensors sensors)
         {
             var doctrineSystem = ModuleManager.Instance.GetModule<AdaptiveAIDoctrineSystem>();
+            var home = component.GetHomeSettlement();
 
             // ── ML hazırlık (zengin state ile) ───────────────────
             AILearningSystem? mlSystem = null;
@@ -119,7 +121,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             // ══ Katman 3: Guardian tasması ═══════════════════════════════
             if (component.Role == MilitiaPartyComponent.MilitiaRole.Guardian)
             {
-                var home = component.GetHomeSettlement();
+                // home yukarıda tanımlandı
                 if (home != null)
                 {
                     float d2 = CompatibilityLayer.GetPartyPosition(party)
@@ -148,10 +150,9 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 3.2: Forced Recruit Gate ═══════════════════════════
             if (party.MemberRoster != null && party.MemberRoster.TotalManCount < 15 && party.PartyTradeGold >= 1500)
             {
-                var home = component.GetHomeSettlement();
+                // home yukarıda tanımlandı
                 if (home != null)
                 {
                     result.Decision = AIDecisionType.Defend;
@@ -271,72 +272,89 @@ namespace BanditMilitias.Intelligence.AI.Components
             }
 
             // ══ Katman 7: State-Aware Fallback Matrix ════════════════════
+            // ══ Katman 7: Hibrit AI - Durumsal Farkındalık Matrisi ════════════
             float strength = CompatibilityLayer.GetTotalStrength(party);
-            bool isWeak = strength < 40f || party.MemberRoster?.TotalManCount < 10;
+            bool isWeak = strength < 40f || party.MemberRoster?.TotalManCount < 18;
             bool isOverdue = component.NextThinkTime < CampaignTime.Now;
+            bool hasThreat = enemies.Count > 0;
+            // home yukarıda tanımlandı
 
             if (isWeak)
             {
-                var weakMerge = TryGetMergeDecisionForWeakParty(party, component, sensors);
-                var home = component.GetHomeSettlement();
-                bool canRecruitAtHome = home != null &&
-                                        (party.MemberRoster?.TotalManCount ?? 0) < 20 &&
-                                        party.PartyTradeGold >= 900;
-
-                if (enemies.Count > 0)
+                // Çaresizlik Doktrini: Incubation (Sığınak Kuluçkası)
+                if (hasThreat && home != null)
                 {
-                    if (weakMerge.HasValue)
-                    {
-                        result = weakMerge.Value;
-                        source = "Fallback:MergeUnderThreat";
-                        targetId = result.TargetParty?.StringId;
-                    }
-                    else if (canRecruitAtHome && home != null)
+                    float distToHome = sensors.Position.DistanceSquared(CompatibilityLayer.GetSettlementPosition(home));
+                    if (distToHome < 1600f) // Sığınağa yakınsa kuluçkaya yat
                     {
                         result.Decision = AIDecisionType.Defend;
                         result.MovePoint = CompatibilityLayer.GetSettlementPosition(home);
                         result.TargetSettlement = home;
-                        source = "Fallback:RecruitUnderThreat";
-                        targetId = home.StringId;
-                    }
-                    else
-                    {
-                        result.Decision = AIDecisionType.Flee;
-                        source = "Fallback:Evade";
+                        source = "IncubationMode:RetreatToSafety";
+                        
+                        // Sığınağa vardığında uyku moduna geçmesi için işaretle (MilitiaBehavior bunu işler)
+                        component.SleepFor(MBRandom.RandomFloatRanged(18f, 24f)); 
+                        
+                        LogAndReturn();
+                        return result;
                     }
                 }
-                else if (isOverdue)
+
+                // Kütleçekimsel Birleşme: Merge
+                var weakMerge = TryGetMergeDecisionForWeakParty(party, component, sensors);
+                if (weakMerge.HasValue)
                 {
+                    result = weakMerge.Value;
+                    source = hasThreat ? "SwarmCoalescence:PanicMerge" : "SwarmCoalescence:GrowthMerge";
+                    targetId = result.TargetParty?.StringId;
+                    LogAndReturn();
+                    return result;
+                }
+
+                if (hasThreat)
+                {
+                    bool canRecruitAtHome = home != null && party.PartyTradeGold >= 900;
                     if (canRecruitAtHome && home != null)
                     {
                         result.Decision = AIDecisionType.Defend;
                         result.MovePoint = CompatibilityLayer.GetSettlementPosition(home);
                         result.TargetSettlement = home;
-                        source = "Fallback:Recruit";
+                        source = "EmergencyRecruit";
                         targetId = home.StringId;
-                    }
-                    else if (weakMerge.HasValue)
-                    {
-                        result = weakMerge.Value;
-                        source = "Fallback:Merge";
-                        targetId = result.TargetParty?.StringId;
                     }
                     else
                     {
-                        result.Decision = AIDecisionType.Patrol;
-                        source = "Fallback:PatrolWeak";
+                        result.Decision = AIDecisionType.Flee;
+                        source = "Survival:Evade";
                     }
                 }
-                else
+                else 
                 {
-                    result.Decision = AIDecisionType.Patrol;
-                    source = "Fallback:PatrolWeak";
+                    // ── HAFIZA ENTEGRASYONU: Görünmez ama yakın zamandaki tehditler ───
+                    var rememberedThreats = sensors.GetThreatsFromMemory(150f);
+                    if (rememberedThreats.Count > 0)
+                    {
+                        var dangerousThreat = rememberedThreats.OrderByDescending(t => t.ReportedStrength).First();
+                        if (dangerousThreat.ReportedStrength > strength * 1.5f)
+                        {
+                            result.Decision = AIDecisionType.Flee;
+                            source = "Survival:MemoryEvade"; // Hafıza kaynaklı kaçış
+                            LogAndReturn();
+                            return result;
+                        }
+                    }
+
+                    if (isOverdue)
+                    {
+                        result.Decision = AIDecisionType.Patrol;
+                        source = "SafetyPatrol";
+                    }
                 }
             }
             else
             {
                 result.Decision = AIDecisionType.Patrol;
-                source = "Fallback:PatrolHealthy";
+                source = "StandardPatrol";
             }
 
             LogAndReturn();
@@ -642,36 +660,40 @@ namespace BanditMilitias.Intelligence.AI.Components
             MilitiaPartyComponent component,
             MilitiaAISensors sensors)
         {
-            var nearbyMilitias = sensors.GetNearbyMilitias();
-            if (nearbyMilitias == null || nearbyMilitias.Count == 0) return null;
+            // Hibrit AI: Daha geniş bir tarama alanı kullan
+            var allMilitias = ModuleManager.Instance.ActiveMilitias;
+            if (allMilitias == null || allMilitias.Count == 0) return null;
 
             float myStrength = CompatibilityLayer.GetTotalStrength(party);
             int myTroops = party.MemberRoster?.TotalManCount ?? 0;
             string? myWarlordId = component.WarlordId;
+            Vec2 myPos = sensors.Position;
 
             MobileParty? target = null;
-            float minDistance = float.MaxValue;
+            float minDistanceSq = 10000f; // 100 birim mesafe (Genişletilmiş Swarm Alanı)
 
-            foreach (var ally in nearbyMilitias)
+            foreach (var ally in allMilitias)
             {
                 if (ally == null || ally == party || !ally.IsActive) continue;
                 if (ally.MapEvent != null || ally.SiegeEvent != null) continue;
                 if (ally.PartyComponent is not MilitiaPartyComponent allyComp) continue;
+                
+                // Kütleçekimi: Sadece Kaptan veya daha üst rütbeli birliklere birleş
                 if (allyComp.Role < MilitiaPartyComponent.MilitiaRole.Captain) continue;
 
+                // Aynı ağdaki birliği tercih et
                 if (!string.IsNullOrEmpty(myWarlordId) && allyComp.WarlordId != myWarlordId) continue;
 
                 int allyTroops = ally.MemberRoster?.TotalManCount ?? 0;
-                if (allyTroops + myTroops > 150) continue;
+                if (allyTroops + myTroops > 150) continue; // Max kapasite kontrolü
 
                 float allyStrength = CompatibilityLayer.GetTotalStrength(ally);
-                if (allyStrength <= myStrength * 1.2f) continue;
+                if (allyStrength <= myStrength * 1.1f) continue; // Biraz daha güçlü olması yeterli
 
-                float dist = CompatibilityLayer.GetPartyPosition(party)
-                    .DistanceSquared(CompatibilityLayer.GetPartyPosition(ally));
-                if (dist < minDistance)
+                float distSq = myPos.DistanceSquared(CompatibilityLayer.GetPartyPosition(ally));
+                if (distSq < minDistanceSq)
                 {
-                    minDistance = dist;
+                    minDistanceSq = distSq;
                     target = ally;
                 }
             }
@@ -680,7 +702,7 @@ namespace BanditMilitias.Intelligence.AI.Components
 
             return new DecisionResult
             {
-                Decision = AIDecisionType.Engage,
+                Decision = AIDecisionType.Engage, // Engage hedefe aktif kilitlenmeyi sağlar
                 TargetParty = target,
                 MovePoint = CompatibilityLayer.GetPartyPosition(target)
             };

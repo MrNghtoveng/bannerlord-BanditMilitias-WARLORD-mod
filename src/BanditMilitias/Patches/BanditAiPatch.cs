@@ -1,6 +1,7 @@
 using BanditMilitias.Debug;
 using BanditMilitias.Intelligence.Strategic;
 using HarmonyLib;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -23,7 +24,10 @@ namespace BanditMilitias.Patches
         {
             "ThinkAboutBanditParty",
             "AiHourlyTick",
-            "HourlyTick"
+            "HourlyTick",
+            "TickParty",
+            "MakeBanditsWaitAroundHideouts",
+            "TickMilitia"
         };
 
         [HarmonyPrepare]
@@ -78,13 +82,26 @@ namespace BanditMilitias.Patches
         {
             if (banditParty == null) return true;
 
-            var warlord = WarlordSystem.Instance.GetWarlordForParty(banditParty);
-            if (warlord == null) return true;
+            try
+            {
+                var warlordSystem = WarlordSystem.Instance;
+                var careerSystem = Systems.Progression.WarlordCareerSystem.Instance;
+                if (warlordSystem == null || careerSystem == null) return true;
 
-            var tier = Systems.Progression.WarlordCareerSystem.Instance.GetTier(warlord.StringId);
-            bool handled = HTNEngine.ExecutePlan(banditParty, tier);
+                var warlord = warlordSystem.GetWarlordForParty(banditParty);
+                if (warlord == null) return true;
 
-            return !handled;
+                var tier = careerSystem.GetTier(warlord.StringId);
+                bool handled = HTNEngine.ExecutePlan(banditParty, tier);
+
+                return !handled;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error("BanditAiPatch",
+                    $"Custom bandit AI failed for {banditParty.StringId ?? banditParty.Name?.ToString() ?? "unknown"}: {ex.Message}. Falling back to vanilla AI.");
+                return true;
+            }
         }
     }
 }

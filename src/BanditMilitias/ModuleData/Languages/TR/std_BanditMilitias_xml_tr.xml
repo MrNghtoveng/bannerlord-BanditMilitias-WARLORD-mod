@@ -245,6 +245,8 @@
         <string id="BMS_FormCooldown_H" text="Sığınak oluşturma girişimleri arasındaki minimum gün sayısı."/>
         <string id="BMS_PatrolDensity" text="Maksimum Devriye Yoğunluğu"/>
         <string id="BMS_PatrolDensity_H" text="Lord devriye yoğunluğu bu değeri aşınca oluşum engellenir. Yüksek = daha kolay oluşum."/>
+        <string id="BMS_HideoutReplenishChance" text="Sığınak Yeniden Dolma Şansı"/>
+        <string id="BMS_HideoutReplenishChance_H" text="Terk edilmiş bir sığınağın yakındaki haydut partilerini yeniden içine çekme günlük şansı."/>
 
         <!-- Settings: Warlords & AI -->
         <string id="BMS_EnableWarlords" text="Savaş Lordlarını Etkinleştir"/>
@@ -311,6 +313,8 @@
         <string id="BMS_WarlordLoot_H" text="Yalnızca Savaş Lordu savaşlarına özgü ek ganimet çarpanı."/>
         <string id="BMS_HardBattle" text="Zorlu Savaş Bonusu"/>
         <string id="BMS_HardBattle_H" text="Zorlu savaşlar için ödül çarpanı. 2.0 = çift ödül."/>
+        <string id="BMS_BountyGoldPerTroop" text="Asker Başına Ödül Altını"/>
+        <string id="BMS_BountyGoldPerTroop_H" text="Yenilen birlik başına ertesi günlük tikte ödenen gecikmeli milis ödül miktarı."/>
         <string id="BMS_AttrRewards" text="Nitelik &amp; Focus Ödülleri"/>
         <string id="BMS_AttrRewards_H" text="Çok zorlu savaşlardan Nitelik veya Focus puanı kazanma küçük şansı."/>
         <string id="BMS_QualityDrops" text="Kaliteli Eşya Düşürme"/>

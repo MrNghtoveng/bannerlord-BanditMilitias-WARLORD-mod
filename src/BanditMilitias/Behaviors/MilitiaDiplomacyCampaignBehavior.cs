@@ -98,11 +98,13 @@ namespace BanditMilitias.Behaviors
             Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.MapEventStarted, this, (Action<MapEvent, PartyBase, PartyBase>)OnMapEventStarted);
         }
 
+        private int _saveVersion = 1;
+
         public override void SyncData(IDataStore dataStore)
         {
-            // BUG-04/05 ARAŞTIRMA NOTU: Bu sınıfın kayıt edilmesi gereken kendi field'ı yoktur.
-            // Dialog state ve extortion verileri session'a özgü olup kasıtlı olarak persist edilmiyor.
-            // WarlordSystem, AILearningSystem ve MilitiaBehavior kendi SyncData'larını yönetir.
+            // BUG-04/05 FIX: Eklenen SyncData altyapısı. Şu an için sadece versiyon tutuyor,
+            // ancak ileride eklenecek diplomasi durumları (ittifaklar, özel kararlar) için hazır.
+            _ = dataStore.SyncData("_bm_diplo_save_version", ref _saveVersion);
         }
         private void OnSessionLaunched(CampaignGameStarter starter)
         {

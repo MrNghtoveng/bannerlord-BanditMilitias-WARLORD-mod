@@ -289,9 +289,10 @@ namespace BanditMilitias.Tests
         public void MilitiaDecider_Weak_Fallback_Must_Try_Merge_Or_Recruit_Before_Flee()
         {
             string src = TestSourceHelper.ReadProjectFile("Intelligence", "AI", "Components", "MilitiaDecider.cs");
-            StringAssert.Contains(src, "Fallback:MergeUnderThreat");
-            StringAssert.Contains(src, "Fallback:RecruitUnderThreat");
+            StringAssert.Contains(src, "SwarmCoalescence:PanicMerge");
+            StringAssert.Contains(src, "EmergencyRecruit");
             StringAssert.Contains(src, "TryGetMergeDecisionForWeakParty");
+            StringAssert.Contains(src, "IncubationMode:RetreatToSafety");
         }
 
         [TestMethod]
@@ -348,6 +349,35 @@ namespace BanditMilitias.Tests
             Assert.IsTrue(src.IndexOf("_fullSimLatestFile", StringComparison.Ordinal) < 0);
             StringAssert.Contains(src, "_fullSimRunLog");
             StringAssert.Contains(src, "session_summary.txt");
+        }
+
+        [TestMethod]
+        public void HTNPlanner_Must_Honor_Primitive_Task_Preconditions()
+        {
+            string src = TestSourceHelper.ReadProjectFile("Intelligence", "Tactical", "HTNCore.cs");
+
+            StringAssert.Contains(src, "candidate.CheckPreconditions(state)");
+            StringAssert.Contains(src, "continue;");
+        }
+
+        [TestMethod]
+        public void Tactical_Doctrines_Must_Use_Previously_Dead_Primitives()
+        {
+            string src = TestSourceHelper.ReadProjectFile("Intelligence", "Tactical", "TacticalDoctrines.cs");
+
+            StringAssert.Contains(src, "state.GetBool(\"IsTuranDoctrine\")");
+            StringAssert.Contains(src, "new TuranManeuverTask()");
+            StringAssert.Contains(src, "new DeepShieldWallTask()");
+        }
+
+        [TestMethod]
+        public void Tactical_Mission_Behavior_Must_Prime_World_State_Before_Planning()
+        {
+            string src = TestSourceHelper.ReadProjectFile("Intelligence", "Tactical", "WarlordTacticalMissionBehavior.cs");
+
+            StringAssert.Contains(src, "_worldState.SetFloat(\"ClosestEnemyDistance\", 9999f);");
+            StringAssert.Contains(src, "_worldState.SetBool(\"IsMeleeHeavy\", IsMeleeHeavyTeam(warlordTeam));");
+            StringAssert.Contains(src, "_worldState.SetBool(\"IsMeleeHeavy\", meleeUnits >= rangedUnits);");
         }
     }
 }

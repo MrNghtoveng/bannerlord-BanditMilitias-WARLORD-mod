@@ -439,7 +439,7 @@ namespace BanditMilitias.Patches.SurrenderFix
             if (captor.IsMilitia) chance *= 1.25f;
             if (!captor.IsComponentValid) chance *= 2.0f;
             if (captor.Leader == null) chance *= 1.25f;
-            if (Campaign.Current.IsNight) chance *= 1.10f;
+            if (Campaign.Current?.IsNight == true) chance *= 1.10f;
 
             float ageAfterLock = Math.Max(0f, captivityAgeHours - MIN_ESCAPE_ELIGIBILITY_HOURS);
             if (ageAfterLock < 24f)

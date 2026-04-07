@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using TaleWorlds.CampaignSystem;
 
 namespace BanditMilitias.Core.Components
@@ -20,6 +20,7 @@ namespace BanditMilitias.Core.Components
         void OnHourlyTick();
         void OnTick(float dt);
         void SyncData(IDataStore dataStore);
+        void OnSessionStart();
         void RegisterCampaignEvents();
         string GetDiagnostics();
     }
@@ -46,6 +47,7 @@ namespace BanditMilitias.Core.Components
         public virtual void OnHourlyTick() { }
         public virtual void OnTick(float dt) { }
         public virtual void SyncData(IDataStore ds) { }
+        public virtual void OnSessionStart() { }
         public virtual void RegisterCampaignEvents() { }
         public virtual string GetDiagnostics() => ModuleName;
         public virtual bool HasFailedModules => false;

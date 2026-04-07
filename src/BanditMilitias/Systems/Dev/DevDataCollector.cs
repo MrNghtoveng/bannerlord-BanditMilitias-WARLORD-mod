@@ -63,7 +63,7 @@ namespace BanditMilitias.Systems.Dev
         public override string ModuleName => "DevDataCollector";
 
         // Üretim sürümünde tamamen deaktif — sıfır overhead
-        public override bool IsEnabled => Settings.Instance?.DevMode == true;
+        public override bool IsEnabled => true;
         public override int Priority => 5;
 
         // ── Çıktı klasörü ─────────────────────────────────────────
