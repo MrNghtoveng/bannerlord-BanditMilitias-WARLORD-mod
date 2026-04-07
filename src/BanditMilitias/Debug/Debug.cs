@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Components;
+using BanditMilitias.Components;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.AI;
@@ -703,13 +703,13 @@ Status: {GetThreatStatus(threat)}
                     _ = _recentLogs.Dequeue();
             }
 
+            var ctx = context != null && context.Any()
+                ? string.Join(", ", context.Select(kv => $"{kv.Key}={kv.Value}"))
+                : "";
+
             // Console output in testing mode
             if (Settings.Instance?.TestingMode == true && level >= LogLevel.Warning)
             {
-                var ctx = context != null && context.Any()
-                    ? string.Join(", ", context.Select(kv => $"{kv.Key}={kv.Value}"))
-                    : "";
-
                 var color = level switch
                 {
                     LogLevel.Critical => Colors.Red,
@@ -722,10 +722,10 @@ Status: {GetThreatStatus(threat)}
                     $"[{system}] {message} {ctx}", color));
             }
 
-            // Always log to file for errors
-            if (level >= LogLevel.Error)
+            // Always log to file for all levels so the user can read it from the .log file
+            if (level >= LogLevel.Debug)
             {
-                FileLogger.LogError($"[{system}] {message}");
+                FileLogger.Log($"[{level}] [{system}] {message} {ctx}");
             }
         }
 
