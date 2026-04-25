@@ -1,0 +1,70 @@
+In-Game Testing Guide
+
+This document is a practical runtime testing guide for Bandit Militias: WARLORD Edition.
+
+TEST GOALS
+
+- verify that militia AI is active
+- verify that runtime diagnostics are reachable
+- watch world growth and party inflation
+- catch sleep, cleanup, and scheduler regressions
+- confirm that logs and exported reports match what happened in game
+
+RECOMMENDED SESSION ORDER
+
+1. Startup Check
+- militia.system_status
+- bandit.test_list
+
+2. Baseline Runtime Check
+- bandit.test_run all
+- bandit.test_report
+
+3. AI Behavior Check
+- militia.full_sim_test
+- militia.full_sim_report
+- militia.ml_status
+- militia.doctrine_status
+
+4. Long Session World Health Check
+- watch total mobile parties
+- watch zero troop or broken parties
+- watch cleanup activity
+
+5. Save / Load Check
+- save
+- reload
+- bandit.test_run all
+- compare reports
+
+MAIN RUNTIME COMMANDS
+
+- bandit.test_list
+- bandit.test_run all
+- bandit.test_report
+- bandit.test_reset
+- militia.full_sim_test
+- militia.full_sim_report
+- militia.failed_modules
+- militia.system_status
+- militia.module_status
+- militia.watchdog_status
+- militia.watchdog_check
+- militia.ml_status
+- militia.doctrine_status
+
+HIGH-VALUE REPORT FILES
+
+- Events.json
+- session_summary.txt
+- ai_decisions.csv
+- sleep_analysis.csv
+- CleanupHistory.csv
+- BanditMilitias_FullSim.txt
+
+COMMON FAILURE PATTERNS
+
+- party inflation
+- sleep logic failure
+- AI fallback lock
+- patch routing failure

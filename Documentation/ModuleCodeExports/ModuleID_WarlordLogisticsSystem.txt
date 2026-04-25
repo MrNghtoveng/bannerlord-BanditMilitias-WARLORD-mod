@@ -1,0 +1,433 @@
+﻿Module ID: WarlordLogisticsSystem Class: WarlordLogisticsSystem Category: Systems/Logistics Source: C:\Users\firat\Documents\myproject\bannerlord-BanditMilitias-WARLORD-mod-master\BanditMilitias\Systems\Logistics\WarlordLogisticsSystem.cs AutoRegister: False Status: Pasif/Kosullu Dependencies: BanditEnhancementSystem, MBObjectManager, WarlordSystem RiskFlags:   ================ SOURCE ================ using BanditMilitias.Components;
+using BanditMilitias.Core.Components;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Strategic;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
+using TaleWorlds.ObjectSystem;
+
+namespace BanditMilitias.Systems.Logistics
+{
+
+    public class WarlordLogisticsSystem : MilitiaModuleBase
+    {
+        public override string ModuleName => "WarlordLogisticsSystem";
+        public override bool IsEnabled => Settings.Instance?.EnableWarlordLogistics ?? true;
+        public override int Priority => 60;
+
+        private static readonly Lazy<WarlordLogisticsSystem> _instance =
+            new Lazy<WarlordLogisticsSystem>(() => new WarlordLogisticsSystem());
+        public static WarlordLogisticsSystem Instance => _instance.Value;
+
+        private const float MIN_FOOD_DAYS = 2f;
+        private const float IDEAL_FOOD_DAYS = 7f;
+        private const int MAX_PRISONER_LIMIT = 20;
+        private const float PRISONER_RATIO_THRESHOLD = 0.8f;
+
+        private bool _isInitialized = false;
+        private readonly Dictionary<string, int> _lastUpgradeDayByParty = new();
+
+        private WarlordLogisticsSystem() { }
+
+        public override void Initialize()
+        {
+            if (_isInitialized) return;
+            _isInitialized = true;
+            DebugLogger.Info("Logistics", "WarlordLogisticsSystem initialized.");
+        }
+
+        public override void Cleanup()
+        {
+            _isInitialized = false;
+            _lastUpgradeDayByParty.Clear();
+        }
+
+        public override void OnHourlyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            foreach (var militia in ModuleManager.Instance.ActiveMilitias)
+            {
+                if (militia == null || !militia.IsActive) continue;
+
+                if (militia.PartyComponent is MilitiaPartyComponent component)
+                {
+                    ProcessMilitiaLogistics(militia, component);
+                }
+            }
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            foreach (var militia in ModuleManager.Instance.ActiveMilitias)
+            {
+                if (militia == null || !militia.IsActive) continue;
+                if (militia.PartyComponent is not MilitiaPartyComponent component) continue;
+
+                TryInvestInArmyUpgrades(militia, component);
+            }
+        }
+
+        private void ProcessMilitiaLogistics(MobileParty militia, MilitiaPartyComponent component)
+        {
+
+            if (militia.MapEvent != null || militia.SiegeEvent != null) return;
+
+            EnsureEssentialSupplies(militia, component);
+
+            switch (component.CurrentState)
+            {
+                case MilitiaPartyComponent.WarlordState.Patrolling:
+                case MilitiaPartyComponent.WarlordState.Raiding:
+                    CheckNeeds(militia, component);
+                    break;
+
+                case MilitiaPartyComponent.WarlordState.Restocking:
+                    ExecuteRestocking(militia, component);
+                    break;
+
+                case MilitiaPartyComponent.WarlordState.SellingPrisoners:
+                    ExecuteSellingPrisoners(militia, component);
+                    break;
+            }
+        }
+
+        private void CheckNeeds(MobileParty militia, MilitiaPartyComponent component)
+        {
+
+            if (militia.PrisonRoster.TotalManCount >= militia.Party.PrisonerSizeLimit * PRISONER_RATIO_THRESHOLD ||
+                militia.PrisonRoster.TotalManCount > MAX_PRISONER_LIMIT)
+            {
+
+                var town = FindNearestSettlement(militia, SettlementType.Town);
+
+                if (town != null)
+                {
+                    ChangeState(militia, component, MilitiaPartyComponent.WarlordState.SellingPrisoners);
+                    SetMoveToSettlement(militia, town);
+
+                    if (Settings.Instance?.TestingMode == true)
+                        DebugLogger.Info("Logistics", $"{militia.Name} has too many prisoners ({militia.PrisonRoster.TotalManCount}). Going to sell at {town.Name}.");
+                    return;
+                }
+            }
+        }
+
+        private void EnsureEssentialSupplies(MobileParty militia, MilitiaPartyComponent component)
+        {
+            if (militia.ItemRoster == null || militia.MemberRoster == null) return;
+
+            if (militia.RecentEventsMorale < -5f)
+            {
+                militia.RecentEventsMorale += 5f;
+            }
+
+            int men = Math.Max(1, militia.MemberRoster.TotalManCount);
+            int minFood = Math.Max(15, men * 2);
+
+            if (militia.ItemRoster.TotalFood < minFood)
+            {
+                int neededFood = minFood - militia.ItemRoster.TotalFood;
+                bool foodPurchased = TryBuyEmergencyFood(militia, component, neededFood);
+
+                if (!foodPurchased)
+                {
+                    ItemObject? grainFallback = MBObjectManager.Instance.GetObject<ItemObject>("grain");
+                    if (grainFallback != null)
+                    {
+                        _ = militia.ItemRoster.AddToCounts(grainFallback, Math.Max(5, neededFood / 2));
+                    }
+                }
+            }
+
+            int currentMounts = CountMounts(militia);
+            int minMounts = Math.Max(5, men / 3);
+            if (currentMounts < minMounts)
+            {
+                int neededMounts = minMounts - currentMounts;
+                bool mountsPurchased = TryBuyEmergencyMounts(militia, component, neededMounts);
+
+                if (!mountsPurchased)
+                {
+                    ItemObject? fallbackHorse = MBObjectManager.Instance.GetObject<ItemObject>("sumpter_horse")
+                        ?? MBObjectManager.Instance.GetObject<ItemObject>("mule");
+                    if (fallbackHorse != null)
+                    {
+                        _ = militia.ItemRoster.AddToCounts(fallbackHorse, Math.Max(1, neededMounts / 2));
+                    }
+                }
+            }
+        }
+
+        private void ExecuteRestocking(MobileParty militia, MilitiaPartyComponent component)
+        {
+
+            if (militia.TargetSettlement == null ||
+                (CompatibilityLayer.GetPartyPosition(militia).DistanceSquared(CompatibilityLayer.GetSettlementPosition(militia.TargetSettlement)) < 1f))
+            {
+
+                Settlement? target = militia.TargetSettlement;
+                target ??= FindNearestSettlement(militia, SettlementType.Any);
+
+                if (target != null && CompatibilityLayer.GetPartyPosition(militia).Distance(CompatibilityLayer.GetSettlementPosition(target)) < 5f)
+                {
+                    PerformFoodPurchase(militia, component, target);
+
+                    ChangeState(militia, component, MilitiaPartyComponent.WarlordState.Patrolling);
+                    CompatibilityLayer.SetMovePatrolAroundSettlement(militia, target);
+                }
+                else
+                {
+
+                    if (target != null && militia.TargetSettlement != target)
+                        SetMoveToSettlement(militia, target);
+                }
+            }
+        }
+
+        private void ExecuteSellingPrisoners(MobileParty militia, MilitiaPartyComponent component)
+        {
+            Settlement? target = militia.TargetSettlement;
+            target ??= FindNearestSettlement(militia, SettlementType.Town);
+
+            if (target != null && CompatibilityLayer.GetPartyPosition(militia).Distance(CompatibilityLayer.GetSettlementPosition(target)) < 5f)
+            {
+                PerformPrisonerSale(militia, component, target);
+
+                ChangeState(militia, component, MilitiaPartyComponent.WarlordState.Patrolling);
+                CompatibilityLayer.SetMovePatrolAroundSettlement(militia, target);
+            }
+            else
+            {
+                if (target != null && militia.TargetSettlement != target)
+                    SetMoveToSettlement(militia, target);
+            }
+        }
+
+        private void PerformFoodPurchase(MobileParty militia, MilitiaPartyComponent component, Settlement settlement)
+        {
+
+            float currentFoodDays = militia.FoodChange < 0 ? militia.ItemRoster.TotalFood / -militia.FoodChange : 0f;
+            int daysToBuy = (int)(IDEAL_FOOD_DAYS - currentFoodDays);
+            if (daysToBuy <= 0) return;
+
+            ItemObject grain = MBObjectManager.Instance.GetObject<ItemObject>("grain");
+            if (grain == null) return;
+
+            int amountNeeded = (int)(daysToBuy * -militia.FoodChange);
+            if (amountNeeded <= 0) amountNeeded = 10;
+
+            int cost = settlement.Town?.GetItemPrice(grain) ?? 10;
+            if (settlement.IsVillage) cost = 8;
+
+            int totalCost = cost * amountNeeded;
+
+            Warlord? warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            int availableGold = warlord?.Gold > 0 ? (int)warlord.Gold : component.Gold;
+
+            if (availableGold < totalCost)
+            {
+                amountNeeded = availableGold / cost;
+                totalCost = amountNeeded * cost;
+            }
+
+            if (amountNeeded > 0)
+            {
+                _ = militia.ItemRoster.AddToCounts(grain, amountNeeded);
+
+                if (warlord != null) warlord.Gold -= totalCost;
+                else component.Gold -= totalCost;
+
+                if (Settings.Instance?.TestingMode == true)
+                    DebugLogger.Info("Logistics", $"{militia.Name} bought {amountNeeded} grain for {totalCost}g at {settlement.Name}.");
+            }
+        }
+
+        private bool TryBuyEmergencyFood(MobileParty militia, MilitiaPartyComponent component, int neededAmount)
+        {
+            if (neededAmount <= 0) return true;
+
+            ItemObject? grain = MBObjectManager.Instance.GetObject<ItemObject>("grain");
+            if (grain == null) return false;
+
+            int unitCost = 8;
+            int availableGold = GetAvailableGold(militia, component);
+
+            if (availableGold <= 0) return false;
+
+            int affordable = Math.Min(neededAmount, availableGold / unitCost);
+            if (affordable <= 0) return false;
+
+            _ = militia.ItemRoster.AddToCounts(grain, affordable);
+            SpendGold(militia, component, affordable * unitCost);
+            return true;
+        }
+
+        private bool TryBuyEmergencyMounts(MobileParty militia, MilitiaPartyComponent component, int neededAmount)
+        {
+            if (neededAmount <= 0) return true;
+
+            ItemObject? horse = MBObjectManager.Instance.GetObject<ItemObject>("midlands_palfrey")
+                ?? MBObjectManager.Instance.GetObject<ItemObject>("sumpter_horse")
+                ?? MBObjectManager.Instance.GetObject<ItemObject>("saddle_horse")
+                ?? MBObjectManager.Instance.GetObject<ItemObject>("mule");
+
+            if (horse == null) return false;
+
+            int unitCost = 60;
+            int availableGold = GetAvailableGold(militia, component);
+            if (availableGold <= 0) return false;
+
+            int affordable = Math.Min(neededAmount, availableGold / unitCost);
+            if (affordable <= 0) return false;
+
+            _ = militia.ItemRoster.AddToCounts(horse, affordable);
+            SpendGold(militia, component, affordable * unitCost);
+            return true;
+        }
+
+        private int CountMounts(MobileParty militia)
+        {
+            if (militia.ItemRoster == null) return 0;
+
+            int mounts = 0;
+            for (int i = 0; i < militia.ItemRoster.Count; i++)
+            {
+                var element = militia.ItemRoster.GetElementCopyAtIndex(i);
+                ItemObject? item = element.EquipmentElement.Item;
+                if (item?.HorseComponent != null)
+                {
+                    mounts += element.Amount;
+                }
+            }
+
+            return mounts;
+        }
+
+        private void PerformPrisonerSale(MobileParty militia, MilitiaPartyComponent component, Settlement settlement)
+        {
+            if (militia.PrisonRoster.TotalManCount == 0) return;
+
+            int totalRansom = 0;
+            var prisoners = militia.PrisonRoster;
+
+            for (int i = prisoners.Count - 1; i >= 0; i--)
+            {
+                var element = prisoners.GetElementCopyAtIndex(i);
+                int ransomValue = Campaign.Current.Models.RansomValueCalculationModel.PrisonerRansomValue(element.Character, Hero.MainHero);
+
+                totalRansom += ransomValue * element.Number;
+            }
+
+            militia.PrisonRoster.Clear();
+
+            Warlord? warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            if (warlord != null)
+            {
+                warlord.Gold += totalRansom;
+            }
+            else
+            {
+                component.Gold += totalRansom;
+            }
+
+            if (Settings.Instance?.TestingMode == true)
+                DebugLogger.Info("Logistics", $"{militia.Name} sold prisoners for {totalRansom}g at {settlement.Name}.");
+        }
+
+        private void TryInvestInArmyUpgrades(MobileParty militia, MilitiaPartyComponent component)
+        {
+            if (militia.MapEvent != null || militia.SiegeEvent != null) return;
+            if (militia.MemberRoster == null || militia.MemberRoster.TotalManCount <= 0) return;
+
+            int dayIndex = (int)CampaignTime.Now.ToDays;
+            string partyKey = !string.IsNullOrEmpty(militia.StringId) ? militia.StringId : militia.Id.ToString();
+
+            if (_lastUpgradeDayByParty.TryGetValue(partyKey, out int lastDay) && lastDay == dayIndex)
+            {
+                return;
+            }
+
+            int availableGold = GetAvailableGold(militia, component);
+            if (availableGold < 900) return;
+
+            int budget = Math.Min((int)(availableGold * 0.12f), 1500);
+            if (budget < 300) return;
+
+            BanditMilitias.Systems.Enhancement.BanditEnhancementSystem.Instance.EnhanceParty(militia);
+            SpendGold(militia, component, budget);
+            _lastUpgradeDayByParty[partyKey] = dayIndex;
+        }
+
+        private int GetAvailableGold(MobileParty militia, MilitiaPartyComponent component)
+        {
+            Warlord? warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            if (warlord != null)
+            {
+                return Math.Max(0, (int)warlord.Gold);
+            }
+
+            return Math.Max(0, component.Gold);
+        }
+
+        private void SpendGold(MobileParty militia, MilitiaPartyComponent component, int amount)
+        {
+            if (amount <= 0) return;
+
+            Warlord? warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            if (warlord != null)
+            {
+                warlord.Gold = Math.Max(0, warlord.Gold - amount);
+            }
+            else
+            {
+                component.Gold = Math.Max(0, component.Gold - amount);
+            }
+        }
+
+        private void ChangeState(MobileParty militia, MilitiaPartyComponent component, MilitiaPartyComponent.WarlordState newState)
+        {
+            component.CurrentState = newState;
+        }
+
+        private void SetMoveToSettlement(MobileParty militia, Settlement settlement)
+        {
+            CompatibilityLayer.SetMoveGoToSettlement(militia, settlement);
+        }
+
+        private Settlement? FindNearestSettlement(MobileParty militia, SettlementType type)
+        {
+            Settlement? nearest = null;
+            float minDist = float.MaxValue;
+
+            System.Collections.Generic.IEnumerable<Settlement> candidates = type switch
+            {
+                SettlementType.Village => ModuleManager.Instance.VillageCache,
+                SettlementType.Town => ModuleManager.Instance.TownCache,
+                _ =>
+                                         ModuleManager.Instance.VillageCache.Concat(ModuleManager.Instance.TownCache)
+            };
+
+            foreach (var settlement in candidates)
+            {
+                if (settlement == null || !settlement.IsActive) continue;
+
+                float dist = CompatibilityLayer.GetPartyPosition(militia).DistanceSquared(CompatibilityLayer.GetSettlementPosition(settlement));
+                if (dist < minDist)
+                {
+                    minDist = dist;
+                    nearest = settlement;
+                }
+            }
+            return nearest;
+        }
+    }
+}

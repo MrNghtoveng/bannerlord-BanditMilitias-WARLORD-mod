@@ -1,0 +1,341 @@
+﻿Module ID: MilitiaProgressionSystem Class: MilitiaProgressionSystem Category: Systems/Progression Source: C:\Users\firat\Documents\myproject\bannerlord-BanditMilitias-WARLORD-mod-master\BanditMilitias\Systems\Progression\MilitiaProgressionSystem.cs AutoRegister: True Status: Pasif/Kosullu Dependencies: WarlordSystem RiskFlags:   ================ SOURCE ================ using BanditMilitias.Components;
+using BanditMilitias.Core.Components;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Strategic;
+using System;
+using System.Collections.Generic;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.Core;
+using TaleWorlds.Library;
+
+namespace BanditMilitias.Systems.Progression
+{
+    /// <summary>
+    /// TroopProgressionSystem + MilitiaUpgradeSystem'Ä±n birleÅŸimi.
+    /// XP daÄŸÄ±tÄ±mÄ± ve upgrade tetiklemesi tek transaction iÃ§inde yÃ¶netilir;
+    /// aralarÄ±ndaki 24 saatlik gecikme ve XP sÄ±fÄ±rlanmama hatalarÄ± ortadan kalkar.
+    /// </summary>
+    [AutoRegister]
+    public sealed class MilitiaProgressionSystem : MilitiaModuleBase
+    {
+        private static readonly Lazy<MilitiaProgressionSystem> _inst =
+            new(() => new MilitiaProgressionSystem());
+        public static MilitiaProgressionSystem Instance => _inst.Value;
+
+        public override string ModuleName => "MilitiaProgressionSystem";
+        public override bool IsEnabled => true;
+        public override int Priority => 80;
+
+        // Horde XP havuzu: warlordId â†’ birikmiÅŸ XP
+        private readonly Dictionary<string, int> _hordeXpPool = new();
+
+        // â”€â”€ GÃ¼nlÃ¼k tick â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled) return;
+
+            var snapshot = ModuleManager.Instance.ActiveMilitias;
+
+            // 1. TÃ¼m aktif milislere pasif antrenman XP'si ekle ve hemen upgrade dene
+            for (int p = 0; p < snapshot.Count; p++)
+            {
+                var party = snapshot[p];
+                if (party == null || !party.IsActive || party.MemberRoster == null) continue;
+
+                if (party.PartyComponent is not MilitiaPartyComponent comp) continue;
+
+                var warlord = comp.AssignedWarlord
+                              ?? WarlordSystem.Instance.GetWarlordForParty(party);
+                if (warlord == null) continue;
+
+                int xp = CalculatePassiveTrainingXp(comp, warlord);
+                bool anyAdded = ApplyXpToRoster(party, xp);
+
+                // XP eklendi mi? Hemen upgrade dene â€” yarÄ±na bÄ±rakma
+                if (anyAdded)
+                    TryUpgradeRoster(party, warlord);
+            }
+
+            // 2. Horde havuzunu daÄŸÄ±t
+            DistributeHordePool();
+        }
+
+        // â”€â”€ SavaÅŸ zaferi Ã§aÄŸrÄ±sÄ± (Combat.cs ProcessVictory'den) â”€â”€â”€â”€â”€â”€â”€
+        /// <summary>
+        /// SavaÅŸ bittiÄŸinde Combat.cs tarafÄ±ndan Ã§aÄŸrÄ±lÄ±r.
+        /// Kazanan partiye doÄŸrudan XP uygulanÄ±r, horde havuzuna katkÄ± da eklenir.
+        /// </summary>
+        public void OnBattleVictory(MobileParty winner, float enemyStrength, float winnerStrength)
+        {
+            if (winner == null || !winner.IsActive || winner.MemberRoster == null) return;
+            if (winner.PartyComponent is not MilitiaPartyComponent comp) return;
+
+            var warlord = comp.AssignedWarlord
+                          ?? WarlordSystem.Instance.GetWarlordForParty(winner);
+            if (warlord == null) return;
+
+            // AnlamlÄ± XP hesabÄ±: asker sayÄ±sÄ± deÄŸil, dÃ¼ÅŸman gÃ¼cÃ¼ tabanlÄ±
+            int xpReward = (int)(enemyStrength * 50f);
+
+            // Underdog bonusu: zayÄ±f taraf gÃ¼Ã§lÃ¼yÃ¼ yendiyse +%50
+            if (winnerStrength > 0f && winnerStrength < enemyStrength * 0.8f)
+                xpReward = (int)(xpReward * 1.5f);
+
+            xpReward = Math.Max(xpReward, 200); // Minimum garanti
+
+            // DoÄŸrudan kazanan partiye uygula
+            bool anyAdded = ApplyXpToRoster(winner, xpReward);
+            if (anyAdded)
+                TryUpgradeRoster(winner, warlord);
+
+            // Horde havuzuna da katkÄ±: savaÅŸ XP'sinin %15'i paylaÅŸÄ±ma girer
+            AddToHordePool(warlord, xpReward);
+
+            if (Settings.Instance?.TestingMode == true)
+            {
+                DebugLogger.TestLog(
+                    $"[Progression] {winner.Name}: SavaÅŸ XP={xpReward} (dÃ¼ÅŸman gÃ¼Ã§={enemyStrength:F0})",
+                    Colors.Green);
+            }
+        }
+
+        // â”€â”€ Havuz yÃ¶netimi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        public void AddToHordePool(Warlord warlord, int baseAmount)
+        {
+            if (warlord == null || baseAmount <= 0) return;
+
+            if (!_hordeXpPool.ContainsKey(warlord.StringId))
+                _hordeXpPool[warlord.StringId] = 0;
+
+            _hordeXpPool[warlord.StringId] += (int)(baseAmount * 0.15f);
+        }
+
+        private void DistributeHordePool()
+        {
+            foreach (var kv in _hordeXpPool)
+            {
+                if (kv.Value <= 0) continue;
+
+                var warlord = WarlordSystem.Instance.GetWarlordById(kv.Key);
+                if (warlord == null) continue;
+
+                var militias = warlord.CommandedMilitias;
+                if (militias == null || militias.Count == 0) continue;
+
+                int xpPerParty = kv.Value / militias.Count;
+                if (xpPerParty <= 0) continue;
+
+                for (int i = 0; i < militias.Count; i++)
+                {
+                    var party = militias[i];
+                    if (party == null || !party.IsActive) continue;
+
+                    bool anyAdded = ApplyXpToRoster(party, xpPerParty);
+                    if (anyAdded)
+                        TryUpgradeRoster(party, warlord);
+                }
+            }
+
+            // Havuzu sÄ±fÄ±rla â€” yeni dÃ¶ngÃ¼ iÃ§in temiz baÅŸlangÄ±Ã§
+            var keys = new List<string>(_hordeXpPool.Keys);
+            foreach (var k in keys)
+                _hordeXpPool[k] = 0;
+        }
+
+        // â”€â”€ Pasif antrenman XP hesabÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private static int CalculatePassiveTrainingXp(MilitiaPartyComponent comp, Warlord warlord)
+        {
+            int xp = 80; // Minimum garanti
+
+            // Warlord ekonomik gÃ¼cÃ¼ne gÃ¶re eÄŸitim kalitesi
+            if (warlord.Gold > 20_000f) xp += 50;
+            if (warlord.Gold > 50_000f) xp += 50;
+
+            // VeteranCaptain rolÃ¼: tecrÃ¼beli komutan bonusu
+            if (comp.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain)
+                xp += 40;
+
+            return xp;
+        }
+
+        // â”€â”€ XP uygulama â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        /// <summary>
+        /// Roster'daki birimlere XP ekler. T0-T2 birimlere 1.5x Ã§arpan uygulanÄ±r.
+        /// DÃ¶ndÃ¼rÃ¼r: herhangi bir birime XP eklendiyse true.
+        /// </summary>
+        private static bool ApplyXpToRoster(MobileParty party, int amount)
+        {
+            if (amount <= 0 || party?.MemberRoster == null) return false;
+
+            bool anyAdded = false;
+            int count = party.MemberRoster.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                var element = party.MemberRoster.GetElementCopyAtIndex(i);
+                if (element.Character == null || element.Number <= 0) continue;
+
+                int xpToAdd = element.Character.Tier <= 2
+                    ? (int)(amount * 1.5f) // T0-T2: Ã–lÃ¼m sarmalÄ±ndan Ã§Ä±kmalarÄ± iÃ§in hÄ±zlandÄ±rÄ±lmÄ±ÅŸ ilerleme
+                    : amount;
+
+                party.MemberRoster.AddXpToTroopAtIndex(xpToAdd, i);
+                anyAdded = true;
+            }
+
+            return anyAdded;
+        }
+
+        // â”€â”€ Upgrade â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        /// <summary>
+        /// Roster'da yeterli XP biriken birimleri warlord'un altÄ±nÄ±na ve stratejisine gÃ¶re yÃ¼kseltir.
+        /// Sondan baÅŸa iterasyon: AddToCounts() sonrasÄ± roster sÄ±rasÄ± kayabilir.
+        /// </summary>
+        private static void TryUpgradeRoster(MobileParty party, Warlord warlord)
+        {
+            if (party?.MemberRoster == null || warlord == null) return;
+
+            bool upgradedAny = false;
+
+            // Sondan baÅŸa: AddToCounts Ã§aÄŸrÄ±sÄ± slot sÄ±rasÄ±nÄ± kaydÄ±rabilir
+            for (int i = party.MemberRoster.Count - 1; i >= 0; i--)
+            {
+                var element = party.MemberRoster.GetElementCopyAtIndex(i);
+                if (element.Character == null || element.Number <= 0) continue;
+                if (element.Character.UpgradeTargets == null
+                    || element.Character.UpgradeTargets.Length == 0) continue;
+
+                int xpCost = element.Character.GetUpgradeXpCost(party.Party, 0);
+                if (xpCost <= 0) continue;
+
+                int currentXp = party.MemberRoster.GetElementXpAtIndex(i);
+                int upgradeReadyCount = currentXp / xpCost;
+                if (upgradeReadyCount <= 0) continue;
+
+                // Bir seferde upgrade edilecek asker sayÄ±sÄ±nÄ± kÄ±sÄ±tla (denge iÃ§in)
+                int toUpgrade = Math.Min(upgradeReadyCount, Math.Max(1, element.Number / 3));
+
+                // AltÄ±n kontrolÃ¼
+                int goldCostPerTroop = Math.Max(1, element.Character.Tier * 10);
+                int totalGoldCost = toUpgrade * goldCostPerTroop;
+
+                if (warlord.Gold < totalGoldCost)
+                {
+                    toUpgrade = (int)(warlord.Gold / goldCostPerTroop);
+                    totalGoldCost = toUpgrade * goldCostPerTroop;
+                }
+
+                if (toUpgrade <= 0) continue;
+
+                var targetTroop = element.Character.UpgradeTargets[0];
+
+                // Upgrade uygula
+                party.MemberRoster.AddToCounts(element.Character, -toUpgrade);
+                party.MemberRoster.AddToCounts(targetTroop, toUpgrade);
+                warlord.Gold -= totalGoldCost;
+                upgradedAny = true;
+
+                // XP artÄ±ÄŸÄ±nÄ± koru: harcanan XP'yi dÃ¼ÅŸ, kalanÄ± tutmaya Ã§alÄ±ÅŸ.
+                // Not: AddToCounts sonrasÄ± i-nolu slot deÄŸiÅŸmiÅŸ olabilir.
+                // Yeni slotu bul ve kalan XP'yi yaz.
+                int remainingXp = currentXp - (toUpgrade * xpCost);
+                TrySetRemainingXp(party, element.Character, remainingXp);
+
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    DebugLogger.TestLog(
+                        $"[Upgrade] {party.Name}: {toUpgrade}x {element.Character.Name} â†’ {targetTroop.Name} (-{totalGoldCost} AltÄ±n)",
+                        Colors.Yellow);
+                }
+            }
+
+            if (upgradedAny)
+                party.RecentEventsMorale += 5f;
+        }
+
+        /// <summary>
+        /// Upgrade sonrasÄ± eski troop slotunda kalan XP'yi sÄ±fÄ±rlar.
+        /// Slot index'i kayabileceÄŸinden karakter Ã¼zerinden bulunur.
+        /// </summary>
+        private static void TrySetRemainingXp(MobileParty party, CharacterObject character, int remainingXp)
+        {
+            if (remainingXp <= 0) return;
+
+            try
+            {
+                for (int j = 0; j < party.MemberRoster.Count; j++)
+                {
+                    var el = party.MemberRoster.GetElementCopyAtIndex(j);
+                    if (el.Character != character) continue;
+
+                    // Mevcut XP'den fazlasÄ±nÄ± sil â€” slot'u remainingXp'ye getir
+                    int current = party.MemberRoster.GetElementXpAtIndex(j);
+                    if (current > remainingXp)
+                    {
+                        // AddXpToTroopAtIndex negatif deÄŸer almaz; sÄ±fÄ±rdan yeniden kurmak gerekiyor.
+                        // Mevcut Bannerlord API'sinde SetXp doÄŸrudan yok; workaround:
+                        // SayÄ±yÄ± Ã§Ä±kar-ekle ile slot'u sÄ±fÄ±rla, sonra remainingXp ekle.
+                        int count = el.Number;
+                        party.MemberRoster.AddToCounts(character, -count);
+                        party.MemberRoster.AddToCounts(character, count);
+                        // Yeni slot sÄ±fÄ±r XP ile baÅŸlar; kalan XP'yi ekle
+                        int newIdx = FindSlotIndex(party, character);
+                        if (newIdx >= 0 && remainingXp > 0)
+                            party.MemberRoster.AddXpToTroopAtIndex(remainingXp, newIdx);
+                    }
+                    break;
+                }
+            }
+            catch (Exception ex)
+            {
+                // XP sÄ±fÄ±rlama kritik deÄŸil â€” yutulabilir, birim zaten upgrade oldu
+                DebugLogger.Warning("MilitiaProgressionSystem",
+                    $"TrySetRemainingXp failed for {character?.Name}: {ex.Message}");
+            }
+        }
+
+        private static int FindSlotIndex(MobileParty party, CharacterObject character)
+        {
+            for (int i = 0; i < party.MemberRoster.Count; i++)
+            {
+                if (party.MemberRoster.GetElementCopyAtIndex(i).Character == character)
+                    return i;
+            }
+            return -1;
+        }
+
+        /// <summary>
+        /// Legacy compatibility bridge.
+        /// Old callers can forward upgrade intent without duplicating logic.
+        /// </summary>
+        public void UpgradePartyTroopsCompat(MobileParty party, Warlord warlord)
+        {
+            if (!IsEnabled) return;
+            TryUpgradeRoster(party, warlord);
+        }
+
+        // â”€â”€ MilitiaModuleBase zorunlu override'lar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        public override void OnTick(float dt) { }
+        public override void OnHourlyTick() { }
+
+        public override string GetDiagnostics()
+        {
+            int poolTotal = 0;
+            foreach (var v in _hordeXpPool.Values) poolTotal += v;
+            return $"MilitiaProgression: HordePool={poolTotal} XP | Warlords={_hordeXpPool.Count}";
+        }
+
+        public override void SyncData(TaleWorlds.SaveSystem.IDataStore ds)
+        {
+            // Horde XP havuzu kalÄ±cÄ± deÄŸil (gÃ¼nlÃ¼k sÄ±fÄ±rlanÄ±r), kayÄ±t gerekmez
+        }
+
+        public override void Cleanup()
+        {
+            _hordeXpPool.Clear();
+        }
+    }
+}
+

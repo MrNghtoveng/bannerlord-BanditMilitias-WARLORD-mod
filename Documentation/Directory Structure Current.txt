@@ -1,0 +1,284 @@
+﻿Directory structure:
+└── mrnghtoveng-bannerlord-banditmilitias-warlord-mod/
+    └── src/
+        └── BanditMilitias/
+            ├── BanditMilitias.Tests/
+            │   ├── AdaptiveDoctrineRulesTests.cs
+            │   ├── ArchitectureTests.cs
+            │   ├── BanditMilitias.Tests.csproj
+            │   ├── BanditMilitias.Tests.sln
+            │   ├── BanditPoliticsRulesTests.cs
+            │   ├── BanditTestHubIntegrationTests.cs
+            │   ├── ContractIntegrityTests.cs
+            │   ├── DecisionRulesTests.cs
+            │   ├── MockingHub.cs
+            │   ├── ModuleManagerRetryTests.cs
+            │   ├── ModuleRegistryHealthAnalyzerTests.cs
+            │   ├── ModuleRegistryTests.cs
+            │   ├── PIDControllerTests.cs
+            │   ├── RegistryAuditTests.cs
+            │   ├── RegressionFixTests.cs
+            │   ├── SpawnCleanupIntegrationWiringTests.cs
+            │   ├── SpawnDecisionRulesTests.cs
+            │   ├── SpawnPipelineIntegrationTests.cs
+            │   ├── TelemetryRegressionTests.cs
+            │   ├── TestSourceHelper.cs
+            │   ├── WarlordIntegrationTests.cs
+            │   ├── WarlordProgressionRulesTests.cs
+            │   └── XmlValidationTests.cs
+            ├── Behaviors/
+            │   ├── MilitiaBehavior.cs
+            │   ├── MilitiaDiplomacyCampaignBehavior.cs
+            │   └── WarlordCampaignBehavior.cs
+            ├── Components/
+            │   └── MilitiaPartyComponent.cs
+            ├── Core/
+            │   ├── Components/
+            │   │   ├── MilitiaModuleBase.cs
+            │   │   └── ModuleSpecializations.cs
+            │   ├── Config/
+            │   │   ├── Constants.cs
+            │   │   └── DynamicDifficulty.cs
+            │   ├── Events/
+            │   │   ├── EventBus.cs
+            │   │   └── Events.cs
+            │   ├── Memory/
+            │   │   └── WorldMemory.cs
+            │   ├── Neural/
+            │   │   ├── NervousSystem.cs
+            │   │   └── NeuralEventRouter.cs
+            │   ├── Registry/
+            │   │   └── ModuleRegistry.cs
+            │   └── MathUtils.cs
+            ├── Debug/
+            │   ├── Debug.cs
+            │   └── DebugLogger.cs
+            ├── Documentation/
+            │   ├── Exports/
+            │   │   ├── FULL_CODE_EXPORT_2026-04-25.txt
+            │   │   └── FULL_CODE_EXPORT_2026-04-25_CURRENT.txt
+            │   ├── ExternalDocs/
+            │   │   ├── BanditMilitias_KURULUM.md
+            │   │   ├── BanditMilitias_README.md
+            │   │   ├── BannerlordTestSim_KOMUTLAR.txt
+            │   │   └── BannerlordTestSim_README.md
+            │   ├── ModuleCodeExports/
+            │   │   ├── ModuleID_A_Scheduler.txt
+            │   │   ├── ModuleID_AdaptiveA_DoctrineSystem.txt
+            │   │   ├── ModuleID_AscensionEvaluator.txt
+            │   │   ├── ModuleID_BanditPoliticsSystem.txt
+            │   │   ├── ModuleID_BountySystem.txt
+            │   │   ├── ModuleID_CaravanTaxSystem.txt
+            │   │   ├── ModuleID_CleanupSystem.txt
+            │   │   ├── ModuleID_ConsolidationSystem.txt
+            │   │   ├── ModuleID_CrisisEvents.txt
+            │   │   ├── ModuleID_DevDataCollector.txt
+            │   │   ├── ModuleID_FearSystem.txt
+            │   │   ├── ModuleID_HardcoreDynamicHideoutSystem.txt
+            │   │   ├── ModuleID_JailbreakMissionSystem.txt
+            │   │   ├── ModuleID_MilitiaAssertionSystem.txt
+            │   │   ├── ModuleID_MilitiaMoraleSystem.txt
+            │   │   ├── ModuleID_MilitiaProgressionSystem.txt
+            │   │   ├── ModuleID_MilitiaRaidSystem.txt
+            │   │   ├── ModuleID_MilitiaUpgradeSystem_LEGACY.txt
+            │   │   ├── ModuleID_NarrativeSystem.txt
+            │   │   ├── ModuleID_NervousSystem.txt
+            │   │   ├── ModuleID_SeasonalEffectsSystem.txt
+            │   │   ├── ModuleID_SpatialGrid.txt
+            │   │   ├── ModuleID_SpawningSystem.txt
+            │   │   ├── ModuleID_StaticDataCache.txt
+            │   │   ├── ModuleID_SwarmCoordinator.txt
+            │   │   ├── ModuleID_Territory_nfluence.txt
+            │   │   ├── ModuleID_TroopProgressionSystem_LEGACY.txt
+            │   │   ├── ModuleID_WarlordBehaviorSystem.txt
+            │   │   ├── ModuleID_WarlordCareer.txt
+            │   │   ├── ModuleID_WarlordEconomy.txt
+            │   │   ├── ModuleID_WarlordLegacy.txt
+            │   │   ├── ModuleID_WarlordLogisticsSystem.txt
+            │   │   ├── ModuleID_WarlordSuccessionSystem.txt
+            │   │   ├── ModuleID_WarlordTacticsSystem.txt
+            │   │   ├── ModuleID_WarlordWorkshopSystem.txt
+            │   │   └── ModuleID_WorldMemory.txt
+            │   ├── UpgradeArchive/
+            │   ├── AI_Assisted_Development.md
+            │   ├── AI_Assisted_Development.txt
+            │   ├── AIArchitecture.md
+            │   ├── AIArchitecture.txt
+            │   ├── ArchitectureRetrospective_Expanded_TR.md
+            │   ├── BanditMilitias_Commands.txt
+            │   ├── Directory Notes.md
+            │   ├── Directory Structure.md
+            │   ├── Documentation_Index_TR.md
+            │   ├── InGameTestingGuide.md
+            │   ├── InGameTestingGuide.txt
+            │   ├── LazySingleton_StaticLifecycle_Audit_TR.md
+            │   ├── Module_Categorization_Strategy_TR.md
+            │   ├── Module_ID_Assessment_TR.md
+            │   ├── ModuleConnectionTree_TR.md
+            │   ├── ModuleHierarchy.md
+            │   ├── ModuleHierarchy.txt
+            │   ├── Progression_Dedup_Status_TR.md
+            │   ├── ProjectHierarchy.md
+            │   ├── ProjectHierarchy.txt
+            │   ├── SilentCatch_Audit_TR.md
+            │   ├── strategic_evaluation_vision_report.md
+            │   └── SystemFlowTree.md
+            ├── GUI/
+            │   ├── GauntletUI/
+            │   │   └── MilitiaIntelLayer.cs
+            │   └── ViewModels/
+            │       └── LackeyVM.cs
+            ├── Infrastructure/
+            │   ├── Mcm/
+            │   │   └── McmAbstractionsCompat.cs
+            │   ├── BanditMilitiasSaveDefiner.cs
+            │   ├── ClanCache.cs
+            │   ├── CompatibilityLayer.cs
+            │   ├── ExceptionMonitor.cs
+            │   ├── FileLogger.cs
+            │   ├── HealthCheck.cs
+            │   ├── ModuleInfra.cs
+            │   ├── ModuleManager.cs
+            │   ├── SafeTelemetry.cs
+            │   └── Utilities.cs
+            ├── Intelligence/
+            │   ├── AI/
+            │   │   ├── Components/
+            │   │   │   ├── DataCache.cs
+            │   │   │   ├── MilitiaActionExecutor.cs
+            │   │   │   ├── MilitiaAISensors.cs
+            │   │   │   └── MilitiaDecider.cs
+            │   │   ├── CustomMilitiaAI.cs
+            │   │   ├── PatrolDetection.cs
+            │   │   └── ScoringFunctions.cs
+            │   ├── Logging/
+            │   │   └── AIDecisionLogger.cs
+            │   ├── Narrative/
+            │   │   └── WarlordNarrative.cs
+            │   ├── Neural/
+            │   │   ├── ExperienceBuffer.cs
+            │   │   ├── NeuralAdvisor.cs
+            │   │   ├── NeuralCore.cs
+            │   │   └── NeuralDataExporter.cs
+            │   ├── Strategic/
+            │   │   ├── BanditBrain.cs
+            │   │   ├── HTNEngine.cs
+            │   │   ├── StrategyEngine.cs
+            │   │   └── WarlordSystem.cs
+            │   ├── Swarm/
+            │   │   └── SwarmCoordinator.cs
+            │   └── Tactical/
+            │       ├── AmbushTactics.cs
+            │       ├── HTNCore.cs
+            │       ├── TacticalDoctrines.cs
+            │       ├── TacticalTasks.cs
+            │       └── WarlordTacticalMissionBehavior.cs
+            ├── Models/
+            │   ├── BanditCombatSimulationModel.cs
+            │   └── GameModels.cs
+            ├── ModuleData/
+            │   ├── GUI/
+            │   │   └── Prefabs/
+            │   │       └── LackeyPanel.xml
+            │   ├── Languages/
+            │   │   ├── EN/
+            │   │   │   └── std_BanditMilitias_xml_en.xml
+            │   │   └── TR/
+            │   │       └── std_BanditMilitias_xml_tr.xml
+            │   ├── bandits.xml
+            │   ├── check_xml_sync.py
+            │   ├── check_xmls.py
+            │   ├── check_xmls_portable.py
+            │   ├── fix_xmls.py
+            │   └── lords.xml
+            ├── Patches/
+            │   ├── AiPatrollingBehaviorPatch.cs
+            │   ├── BanditAiPatch.cs
+            │   ├── MilitiaSpeedPatch.cs
+            │   ├── MilitiaVisibilityPatch.cs
+            │   └── SurrenderCrashPatch.cs
+            ├── System.IndexRange/
+            │   ├── Index.cs
+            │   └── Range.cs
+            ├── Systems/
+            │   ├── AI/
+            │   │   ├── AdaptiveAIDoctrineSystem.cs
+            │   │   ├── AdaptiveDoctrineDataLogger.cs
+            │   │   ├── AdaptiveDoctrineTypes.cs
+            │   │   └── MilitiaEquipmentManager.cs
+            │   ├── Behavior/
+            │   │   └── WarlordBehaviorSystem.cs
+            │   ├── Bounty/
+            │   │   └── BountySystem.cs
+            │   ├── Cleanup/
+            │   │   ├── MilitiaConsolidationSystem.cs
+            │   │   └── PartyCleanupSystem.cs
+            │   ├── Combat/
+            │   │   ├── Combat.cs
+            │   │   └── MilitiaMoraleSystem.cs
+            │   ├── Crisis/
+            │   │   └── CrisisEventSystem.cs
+            │   ├── Dev/
+            │   │   └── DevDataCollector.cs
+            │   ├── Diagnostics/
+            │   │   ├── BanditTestHub.cs
+            │   │   ├── DiagnosticsSystem.cs
+            │   │   ├── MilitiaAssertionSystem.cs
+            │   │   └── ModuleRegistryHealthAnalyzer.cs
+            │   ├── Diplomacy/
+            │   │   ├── BanditPoliticsSystem.cs
+            │   │   ├── DuelSystem.cs
+            │   │   ├── ExtortionSystem.cs
+            │   │   └── PropagandaSystem.cs
+            │   ├── Economy/
+            │   │   ├── BlackMarketSystem.cs
+            │   │   ├── CaravanTaxSystem.cs
+            │   │   └── WarlordEconomySystem.cs
+            │   ├── Enhancement/
+            │   │   └── EnhancementSystem.cs
+            │   ├── Events/
+            │   │   └── JailbreakMissionSystem.cs
+            │   ├── Fear/
+            │   │   └── FearSystem.cs
+            │   ├── Grid/
+            │   │   ├── CampaignGridSystem.cs
+            │   │   └── SpatialGridSystem.cs
+            │   ├── Heroics/
+            │   ├── Legacy/
+            │   │   └── WarlordLegacySystem.cs
+            │   ├── Logistics/
+            │   │   └── WarlordLogisticsSystem.cs
+            │   ├── Progression/
+            │   │   ├── AscensionEvaluator.cs
+            │   │   ├── MilitiaProgressionSystem.cs
+            │   │   ├── MilitiaUpgradeSystem.cs
+            │   │   ├── TroopProgressionSystem.cs
+            │   │   ├── WarlordProgression.cs
+            │   │   └── WarlordSuccessionSystem.cs
+            │   ├── Raiding/
+            │   │   └── MilitiaRaidSystem.cs
+            │   ├── Scheduling/
+            │   │   └── AISchedulerSystem.cs
+            │   ├── Seasonal/
+            │   │   └── SeasonalEffectsSystem.cs
+            │   ├── Spawning/
+            │   │   ├── DynamicHideoutSystem.cs
+            │   │   ├── MilitiaNameGenerator.cs
+            │   │   └── MilitiaSpawningSystem.cs
+            │   ├── Territory/
+            │   │   └── TerritorySystem.cs
+            │   ├── Tracking/
+            │   │   ├── ActivityTracker.cs
+            │   │   └── PlayerTracker.cs
+            │   └── Workshop/
+            │       └── WarlordWorkshopSystem.cs
+            ├── tools/
+            │   └── Validate-ModuleDataXml.ps1
+            ├── BanditMilitias.csproj
+            ├── BanditMilitias.sln
+            ├── KURULUM.md
+            ├── Module.xsd
+            ├── README.md
+            ├── Settings.cs
+            ├── SubModule.cs
+            └── SubModule.xml

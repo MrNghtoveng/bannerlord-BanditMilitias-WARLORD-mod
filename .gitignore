@@ -13,6 +13,8 @@ TestResults/
 # IDE
 .vs/
 .idea/
+
+# Visual Studio
 *.suo
 *.user
 *.userosscache
@@ -54,3 +56,6 @@ BanditMilitias_FullSim.txt
 # OS
 Thumbs.db
 Desktop.ini
+
+# Dotnet local home/cache used in this workspace
+.dotnet_home/

@@ -1,0 +1,606 @@
+using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Events;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Systems.Fear;
+using BanditMilitias.Systems.Progression;
+using BanditMilitias.Core.Neural;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Actions;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
+using TaleWorlds.Localization;
+using TaleWorlds.SaveSystem;
+using BanditPersonality = BanditMilitias.Intelligence.Strategic.PersonalityType;
+using MathF = TaleWorlds.Library.MathF;
+
+namespace BanditMilitias.Systems.Raiding
+{
+
+    public enum RaidOutcome
+    {
+        Success,
+        Repelled,
+        PartialSuccess,
+        Aborted
+    }
+
+    public enum RaidIntensity
+    {
+
+        Skirmish = 0,
+
+        Standard = 1,
+
+        Pillage = 2
+    }
+
+    [Serializable]
+    public class RaidRecord
+    {
+        public string SettlementId { get; set; } = string.Empty;
+        public string AttackerPartyId { get; set; } = string.Empty;
+        public string WarlordId { get; set; } = string.Empty;
+        public CampaignTime RaidTime { get; set; }
+        public RaidOutcome Outcome { get; set; }
+        public int GoldLooted { get; set; }
+        public float ProsperityDamage { get; set; }
+        public RaidIntensity Intensity { get; set; }
+    }
+
+    [Serializable]
+    public class VillageRaidTracker
+    {
+
+        [SaveableProperty(1)]
+        public Dictionary<string, CampaignTime> LastRaidTimes { get; set; } = new();
+
+        [SaveableProperty(2)]
+        public Dictionary<string, int> RaidCounts { get; set; } = new();
+
+        [SaveableProperty(3)]
+        public List<string> Blacklisted { get; set; } = new();
+
+        public bool CanRaid(string settlementId, int cooldownDays)
+        {
+            if (Blacklisted.Contains(settlementId)) return false;
+
+            if (LastRaidTimes.TryGetValue(settlementId, out var lastRaid))
+            {
+                float daysSince = (float)(CampaignTime.Now - lastRaid).ToDays;
+                return daysSince >= cooldownDays;
+            }
+            return true;
+        }
+
+        public void RecordRaid(string settlementId, CampaignTime time)
+        {
+            LastRaidTimes[settlementId] = time;
+            if (!RaidCounts.ContainsKey(settlementId))
+                RaidCounts[settlementId] = 0;
+            RaidCounts[settlementId]++;
+        }
+
+        public float DaysSinceLastRaid(string settlementId)
+        {
+            if (!LastRaidTimes.TryGetValue(settlementId, out var last))
+                return float.MaxValue;
+            return (float)(CampaignTime.Now - last).ToDays;
+        }
+
+        public void CleanupOldData(int maxAgeDays = 120)
+        {
+            var stale = LastRaidTimes
+                .Where(kv => (CampaignTime.Now - kv.Value).ToDays > maxAgeDays)
+                .Select(kv => kv.Key)
+                .ToList();
+            foreach (var id in stale)
+                _ = LastRaidTimes.Remove(id);
+        }
+    }
+
+    [BanditMilitias.Core.Components.AutoRegister]
+    public class MilitiaRaidSystem : MilitiaModuleBase
+    {
+
+        public override string ModuleName => "MilitiaRaidSystem";
+        public override bool IsEnabled => Settings.Instance?.EnableMilitiaRaids ?? true;
+        public override int Priority => 55;
+
+        private static readonly Lazy<MilitiaRaidSystem> _instance =
+            new Lazy<MilitiaRaidSystem>(() => new MilitiaRaidSystem());
+        public static MilitiaRaidSystem Instance => _instance.Value;
+
+        private VillageRaidTracker _tracker = new VillageRaidTracker();
+        private readonly List<RaidRecord> _recentRaids = new List<RaidRecord>();
+
+        private const int RAID_COOLDOWN_DAYS = 7;
+        private const float RAID_DETECTION_RADIUS = 32f;
+        private const float SKIRMISH_HEARTH_DAMAGE = 0.06f;
+        private const float STANDARD_HEARTH_DAMAGE = 0.13f;
+        private const float PILLAGE_HEARTH_DAMAGE = 0.28f;
+        private const float BLACKLIST_THRESHOLD = 0.20f;
+        private const int MAX_RECENT_RAIDS = 50;
+        private const int MAX_RAIDS_PER_DAY = 6;
+
+        private const float QUALITY_WEIGHT = 1.4f;
+        private const float TERRAIN_ADVANTAGE = 1.2f;
+
+        private bool _isInitialized = false;
+        private int _lastProcessedDay = -1;
+        private int _raidsExecutedToday = 0;
+
+        private MilitiaRaidSystem() { }
+
+        public override void Initialize()
+        {
+            if (_isInitialized) return;
+            _isInitialized = true;
+
+            DebugLogger.Info("RaidSystem", "MilitiaRaidSystem initialized.");
+        }
+
+        public override void Cleanup()
+        {
+            _tracker = new VillageRaidTracker();
+            _recentRaids.Clear();
+            _isInitialized = false;
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            _tracker.CleanupOldData();
+
+            int dayStamp = (int)CampaignTime.Now.ToDays;
+            if (dayStamp != _lastProcessedDay)
+            {
+                _lastProcessedDay = dayStamp;
+                _raidsExecutedToday = 0;
+            }
+
+            foreach (var party in ModuleManager.Instance.ActiveMilitias)
+            {
+                if (_raidsExecutedToday >= MAX_RAIDS_PER_DAY) break;
+                if (party == null || !party.IsActive) continue;
+
+                var militia = party.PartyComponent as BanditMilitias.Components.MilitiaPartyComponent;
+                if (militia == null || !militia.IsRaiderRole) continue;
+
+                float raidChance = GetRaidChanceForPersonality(militia);
+                if (MBRandom.RandomFloat > raidChance) continue;
+
+                var target = FindRaidTarget(party);
+                if (target == null) continue;
+
+                RaidIntensity intensity = DetermineIntensity(militia);
+
+                ExecuteRaid(party, target, intensity);
+                _raidsExecutedToday++;
+            }
+        }
+
+        private Settlement? FindRaidTarget(MobileParty militia)
+        {
+            var militiaPos = CompatibilityLayer.GetPartyPosition(militia);
+            var nearbyVillages = ModuleManager.Instance.GetNearbySettlements(
+                militiaPos,
+                RAID_DETECTION_RADIUS,
+                SettlementType.Village);
+
+            Settlement? best = null;
+            float bestScore = float.MaxValue;
+
+            for (int i = 0; i < nearbyVillages.Count; i++)
+            {
+                var settlement = nearbyVillages[i];
+                if (settlement == null || !settlement.IsVillage || settlement.IsUnderRaid) continue;
+                if (!_tracker.CanRaid(settlement.StringId, RAID_COOLDOWN_DAYS)) continue;
+
+                var village = settlement.Village;
+                if (village == null || village.Hearth <= 200f) continue;
+
+                float score = CalculateDefensePower(settlement) / MathF.Max(1f, village.Hearth);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = settlement;
+                }
+            }
+
+            return best;
+        }
+
+        private float CalculateDefensePower(Settlement village)
+        {
+            float villagers = village.Village?.Hearth / 20f ?? 10f;
+            float militia = village.Militia;
+            float total = villagers + militia;
+
+            float quality = village.IsTown ? 1.6f : 1.0f;
+
+            return MathF.Sqrt(total * quality);
+        }
+
+        private float CalculateAttackPower(MobileParty militia)
+        {
+            int troops = militia.MemberRoster?.TotalManCount ?? 1;
+            float quality = CompatibilityLayer.GetTotalStrength(militia) / MathF.Max(1, troops);
+
+            return MathF.Sqrt(troops * quality * QUALITY_WEIGHT) * TERRAIN_ADVANTAGE;
+        }
+
+        private void ExecuteRaid(MobileParty militia, Settlement target, RaidIntensity intensity)
+        {
+            float attackPower = CalculateAttackPower(militia);
+            float defensePower = CalculateDefensePower(target);
+
+            float winChance = MathF.Clamp(attackPower / (attackPower + defensePower), 0.15f, 0.90f);
+            bool success = MBRandom.RandomFloat < winChance;
+
+            RaidOutcome outcome;
+            int goldLooted = 0;
+            float hearth = target.Village?.Hearth ?? 200f;
+            float prosperityDamage = 0f;
+
+            if (success)
+            {
+                outcome = intensity == RaidIntensity.Pillage
+                    ? RaidOutcome.Success
+                    : RaidOutcome.PartialSuccess;
+
+                (goldLooted, prosperityDamage) = CalculateLoot(hearth, intensity);
+                goldLooted = ApplyAntiSnowballLootScaling(goldLooted, target, militia);
+
+                if (target.Village != null && target.Village.Hearth - prosperityDamage < hearth * BLACKLIST_THRESHOLD)
+                {
+                    if (!_tracker.Blacklisted.Contains(target.StringId))
+                        _tracker.Blacklisted.Add(target.StringId);
+                }
+
+                try
+                {
+                    ChangeVillageStateAction.ApplyBySettingToBeingRaided(target, militia);
+                }
+                catch (Exception ex)
+                {
+                    DebugLogger.Warning("RaidSystem", $"ChangeVillageStateAction failed for {target.Name}: {ex.Message}");
+
+                    if (target.Village != null)
+                        target.Village.Hearth = MathF.Max(50f, target.Village.Hearth - prosperityDamage);
+                }
+
+                DistributeRaidLoot(militia, goldLooted);
+
+                NotifyFearSystem(militia, target, intensity, success);
+                NotifyLegitimacySystem(militia, target, intensity);
+            }
+            else
+            {
+                outcome = RaidOutcome.Repelled;
+
+                ApplyMilitiaRaidLosses(militia);
+
+                NotifyFearSystem(militia, target, intensity, false);
+            }
+
+            _tracker.RecordRaid(target.StringId, CampaignTime.Now);
+
+            var record = new RaidRecord
+            {
+                SettlementId = target.StringId,
+                AttackerPartyId = militia.StringId,
+                WarlordId = militia.LeaderHero?.StringId ?? "",
+                RaidTime = CampaignTime.Now,
+                Outcome = outcome,
+                GoldLooted = goldLooted,
+                ProsperityDamage = prosperityDamage,
+                Intensity = intensity
+            };
+
+            AddRaidRecord(record);
+            LogRaidResult(militia, target, outcome, goldLooted, intensity);
+            PublishRaidEvents(militia, target, outcome, goldLooted, intensity);
+
+            TelemetryBridge.LogEvent("RaidResult", new
+            {
+                settlement = target.StringId,
+                gold = goldLooted,
+                intensity,
+                outcome
+            });
+        }
+
+        private (int gold, float damage) CalculateLoot(float hearth, RaidIntensity intensity)
+        {
+            float lootMultiplier = Settings.Instance?.RaidLootMultiplier ?? 1.0f;
+
+            // Mevsimsel baskın çarpanı (Sonbahar +%25, Kış -%30, Yaz -%10)
+            try
+            {
+                lootMultiplier *= BanditMilitias.Systems.Seasonal.SeasonalEffectsSystem.Instance.RaidLootMultiplier;
+            }
+            catch (Exception ex) 
+            { 
+                DebugLogger.Warning("RaidSystem", $"Seasonal loot multiplier failed: {ex.Message}");
+            }
+
+            float damageRatio = intensity switch
+            {
+                RaidIntensity.Skirmish => SKIRMISH_HEARTH_DAMAGE,
+                RaidIntensity.Standard => STANDARD_HEARTH_DAMAGE,
+                RaidIntensity.Pillage => PILLAGE_HEARTH_DAMAGE,
+                _ => STANDARD_HEARTH_DAMAGE
+            };
+
+            float damage = hearth * damageRatio;
+
+            float goldBase = damage * 2.5f * lootMultiplier;
+
+            if (intensity == RaidIntensity.Pillage)
+                goldBase *= 1f + MBRandom.RandomFloat * 0.4f;
+
+            int gold = (int)MathF.Clamp(goldBase, 50f, 8000f);
+
+            return (gold, damage);
+        }
+
+        private int ApplyAntiSnowballLootScaling(int baseGold, Settlement target, MobileParty militia)
+        {
+            int priorRaidCount = GetRaidCount(target);
+            float repeatPenalty = MathF.Clamp(1f - (priorRaidCount * 0.06f), 0.55f, 1f);
+
+            var warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            float currentGold = warlord?.Gold ?? 0f;
+            float treasuryPenalty = WarlordEconomyPolicy.Current.GetRaidTreasuryPenalty(currentGold);
+
+            float scaled = baseGold * repeatPenalty * treasuryPenalty;
+            return (int)MathF.Max(25f, scaled);
+        }
+
+        private void DistributeRaidLoot(MobileParty militia, int gold)
+        {
+
+            var warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            if (warlord != null)
+            {
+                warlord.Gold += gold;
+
+                if (Settings.Instance?.TestingMode == true)
+                    DebugLogger.Info("RaidSystem",
+                        $"Loot sent to Warlord [{warlord.Name}]: +{gold}g");
+            }
+            else
+            {
+
+                if (militia.LeaderHero != null)
+                    GiveGoldAction.ApplyBetweenCharacters(null, militia.LeaderHero, gold, false);
+            }
+        }
+
+        private void NotifyFearSystem(
+            MobileParty militia,
+            Settlement target,
+            RaidIntensity intensity,
+            bool success)
+        {
+            if (!ModuleAccess.TryGetEnabled<FearSystem>(out var fearSystem)) return;
+
+            string warlordId = militia.LeaderHero?.StringId ?? militia.StringId;
+
+            if (success)
+            {
+
+                (float fearDelta, float respectDelta) = intensity switch
+                {
+                    RaidIntensity.Skirmish => (0.06f, 0.01f),
+                    RaidIntensity.Standard => (0.12f, 0.02f),
+                    RaidIntensity.Pillage => (0.22f, -0.01f),
+                    _ => (0.10f, 0.01f)
+                };
+
+                fearSystem.ApplyPressureEvent(
+                    target, warlordId, fearDelta, respectDelta,
+                    $"{intensity} raid");
+            }
+            else
+            {
+
+                fearSystem.ApplyPressureEvent(
+                    target, warlordId, -0.05f, 0f,
+                    "Failed raid attempt");
+            }
+        }
+
+        private void NotifyLegitimacySystem(
+            MobileParty militia,
+            Settlement target,
+            RaidIntensity intensity)
+        {
+            if (intensity != RaidIntensity.Pillage) return;
+            if (!ModuleAccess.TryGetEnabled<WarlordLegitimacySystem>(out var legitimacySystem)) return;
+
+            var warlord = WarlordSystem.Instance.GetWarlordForParty(militia);
+            if (warlord == null) return;
+
+            legitimacySystem.OnVillagePillaged(warlord, target);
+        }
+
+        private float GetRaidChanceForPersonality(
+            BanditMilitias.Components.MilitiaPartyComponent militia)
+        {
+            var brain = militia.Brain;
+            if (brain == null) return 0.20f;
+
+            return brain.PersonalityType switch
+            {
+                BanditPersonality.Aggressive => 0.45f,
+                BanditPersonality.Cautious => 0.12f,
+                BanditPersonality.Cunning => 0.28f,
+                BanditPersonality.Vengeful => 0.38f,
+                _ => 0.20f
+            };
+        }
+
+        private RaidIntensity DetermineIntensity(
+            BanditMilitias.Components.MilitiaPartyComponent militia)
+        {
+            var brain = militia.Brain;
+            if (brain == null) return RaidIntensity.Standard;
+
+            float roll = MBRandom.RandomFloat;
+
+            return brain.PersonalityType switch
+            {
+                BanditPersonality.Aggressive =>
+                    roll < 0.25f ? RaidIntensity.Skirmish :
+                    roll < 0.55f ? RaidIntensity.Standard : RaidIntensity.Pillage,
+
+                BanditPersonality.Cautious =>
+                    roll < 0.65f ? RaidIntensity.Skirmish :
+                    roll < 0.95f ? RaidIntensity.Standard : RaidIntensity.Pillage,
+
+                BanditPersonality.Cunning =>
+                    roll < 0.40f ? RaidIntensity.Skirmish : RaidIntensity.Standard,
+
+                BanditPersonality.Vengeful =>
+                    roll < 0.15f ? RaidIntensity.Skirmish :
+                    roll < 0.40f ? RaidIntensity.Standard : RaidIntensity.Pillage,
+
+                _ => RaidIntensity.Standard
+            };
+        }
+
+        private void ApplyMilitiaRaidLosses(MobileParty militia)
+        {
+            int troops = militia.MemberRoster?.TotalManCount ?? 0;
+            if (troops <= 0) return;
+
+            float lossRatio = 0.08f + MBRandom.RandomFloat * 0.10f;
+            int losses = MathF.Max(1, (int)(troops * lossRatio));
+
+            var roster = militia.MemberRoster;
+            if (roster != null)
+            {
+
+                var weakestTroop = roster.GetTroopRoster()
+                    .Where(r => !r.Character.IsHero)
+                    .OrderBy(r => r.Character.Level)
+                    .FirstOrDefault();
+
+                if (weakestTroop.Character != null)
+                {
+                    int actualLoss = MathF.Min(losses, weakestTroop.Number);
+                    _ = roster.AddToCounts(weakestTroop.Character, -actualLoss);
+                }
+            }
+        }
+
+        private void AddRaidRecord(RaidRecord record)
+        {
+            _recentRaids.Insert(0, record);
+            if (_recentRaids.Count > MAX_RECENT_RAIDS)
+                _recentRaids.RemoveAt(_recentRaids.Count - 1);
+        }
+
+        private static void PublishRaidEvents(
+            MobileParty militia,
+            Settlement target,
+            RaidOutcome outcome,
+            int goldLooted,
+            RaidIntensity intensity)
+        {
+            var raidEvent = EventBus.Instance.Get<MilitiaRaidEvent>();
+            raidEvent.Raider = militia;
+            raidEvent.Target = target;
+            raidEvent.Success = outcome == RaidOutcome.Success || outcome == RaidOutcome.PartialSuccess;
+            raidEvent.LootGained = goldLooted;
+            NeuralEventRouter.Instance.Publish(raidEvent);
+            EventBus.Instance.Return(raidEvent);
+
+            var completedEvent = EventBus.Instance.Get<MilitiaRaidCompletedEvent>();
+            completedEvent.RaiderParty = militia;
+            completedEvent.TargetVillage = target;
+            completedEvent.Outcome = outcome;
+            completedEvent.GoldLooted = goldLooted;
+            completedEvent.Intensity = intensity;
+            NeuralEventRouter.Instance.Publish(completedEvent);
+            EventBus.Instance.Return(completedEvent);
+
+            // Köy direnişi → VillageResistanceEvent
+            if (outcome == RaidOutcome.Aborted || outcome == RaidOutcome.Repelled)
+            {
+                var resistEvt = EventBus.Instance.Get<BanditMilitias.Core.Events.VillageResistanceEvent>();
+                if (resistEvt != null)
+                {
+                    resistEvt.Village = target;
+                    resistEvt.WarlordId = (militia?.PartyComponent as BanditMilitias.Components.MilitiaPartyComponent)?.WarlordId ?? "";
+                    NeuralEventRouter.Instance.Publish(resistEvt);
+                    EventBus.Instance.Return(resistEvt);
+                }
+            }
+        }
+
+        private void LogRaidResult(
+            MobileParty militia,
+            Settlement target,
+            RaidOutcome outcome,
+            int goldLooted,
+            RaidIntensity intensity)
+        {
+            if (Settings.Instance?.TestingMode != true) return;
+
+            string outcomeTr = outcome switch
+            {
+                RaidOutcome.Success => new TextObject("{=BM_Raid_Success}Successful").ToString(),
+                RaidOutcome.Repelled => new TextObject("{=BM_Raid_Repelled}Repelled").ToString(),
+                RaidOutcome.PartialSuccess => new TextObject("{=BM_Raid_Partial}Partial Success").ToString(),
+                RaidOutcome.Aborted => new TextObject("{=BM_Raid_Aborted}Aborted").ToString(),
+                _ => "?"
+            };
+
+            DebugLogger.Info("RaidSystem",
+                $"[{intensity}] {militia.Name}  {target.Name}: " +
+                $"{outcomeTr} | Loot: {goldLooted}g");
+        }
+
+        public bool CanRaid(Settlement settlement) =>
+            _tracker.CanRaid(settlement.StringId, RAID_COOLDOWN_DAYS);
+
+        public float DaysSinceLastRaid(Settlement settlement) =>
+            _tracker.DaysSinceLastRaid(settlement.StringId);
+
+        public int GetRaidCount(Settlement settlement) =>
+            _tracker.RaidCounts.TryGetValue(settlement.StringId, out int c) ? c : 0;
+
+        public List<RaidRecord> GetRecentRaids() => _recentRaids.ToList();
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            _ = dataStore.SyncData("_raidTracker_v1", ref _tracker);
+
+            if (dataStore.IsLoading && _tracker == null)
+                _tracker = new VillageRaidTracker();
+        }
+
+        public override string GetDiagnostics()
+        {
+            int blacklisted = _tracker.Blacklisted.Count;
+            int tracked = _tracker.LastRaidTimes.Count;
+            int recentSuccess = _recentRaids.Count(r => r.Outcome == RaidOutcome.Success);
+            int totalGold = _recentRaids.Sum(r => r.GoldLooted);
+
+            return $"RaidSystem:\n" +
+                   $"  Tracked Settlements: {tracked}\n" +
+                   $"  Blacklisted (exhausted): {blacklisted}\n" +
+                   $"  Recent Raids: {_recentRaids.Count} ({recentSuccess} success)\n" +
+                   $"  Total Gold Looted: {totalGold:N0}";
+        }
+    }
+}

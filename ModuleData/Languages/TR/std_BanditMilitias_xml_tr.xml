@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="utf-8"?>
+<base xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema" type="string">
+    <tags>
+        <tag language="Türkçe"/>
+    </tags>
+    <strings>
+        <!-- General / MCM Settings -->
+        <string id="BMPrimary" text="Temel Ayarlar"/>
+        <string id="BMSizeAdjustments" text="Boyut Ayarlamaları"/>
+        <string id="BMAdjustments" text="Milis Ayarlamaları"/>
+        <string id="BMXpOff" text="Kapalı"/>
+        <string id="BMXpNormal" text="Normal"/>
+        <string id="BMXpHard" text="Zor"/>
+        <string id="BMXpHardest" text="Çok Zor"/>
+        <string id="BMGoldLow" text="Düşük"/>
+        <string id="BMGoldNormal" text="Normal"/>
+        <string id="BMGoldRich" text="Zengin"/>
+        <string id="BMGoldRichest" text="Çok Zengin"/>
+
+        <string id="BMTrain" text="Milisleri Eğit"/>
+        <string id="BMTrainDesc" text="Haydut kahramanlar milislerini eğitecek."/>
+        <string id="BMDailyTrain" text="Günlük Eğitim Şansı"/>
+        <string id="BMDailyTrainDesc" text="Her gün daha fazla eğitim yapma şansı."/>
+        <string id="BMXpBoost" text="Milis XP Takviyesi"/>
+        <string id="BMXpBoostDesc" text="'Çok Zor' birlikleri önemli ölçüde yükseltmek için yeterli XP verir. 'Kapalı' bonus XP vermez."/>
+        
+        <string id="BMGrowChance" text="Büyüme Şansı Yüzdesi"/>
+        <string id="BMGrowChanceDesc" text="Milislerin her gün daha fazla asker kazanma şansı (0 kapalı)."/>
+        <string id="BMGrowPercent" text="Büyüme Yüzdesi"/>
+        <string id="BMGrowPercentDesc" text="Her birlik tipini bu yüzde oranında büyüt."/>
+        
+        <string id="BMIgnore" text="Köylüleri/Kervanları Görmezden Gel"/>
+        <string id="BMIgnoreDesc" text="Haydut Milisleri tarafından saldırıya uğramazlar."/>
+        
+        <string id="BMSpawn" text="HM Doğumu"/>
+        <string id="BMSpawnDesc" text="Yeni Haydut Milisleri normal birleşmenin yanı sıra kendiliğinden de oluşacak."/>
+        <string id="BMSpawnChance" text="Doğum Şansı Yüzdesi"/>
+        <string id="BMSpawnChanceDesc" text="Haydut Milisleri her saat bu olasılıkla doğacak."/>
+        <string id="BMCooldown" text="Değişiklik Bekleme Süresi"/>
+        <string id="BMCooldownDesc" text="Haydut Milisleri bu kadar saat geçmeden ikinci kez birleşmeyecek veya bölünmeyecek."/>
+        
+        <string id="BMIgnoreSizePenalty" text="Boyut Cezasını Yoksay"/>
+        <string id="BMIgnoreSizePenaltyDesc" text="Haydut Milisleri parti boyutlarından bağımsız olarak normal hızda hareket edecek."/>
+        
+        <string id="BMGoldReward" text="Haydut Kahraman Altın Ödülü"/>
+        <string id="BMDisperse" text="Dağılma Milis Boyutu"/>
+        <string id="BMDisperseDesc" text="Bu sayıdan daha az askeri kalan milisler dağıtılacak."/>
+        <string id="BMMinSize" text="Minimum Boyut"/>
+        <string id="BMMinSizeDesc" text="Bundan daha küçük Haydut Milisleri oluşmayacak."/>
+        <string id="BMMergeSize" text="Birleşebilir Parti Boyutu"/>
+        <string id="BMMergeSizeDesc" text="Küçük çapulcu ve haydut partileri birleşmeyecek."/>
+        <string id="BMSplit" text="Rastgele Bölünme Şansı"/>
+        <string id="BMSplitDesc" text="Yeterince büyük bir Haydut Milisinin bölünme olasılığı."/>
+        <string id="BMMaxValue" text="Maksimum Eşya Değeri"/>
+        <string id="BMMaxValueDesc" text="Kahramanlara verilen ekipmanların parça başı değerini sınırla. Genellikle diğer modlar size Kahraman ganimeti verdiğinde kullanılır."/>
+        
+        <string id="BMLooter" text="Çapulcu Dönüşümleri"/>
+        <string id="BMLooterDesc" text="Eğitim sırasında kaç çapulcu daha iyi birliklere dönüştürülür."/>
+        <string id="BMUpgrade" text="Birlikleri Yükselt"/>
+        <string id="BMUpgradeDesc" text="Eğitim gerçekleştiğinde birliklerin (en fazla) bu yüzdesini yükselt."/>
+        <string id="BMPower" text="Küresel Güç"/>
+        <string id="BMPowerDesc" text="Ana ayar. Daha yüksek ayar daha fazla ve daha büyük Haydut Milisleri anlamına gelir."/>
+        <string id="BMTier" text="Maksimum Eğitim Seviyesi"/>
+        <string id="BMTierDesc" text="Haydut Milisleri bu seviyenin üzerindeki birlikleri eğitmeyecek."/>
+        <string id="BMWeaker" text="Zayıf Partileri Yoksay"/>
+        <string id="BMWeakerDesc" text="10, %10 daha zayıf herhangi bir partinin görmezden gelineceği anlamına gelir. 100 kısıtlama olmaksızın saldırır."/>
+        
+        <string id="BMPillage" text="Yağmalamaya İzin Ver"/>
+        <string id="BMPillageDesc" text="YAĞMALAMAYI AÇ!"/>
+        <string id="BMPillageChance" text="Yağmalama Şansı"/>
+        <string id="BMPillageChanceDesc" text="Haydut Milisleri yapay zekasının bir köyü yağmalamayı düşünme şansı. Her parti için oyun içi saatte bir tetiklenir, bu nedenle daha küçük bir değer önerilir."/>
+        
+        <string id="BMStringSetting" text="Haydut Milisi"/>
+        <string id="BMStringSettingDesc" text="Bir Haydut Milisine ne ad verileceği."/>
+        <string id="BMLeaderlessStringSetting" text="Lidersiz Haydut Milisi"/>
+        <string id="BMLeaderlessStringSettingDesc" text="Lideri olmayan bir Haydut Milisine ne ad verileceği."/>
+        <string id="BMStringSettingDefault" text="Haydut Milisi"/>
+        <string id="BMLeaderlessStringSettingDefault" text="Lidersiz Haydut Milisi"/>
+        <string id="BMPartyName" text="{LEADER_NAME} Kişisinin {PARTY_NAME} Grubu"/>
+        
+        <string id="BMMarkers" text="Milis Harita İşaretçileri"/>
+        <string id="BMMarkersDesc" text="Haydut Milislerini her zaman görürsünüz."/>
+        <string id="BMTrackSize" text="Takip Edilecek Min HM Boyutu"/>
+        <string id="BMTrackSizeDesc" text="Daha küçük Haydut Milisleri takip edilmeyecek."/>
+        
+        <string id="BMBanners" text="Rastgele Sancaklar"/>
+        <string id="BMBannersDesc" text="Haydut Milislerinin benzersiz sancakları olacak veya temel haydut klan sancaklarını kullanacaklar."/>
+        <string id="BMRaidNotices" text="Köy Yağma Bildirimleri"/>
+        <string id="BMRaidNoticesDesc" text="Mülkleriniz yağmalandığında bir sancak mesajı göreceksiniz."/>
+        <string id="BMRemovePrisonerMessages" text="Tutsak Mesajlarını Kaldır"/>
+        <string id="BMRemovePrisonerMessagesDesc" text="Haydut Milis Kahramanlarının tutsak alınması veya serbest bırakılması mesajlarını kaldırır."/>
+        
+        <string id="BMCheckVoiceGender" text="Ses Cinsiyetini Kontrol Et"/>
+        <string id="BMCheckVoiceGenderDesc" text="Haydut ses hatlarının cinsiyetle eşleşip eşleşmediğini iki kez kontrol et. Bazı resmi hatlar cinsiyet belirtmez, bu nedenle kapatılırsa kadın liderler erkek sesleri kullanabilir."/>
+        <string id="BMGenderSlider" text="Lider Cinsiyet Oranı"/>
+        <string id="BMGenderSliderDesc" text="Haydut Milis liderlerinin kadın olma şansı. 0 hepsi erkek, 100 hepsi kadın."/>
+        
+        <string id="BMLoggingLevel" text="Log Seviyesi"/>
+        <string id="BMLoggingLevelDesc" text="Log dosyası 'Documents/Mount and Blade II Bannerlord/Configs/ModLogs/BanditMilitia_[Time].log' konumundadır."/>
+        <string id="BMTesting" text="Test Modu"/>
+        <string id="BMTestingDesc" text="Hata ayıklama günlüğünü ve saatlik doğuşları etkinleştirir. (Teleportasyon kaldırıldı)"/>
+        
+        <string id="BMWarsailsEnable" text="Warsails İçeriğini Etkinleştir"/>
+        <string id="BMWarsailsEnableDesc" text="Warsails DLC ile ilgili özellikleri etkinleştir (örn. Deniz Yağmacıları)."/>
+        <string id="BMWarsails" text="Warsails DLC"/>
+        <string id="BMSeaRaiders" text="Deniz Yağmacılarını Etkinleştir"/>
+        <string id="BMSeaRaidersDesc" text="Deniz Yağmacılarının milis oluşturmasına izin ver."/>
+        <string id="BM_Close" text="Kapat"/>
+
+        <!-- Code Strings -->
+        <string id="BM_Name" text="Haydut Milisleri"/>
+        <string id="BMRaidStart" text="{VILLAGE}, {PARTY} tarafından yağmalanıyor!"/>
+        <string id="BMRaidEnd" text="{SETTLEMENT} yağmalandı! {PARTY}, ganimetle {TOWN} yakınlarında kaçıyor!"/>
+        <string id="BMUnknownTown" text="Bilinmeyen Kasaba"/>
+
+        <!-- Warlord Names -->
+        <string id="BM_Hero_Looter" text="Çapulcu Savaş Lordu"/>
+        <string id="BM_Hero_SeaRaider" text="Deniz Yağmacısı Şefi"/>
+        <string id="BM_Hero_Mountain" text="Dağ Kralı"/>
+        <string id="BM_Hero_Forest" text="Usta Korucu"/>
+        <string id="BM_Hero_Desert" text="Çöl Şeyhi"/>
+        <string id="BM_Hero_Steppe" text="Bozkır Hanı"/>
+
+        <!-- AI States & Actions -->
+        <string id="BMAIState_Desperate" text="Çaresiz"/>
+        <string id="BMAIState_Warlord" text="Savaş Lordu"/>
+        <string id="BMAIAction_Ambush" text="Pusu"/>
+        <string id="BMAIAction_Flee" text="Kaçış"/>
+
+        <!-- Dialog Strings -->
+        <string id="BM_Dialog_Start_Normal" text="Ne istiyorsun? Burada oyun oynamıyoruz."/>
+        <string id="BM_Dialog_Fight" text="Cesaretin varsa dövüş benimle!"/>
+        <string id="BM_Dialog_Who" text="Sen kimsin?"/>
+        <string id="BM_Dialog_Leave" text="Boşver. Gidiyorum."/>
+        <string id="BM_Dialog_Background_Response" text="Biz Kalradya'nın özgür insanlarıyız. İhtiyacımız olanı alırız."/>
+
+        <!-- Functional Dialogs -->
+        <string id="BM_Dialog_Bribe" text="Al şu {BRIBE_COST} dinarı. Bizi rahat bırak."/>
+        <string id="BM_Bribe_Fail_Gold" text="Yeterli altın yok ({COST})"/>
+        <string id="BM_Dialog_Recruit" text="Yetenekli savaşçılara benziyorsunuz. Bana katılın."/>
+        <string id="BM_Recruit_Fail_Space" text="Partide yeterli yer yok."/>
+        <string id="BM_Dialog_Recruit_Success" text="Cazip bir teklif, savaş lordu. Seninleyiz!"/>
+        <string id="BM_Dialog_Recruit_Fail" text="Biz sadece kendimize hizmet ederiz. Ölmeye hazırlan!"/>
+
+        <!-- Diplomacy Dialogs (New) -->
+        <string id="BM_Diplo_Start" text="Dur! Burası Savaş Lordu bölgesi. Geçiş ücretini öde ya da kanını dök."/>
+        <string id="BM_Diplo_Start_Neutral" text="Ne istiyorsun yolcu? Devriyedeyiz."/>
+        <string id="BM_Diplo_Bribe" text="İşte {GOLD_COST} dinar. Geçmemize izin ver."/>
+        <string id="BM_Diplo_Bribe_Accept" text="Akıllıca bir seçim. Geçebilirsin."/>
+        <string id="BM_Diplo_Recruit" text="Becerikli görünüyorsun. Orduma katıl ve zengin ol."/>
+        <string id="BM_Diplo_Recruit_Success" text="Savaş Lordunun teklifinden daha iyi. Seninleyiz!"/>
+        <string id="BM_Diplo_Recruit_Fail" text="Biz Savaş Lorduna hizmet ediyoruz! Öl!"/>
+        <string id="BM_Diplo_Fight" text="Çekil yolumdan pislik!"/>
+        <string id="BM_Diplo_Duel" text="Liderinize düello teklif ediyorum! (1v1)"/>
+        <string id="BM_Diplo_Duel_Accept" text="Hah! Yürek yemişsin. Dans edelim!"/>
+        <string id="BM_Diplo_Leave" text="Sadece geçiyordum."/>
+        <string id="BM_Diplo_Intel" text="Gücünü bana göster!"/>
+
+        <!-- Duel Strings -->
+        <string id="BM_Dialog_Duel" text="Liderinize düello teklif ediyorum! Kazanan her şeyi alır."/>
+        <string id="BM_Dialog_Duel_Accept" text="İddialı sözler. Bakalım çeliğin de dilin kadar keskin mi! (Düello Başlıyor...)"/>
+        <string id="BM_Dialog_Duel_Win" text="Argh... Güçlüsün... Ganimeti al ve git."/>
+        <string id="BM_Dialog_Duel_Lose" text="Hah! Bir ezik daha. Seni bitirmeden defol."/>
+        <string id="BM_Duel_Win_Title" text="Düello Kazanıldı!"/>
+        <string id="BM_Duel_Win_Text" text="Savaş Lordunu teke tek dövüşte yendin! Haydutlar şaşkınlık içinde."/>
+        <string id="BM_Duel_Lose_Title" text="Düello Kaybedildi!"/>
+        <string id="BM_Duel_Lose_Text" text="Savaş Lordu seni silahsızlandırdı ve tekmeleyerek yere serdi. Zincirlenerek götürülüyorsun."/>
+        <string id="BM_Tactical_Warning" text="[Taktiksel İhtişam] {RANK} {NAME}, orduna karşı özel olarak dizilmiş anti-birliklerini sahaya sürüyor!"/>
+        <string id="BM_Recruit_Fail_Generic" text="Askere alma girişimi başarısız oldu."/>
+        <string id="BM_Recruit_Success_Msg" text="{COUNT} milis grubuna katıldı."/>
+        <string id="BM_Escape_Battle" text="Kamp karışınca kargaşadan faydalanıp kaçmayı başardın!"/>
+        <string id="BM_Ok" text="Zafer"/>
+        <string id="BM_Damn" text="Yenilgi"/>
+
+        <!-- Extortion System -->
+        <string id="BM_Extort" text="Koruma parası toplamaya geldim. Ödeyin."/>
+        <string id="BM_Extort_Yes" text="Sorun istemiyoruz... bunu alın ve bizi rahat bırakın."/>
+        <string id="BM_Extort_No" text="Sizin için hiçbir şeyimiz yok, akbaba! Defol!"/>
+        <string id="BM_Extort_Success" text="[Haraç] Köy boyun eğdi! {GOLD} altın alındı."/>
+        <string id="BM_Extort_Fail" text="[Haraç] Köylüler reddetti! 'Cesaretin varsa gel ve al!'"/>
+        <string id="BM_Extort_Paid" text="Köylüler {GOLD} altın haraç ödedi."/>
+        <string id="BM_Extort_Refused" text="Köylüler ödemeyi reddetti."/>
+
+        <string id="BM_Prisoner_Rob" text="[Haydut Milisleri] Milislerin tutsaklar için hücresi yok. Üzerindeki {GOLD} dinarı alıp seni ölüme terk ediyorlar."/>
+
+        <!-- Narrative System -->
+        <string id="BM_Nar_Agg_Kill1_1" text="{PLAYER}... Birini mi götürdün? Bedelini ödersin."/>
+        <string id="BM_Nar_Agg_Kill1_2" text="Bir adamımı öldürdün. Sayıyorum, {PLAYER}."/>
+        <string id="BM_Nar_Agg_Kill1_3" text="O savaşçı düştü. Öfkem büyüyor, {PLAYER}."/>
+        <string id="BM_Nar_Agg_Kill3_1" text="Üç milis mi? ÜÇ! {PLAYER} — seni bulacağım."/>
+        <string id="BM_Nar_Agg_Kill3_2" text="Üçüncüsü de düştü. Artık bu kişisel, {PLAYER}."/>
+        <string id="BM_Nar_Agg_Kill10_1" text="On adamımı öldürdün. Tüm birliklere: {PLAYER} ölmeli."/>
+        <string id="BM_Nar_Agg_Kill10_2" text="ONUNCU. {PLAYER} — adını kana yazdım. Silmiyorum."/>
+
+        <!-- Maintenance & Error Strings -->
+        <string id="BM_Error_NoHideouts" text="[BanditMilitias] KRİTİK HATA: Sığınak listesi başarısız oldu! Hiç sığınak bulunamadı."/>
+        <string id="BM_Error_GlobalsInitFailed" text="[BanditMilitias] KRİTİK: Globals initialize edilemedi!"/>
+        <string id="BM_Error_NavMeshInvalid" text="[BanditMilitias] SPAWN İPTAL: '{HIDE_NAME}' sığınağının koordinatları haritada geçersiz. Yeniden denenecek."/>
+        <string id="BM_Raid_Success" text="Başarılı"/>
+        <string id="BM_Raid_Repelled" text="Geri Püskürtüldü"/>
+        <string id="BM_Raid_Partial" text="Kısmi Başarı"/>
+        <string id="BM_Raid_Aborted" text="İptal Edildi"/>
+        <string id="BM_Error_UnsupportedMode" text="[BanditMilitias] '{GAME_MODE}' modu desteklenmiyor — mod devre dışı."/>
+        <string id="BM_Startup_Starting" text="[BanditMilitias] Başlatılıyor: {GAME_MODE}"/>
+        <string id="BM_Error_BehaviorRegistration" text="[BanditMilitias] Sefer (campaign) davranışları kaydedilemedi. Mod sınırlı modda çalışacak."/>
+
+        <!-- Settings: Display Name -->
+        <string id="BMS_DisplayName" text="Haydut Milisleri: SAVAŞ LORDU"/>
+
+        <!-- Settings: Group Names -->
+        <string id="BMSG_Spawn" text="1. Doğum &amp; Nüfus"/>
+        <string id="BMSG_DynHideout" text="Dinamik Sığınaklar"/>
+        <string id="BMSG_AI" text="2. Savaş Lordları &amp; YZ"/>
+        <string id="BMSG_Promotion" text="Terfi"/>
+        <string id="BMSG_Doctrine" text="Uyarlanabilir Doktrin"/>
+        <string id="BMSG_Diplo" text="3. Siyaset &amp; Diplomasi"/>
+        <string id="BMSG_RelThreshold" text="İlişki Eşikleri"/>
+        <string id="BMSG_Combat" text="4. Savaş &amp; Ganimet"/>
+        <string id="BMSG_Rewards" text="Ödüller &amp; Çarpanlar"/>
+        <string id="BMSG_HeroicFeats" text="Kahramanlık Başarıları"/>
+        <string id="BMSG_World" text="5. Dünya &amp; Çevre"/>
+        <string id="BMSG_Tactical" text="Taktik Değiştiriciler"/>
+        <string id="BMSG_Powers" text="6. Savaş Lordu Güçleri"/>
+        <string id="BMSG_ML" text="7. Sinirsel Zeka (Neural)"/>
+        <string id="BMSG_AdvML" text="Gelişmiş Sinirsel YZ"/>
+        <string id="BMSG_Debug" text="8. Teknik &amp; Hata Ayıklama"/>
+        <string id="BMSG_AdvTech" text="Gelişmiş Teknik"/>
+        <string id="BMSG_Captivity" text="9. Esaret &amp; Teslim"/>
+
+        <!-- Settings: Spawning & Population -->
+        <string id="BMS_MilitiaSpawn" text="Milis Doğumunu Etkinleştir"/>
+        <string id="BMS_MilitiaSpawn_H" text="Milis doğumu için ana anahtar. Kapalı = sığınaklar vanilya gibi davranır."/>
+        <string id="BMS_MaxTotalMilitias" text="Toplam Maksimum Milis"/>
+        <string id="BMS_MaxTotalMilitias_H" text="Haritadaki aktif milis partileri için sabit üst sınır."/>
+        <string id="BMS_HideoutCooldown" text="Yeniden Doğum Bekleme Süresi (Gün)"/>
+        <string id="BMS_HideoutCooldown_H" text="Bir milis yok edildikten sonra aynı sığınaktan yenisinin doğması için bekleme süresi."/>
+        <string id="BMS_ActivationDelay" text="Başlangıç Güvenlik Gecikmesi (Gün)"/>
+        <string id="BMS_ActivationDelay_H" text="ÖNEMLİ: Oyun başladıktan sonra modun kaç gün 'Tam Sessiz' modda kalacağını belirler. Bu sürede mod hiçbir işlem yapmaz ve açılış donmalarını engeller. Stabilite için EN AZ 2 gün zorunludur."/>
+        <string id="BMS_SeaRaiders" text="Deniz Yağmacılarını Etkinleştir"/>
+        <string id="BMS_SeaRaiders_H" text="Deniz Yağmacısı sığınaklarının milis oluşturmasına izin verir."/>
+        <string id="BMS_CustomNames" text="Özel Haydut İsimleri"/>
+        <string id="BMS_CustomNames_H" text="Milisler genel 'Haydut Milisi' yerine benzersiz, özgün isimler alır."/>
+        <string id="BMS_DynHideout" text="Dinamik Sığınak Sistemi"/>
+        <string id="BMS_DynHideout_H" text="Haydutların boş bölgelerde yeni sığınaklar kurmasını sağlar. Haritadaki haydut hareketliliğini artırır ama işlemci yükünü bir miktar artırabilir."/>
+        <string id="BMS_MinParties" text="Oluşum İçin Min Parti Sayısı"/>
+        <string id="BMS_MinParties_H" text="Yeni sığınak oluşturmak için gereken yakın haydut partisi sayısı."/>
+        <string id="BMS_FormCooldown" text="Oluşum Bekleme Süresi (Gün)"/>
+        <string id="BMS_FormCooldown_H" text="Sığınak oluşturma girişimleri arasındaki minimum gün sayısı."/>
+        <string id="BMS_PatrolDensity" text="Maksimum Devriye Yoğunluğu"/>
+        <string id="BMS_PatrolDensity_H" text="Lord devriye yoğunluğu bu değeri aşınca oluşum engellenir. Yüksek = daha kolay oluşum."/>
+        <string id="BMS_HideoutReplenishChance" text="Sığınak Yeniden Dolma Şansı"/>
+        <string id="BMS_HideoutReplenishChance_H" text="Terk edilmiş bir sığınağın yakındaki haydut partilerini yeniden içine çekme günlük şansı."/>
+
+        <!-- Settings: Warlords & AI -->
+        <string id="BMS_EnableWarlords" text="Savaş Lordlarını Etkinleştir"/>
+        <string id="BMS_EnableWarlords_H" text="Güçlü 'Anti-Kahraman' savaş lordları haydut kuvvetlerini yönetmek için ortaya çıkar. Kapatmak modu basit bir doğum arttırıcıya indirger."/>
+        <string id="BMS_CustomAI" text="Özel YZ Davranışları"/>
+        <string id="BMS_CustomAI_H" text="Gelişmiş milis YZ: bölge kontrolü, sürü koordinasyonu, stratejik geri çekilmeler. Kapalı = vanilya YZ mantığı."/>
+        <string id="BMS_WarlordRegen" text="Savaş Lordu Yenilenmesi"/>
+        <string id="BMS_WarlordRegen_H" text="Savaş lordları ve muhafızları savaş sırasında yavaşça HP yeniler."/>
+        <string id="BMS_WarlordTactics" text="Savaş Lordu Taktikleri"/>
+        <string id="BMS_WarlordTactics_H" text="Savaş lordları oyuncunun ordu kompozisyonunu analiz eder ve karşı birlikleri saha alır (süvari - piyade - okçu)."/>
+        <string id="BMS_WarlordMinTroops" text="Savaş Lordu İçin Min Asker"/>
+        <string id="BMS_WarlordMinTroops_H" text="Bir Savaş Lordu'nun ortaya çıkabilmesi için gereken bölgesel haydut gücü."/>
+        <string id="BMS_WarlordMinDays" text="Min Hayatta Kalma Günü (Kaptan)"/>
+        <string id="BMS_WarlordMinDays_H" text="Bir Kaptanın Savaş Lordu terfisine hak kazanmadan önce hayatta kalması gereken minimum gün."/>
+        <string id="BMS_WarlordMinBattles" text="Min Kazanılan Savaş (Kaptan)"/>
+        <string id="BMS_WarlordMinBattles_H" text="Savaş Lordu terfisi öncesinde bir Kaptanın kazanması gereken minimum savaş sayısı."/>
+        <string id="BMS_WarlordFallback" text="Yedek Gün Sayısı (Zorunlu Terfi)"/>
+        <string id="BMS_WarlordFallback_H" text="Bu kadar gün sonra hâlâ Savaş Lordu yoksa ilk 3 Kaptan zorla terfi ettirilir."/>
+        <string id="BMS_MaxMinorLords" text="Maksimum Savaş Lordu"/>
+        <string id="BMS_MaxMinorLords_H" text="Haritadaki maksimum eş zamanlı Savaş Lordu. (Önerilen: 5 | Kaos: 20+)"/>
+        <string id="BMS_ChaosNerf" text="Kaos Azalt (Fazla Lordları Zayıflat)"/>
+        <string id="BMS_ChaosNerf_H" text="Küçük Lordlar sınırı aşarsa fazlalıklar Savaş Lordu seviyesine düşürülür — onları elemek kolaylaşır."/>
+        <string id="BMS_AdaptiveDoctrine" text="Uyarlanabilir Doktrini Etkinleştir"/>
+        <string id="BMS_AdaptiveDoctrine_H" text="Milisler oyuncunun savaş tarzını (süvari / okçu / piyade / karma) inceler ve karşı stratejiler geliştirir."/>
+        <string id="BMS_LearningRate" text="Gelişmiş Öğrenme Hızı"/>
+        <string id="BMS_LearningRate_H" text="Yapay zekanın sizin savaş taktiklerinizi ne kadar hızlı analiz edeceğini belirler. Çok yüksek olursa her yenilgide aşırı tepki verebilir, 0.30 idealdir."/>
+        <string id="BMS_SwitchCooldown" text="Geçiş Bekleme Süresi (Saat)"/>
+        <string id="BMS_SwitchCooldown_H" text="Bir Savaş Lordu'nun farklı bir doktrine geçmeden önce beklediği minimum saat."/>
+        <string id="BMS_AggressionBias" text="Saldırganlık Eğilimi"/>
+        <string id="BMS_AggressionBias_H" text="Doktrin saldırganlığını ince ayarlayın. Negatif = temkinli, Pozitif = pervasız."/>
+
+        <!-- Settings: Politics & Diplomacy -->
+        <string id="BMS_Politics" text="Haydut Siyaseti"/>
+        <string id="BMS_Politics_H" text="Aktif savaş lordları arasında ittifakları, rekabeti ve ihaneti etkinleştirir."/>
+        <string id="BMS_Propaganda" text="Propaganda"/>
+        <string id="BMS_Propaganda_H" text="Savaş lordları kasaba sadakatini aşındırmak için propaganda kampanyaları yürütebilir."/>
+        <string id="BMS_BlackMarket" text="Kara Borsa"/>
+        <string id="BMS_BlackMarket_H" text="Savaş lordları yetkilileri rüşvetle satın alarak yeraltı ağları kurar ve günlük altın kazanır."/>
+        <string id="BMS_BribeCostPerMan" text="Asker Başı Rüşvet Maliyeti"/>
+        <string id="BMS_BribeCostPerMan_H" text="Diplomasi rüşveti sırasında milis üyesi başına altın maliyeti."/>
+        <string id="BMS_AllianceThreshold" text="İttifak Eşiği"/>
+        <string id="BMS_AllianceThreshold_H" text="İki savaş lordunun ittifak kurması için gerekli minimum ilişki puanı."/>
+        <string id="BMS_RivalryThreshold" text="Rekabet Eşiği"/>
+        <string id="BMS_RivalryThreshold_H" text="İlişkiler bu değerin altına düşünce açık rekabet başlar."/>
+        <string id="BMS_BetrayalThreshold" text="İhanet Eşiği"/>
+        <string id="BMS_BetrayalThreshold_H" text="Müttefik bir savaş lordu ilişkiler bu değerin altına düşünce ihanet edebilir."/>
+        <string id="BMS_DailyDrift" text="Günlük İlişki Kayması"/>
+        <string id="BMS_DailyDrift_H" text="Siyasi ilişkilerin her gün tarafsızlığa ne hızla döndüğü."/>
+
+        <!-- Settings: Combat & Loot -->
+        <string id="BMS_EnhancedBandits" text="Geliştirilmiş Haydutlar"/>
+        <string id="BMS_EnhancedBandits_H" text="Haydutları daha iyi donanım ve savaş istatistikleriyle yükseltir. Orta-geç oyun için şiddetle önerilir."/>
+        <string id="BMS_SkillBoost" text="Haydut Beceri Takviyesi"/>
+        <string id="BMS_SkillBoost_H" text="Geliştirilmiş haydutlara uygulanan düz beceri puanı bonusu."/>
+        <string id="BMS_EqQuality" text="Ekipman Kalitesi"/>
+        <string id="BMS_EqQuality_H" text="Geliştirilmiş haydutlar için genel donanım kalitesi. 0 = vanilya, 5 = seçkin."/>
+        <string id="BMS_HeroicFeats" text="Kahramanlık Başarıları"/>
+        <string id="BMS_HeroicFeats_H" text="Daha güçlü düşmanları yenmek Focus puanları veya nadir yüksek kademeli eşyalar kazandırabilir."/>
+        <string id="BMS_GoldMult" text="Altın Çarpanı"/>
+        <string id="BMS_GoldMult_H" text="Geliştirilmiş haydutların düşürdüğü altını çarpar."/>
+        <string id="BMS_RenownMult" text="İtibar Çarpanı"/>
+        <string id="BMS_RenownMult_H" text="Mod savaşlarından kazanılan İtibarı çarpar."/>
+        <string id="BMS_WarlordLoot" text="Savaş Lordu Ganimet Bonusu"/>
+        <string id="BMS_WarlordLoot_H" text="Yalnızca Savaş Lordu savaşlarına özgü ek ganimet çarpanı."/>
+        <string id="BMS_HardBattle" text="Zorlu Savaş Bonusu"/>
+        <string id="BMS_HardBattle_H" text="Zorlu savaşlar için ödül çarpanı. 2.0 = çift ödül."/>
+        <string id="BMS_BountyGoldPerTroop" text="Asker Başına Ödül Altını"/>
+        <string id="BMS_BountyGoldPerTroop_H" text="Yenilen birlik başına ertesi günlük tikte ödenen gecikmeli milis ödül miktarı."/>
+        <string id="BMS_AttrRewards" text="Nitelik &amp; Focus Ödülleri"/>
+        <string id="BMS_AttrRewards_H" text="Çok zorlu savaşlardan Nitelik veya Focus puanı kazanma küçük şansı."/>
+        <string id="BMS_QualityDrops" text="Kaliteli Eşya Düşürme"/>
+        <string id="BMS_QualityDrops_H" text="Zorlu savaşlardan yüksek kaliteli eşya alma şansı."/>
+
+        <!-- Settings: World & Environment -->
+        <string id="BMS_BanditDensity" text="Küresel Haydut Yoğunluğu (PERFORMANS)"/>
+        <string id="BMS_BanditDensity_H" text="DİKKAT: Haritadaki toplam haydut miktarını çarpar. 1.5x idealdir. 3.0x ve üzeri çok güçlü sistemler içindir ve oyunun yavaşlamasına neden olabilir."/>
+        <string id="BMS_PartySizeMult" text="Parti Boyutu Çarpanı"/>
+        <string id="BMS_PartySizeMult_H" text="Tüm haydut grupları için maksimum parti boyutunu çarpar."/>
+        <string id="BMS_WarZoneMult" text="Savaş Bölgesi Doğum Çarpanı"/>
+        <string id="BMS_WarZoneMult_H" text="Hâlihazırda savaştaki krallıklarda doğum oranlarını artırır. Kaos haydut doğurur!"/>
+        <string id="BMS_TradeRouteMult" text="Ticaret Yolu Doğum Çarpanı"/>
+        <string id="BMS_TradeRouteMult_H" text="Yoğun kervan güzergahları ve müreffeh yerleşimler yakınındaki doğum oranlarını artırır."/>
+        <string id="BMS_NightAmbush" text="Gece Pusu Bonusu"/>
+        <string id="BMS_NightAmbush_H" text="Gece saatlerinde düz YZ saldırganlık bonusu."/>
+        <string id="BMS_ForestBonus" text="Orman Avantajı Bonusu"/>
+        <string id="BMS_ForestBonus_H" text="Ormanlık arazide düz YZ saldırganlık bonusu."/>
+        <string id="BMS_PatrolAggression" text="Devriye Saldırganlık Eşiği"/>
+        <string id="BMS_PatrolAggression_H" text="Bir milisin lord devrijesine saldırmadan önce gereken güç oranı. Düşük = daha saldırgan."/>
+
+        <!-- Settings: Warlord Powers -->
+        <string id="BMS_FearSystem" text="Korku Sistemi"/>
+        <string id="BMS_FearSystem_H" text="Köyler biriken korkuya göre haraç öder veya savaş lordlarına ihanet eder."/>
+        <string id="BMS_WarlordLegacy" text="Savaş Lordu Mirası"/>
+        <string id="BMS_WarlordLegacy_H" text="Düşen savaş lordu, aynı sığınaktan ileriki saldırıları etkileyen korku izi ve taktik mirası bırakır."/>
+        <string id="BMS_CrisisEvents" text="Kriz Olayları"/>
+        <string id="BMS_CrisisEvents_H" text="Savaş lordu eylemlerinden tetiklenen dinamik kriz olayları — baskınlar, kuşatmalar, ihanetler."/>
+        <string id="BMS_Legitimacy" text="Meşruiyet Sistemi"/>
+        <string id="BMS_Legitimacy_H" text="Savaş lordları rütbelerden yükselir: Kanun Dışı -&gt; Savaş Lordu -&gt; Küçük Lord -&gt; Tanınan Lord."/>
+        <string id="BMS_BountySystem" text="Ödül Sistemi"/>
+        <string id="BMS_BountySystem_H" text="Kötü şöhretli savaş lordları ödül ve özel avcı partileri çeker."/>
+        <string id="BMS_MilitiaRaids" text="Milis Baskınları"/>
+        <string id="BMS_MilitiaRaids_H" text="Milis partileri ganimet ve korku yaymak için köylere baskın düzenleyebilir."/>
+        <string id="BMS_RaidLoot" text="Baskın Ganimet Çarpanı"/>
+        <string id="BMS_RaidLoot_H" text="Milis baskınlarından kazanılan altını çarpar."/>
+        <string id="BMS_Jailbreak" text="Hapishane Kaçışı Sistemi"/>
+        <string id="BMS_Jailbreak_H" text="Tutsak alınan savaş lordları rüşvet veya yeraltı bağlantıları yoluyla kaçmaya çalışır."/>
+        <string id="BMS_Logistics" text="Savaş Lordu Lojistiği"/>
+        <string id="BMS_Logistics_H" text="Savaş lordları ordularını sürdürmek için ikmal hatları ve kaynak çıkarımı yönetir."/>
+        <string id="BMS_CapLockHours" text="Kaçış Kilidi (Saat)"/>
+        <string id="BMS_CapLockHours_H" text="Kaçış denemelerinin başlaması için gereken minimum esaret süresi."/>
+        <string id="BMS_CapMaxDays" text="Azami Esaret (Gün)"/>
+        <string id="BMS_CapMaxDays_H" text="Esaret için üst sınır. Aşılırsa oyuncu serbest bırakılır."/>
+        <string id="BMS_CapBaseChance" text="Temel Kaçış Şansı / Saat"/>
+        <string id="BMS_CapBaseChance_H" text="Kilitleme süresi sonrası saatlik temel kaçış şansı."/>
+        <string id="BMS_CapRogueryBonus" text="Sahtekârlık Bonusu / Puan"/>
+        <string id="BMS_CapRogueryBonus_H" text="Her Sahtekârlık puanı için ek saatlik kaçış şansı."/>
+        <string id="BMS_CapMaxChance" text="Azami Kaçış Şansı / Saat"/>
+        <string id="BMS_CapMaxChance_H" text="Saatlik kaçış şansı için üst sınır."/>
+        <string id="BMS_CapRampDays" text="Kademeli Artış Süresi (Gün)"/>
+        <string id="BMS_CapRampDays_H" text="Kilitleme bittikten sonra tam kaçış şansına ulaşma süresi."/>
+
+        <!-- Settings: Machine Learning -->
+        <string id="BMS_ML" text="Nöral Danışmanı Etkinleştir"/>
+        <string id="BMS_ML_H" text="Heuristic (kural tabanlı) YZ'ye danışmanlık yapan hafif siklet bir sinir ağını etkinleştirir. Zamanla savaş sonuçlarından öğrenir."/>
+        <string id="BMS_MLData" text="Nöral Veri Toplama"/>
+        <string id="BMS_MLData_H" text="Telemetri ve olası eğitimler için savaş örneklerini CSV'ye kaydeder."/>
+        <string id="BMS_MLObs" text="Nöral Gözlem Modu"/>
+        <string id="BMS_MLObs_H" text="Ağırlıkları güncellemeden nöral özellikleri kaydeder. Temel çizgi oluşturmak için kullanışlıdır."/>
+        <string id="BMS_Underdog15" text="Zayıf Taraf Ödülü (1.5x düşman)"/>
+        <string id="BMS_Underdog15_H" text="Milis 1.5 katı büyüklükteki bir düşmanı yendiğinde nöral ağırlık ödül çarpanı."/>
+        <string id="BMS_Underdog20" text="Zayıf Taraf Ödülü (2.0x düşman)"/>
+        <string id="BMS_Underdog20_H" text="Milis 2.0 katı büyüklükteki bir düşmanı yendiğinde nöral ağırlık ödül çarpanı."/>
+        <string id="BMS_Underdog30" text="Zayıf Taraf Ödülü (3.0x düşman)"/>
+        <string id="BMS_Underdog30_H" text="Milis 3.0 katı büyüklükteki bir düşmanı yendiğinde nöral ağırlık ödül çarpanı."/>
+        <string id="BMS_MLLogN" text="Her N Savaşta Bir Kaydet"/>
+        <string id="BMS_MLLogN_H" text="Savaş verisi kaydı için örnekleme aralığı. 1 = her savaşı kaydet."/>
+        <string id="BMS_AutoPrune" text="Nöral Ağırlık Optimizasyonu"/>
+        <string id="BMS_AutoPrune_H" text="Belleği korumak için düşük değerli nöral girdileri otomatik olarak kaldırır."/>
+        <string id="BMS_MaxQTable" text="Nöral Deneyim Tamponu (Buffer)"/>
+        <string id="BMS_MaxQTable_H" text="YZ'nin belleğinde depolanan maksimum deneyim örneği sayısı."/>
+
+        <!-- Settings: Technical & Debug -->
+        <string id="BMS_TestMode" text="Test Modu"/>
+        <string id="BMS_TestMode_H" text="Oyun günlüğüne ayrıntılı tanılama yazar. Yalnızca hata ayıklama için — günlük dolmasını bekleyin."/>
+        <string id="BMS_Uninstall" text="KALDIRMA MODU (TEHLİKELİ)"/>
+        <string id="BMS_Uninstall_H" text="TEHLİKE: Güvenli kaldırma için TÜM mod partilerini siler. BU GERİ ALINAMAZ."/>
+        <string id="BMS_AggressiveCleanup" text="Agresif Temizlik"/>
+        <string id="BMS_AggressiveCleanup_H" text="Temizlik geçişlerinde boştaki veya zayıf partileri kaldırır. Yalnızca gecikme yaşıyorsanız etkinleştirin."/>
+        <string id="BMS_FileLogging" text="Dosya Günlüğü"/>
+        <string id="BMS_FileLogging_H" text="Tüm mod olaylarını logs/BanditMilitias.log dosyasına yazar."/>
+        <string id="BMS_AIDecisionLog" text="YZ Karar Günlüğü"/>
+        <string id="BMS_AIDecisionLog_H" text="YZ muhakemesi ve karar sonuçlarının ayrıntılı günlüğü."/>
+        <string id="BMS_ShowDebug" text="Hata Ayıklama Mesajlarını Göster"/>
+        <string id="BMS_ShowDebug_H" text="Devam eden mod aktivitesi için oyun içi [DEBUG] açılır pencereleri gösterir."/>
+        <string id="BMS_AIScheduler" text="YZ Zamanlayıcı"/>
+        <string id="BMS_AIScheduler_H" text="YZ işlemesini kare ani artışlarını önlemek için tiklere yayar."/>
+        <string id="BMS_MaxAITasks" text="Tik Başına Maksimum YZ Görevi"/>
+        <string id="BMS_MaxAITasks_H" text="YZ Zamanlayıcı için CPU bütçesi. Düşük = daha pürüzsüz FPS, daha yavaş YZ güncellemeleri."/>
+        <string id="BMS_AsyncAI" text="Asenkron YZ'ye İzin Ver (Deneysel)"/>
+        <string id="BMS_AsyncAI_H" text="Deneysel: kritik olmayan YZ görevlerini arka plan iş parçacıklarına aktarır. Nadir yarış koşullarına yol açabilir."/>
+        <string id="BMS_SpatialAI" text="Uzamsal Farkındalık"/>
+        <string id="BMS_SpatialAI_H" text="YZ, karar verirken bölge kontrolü, savaş geçmişi ve yakınlığı göz önünde bulundurur."/>
+        <string id="BMS_AIRecruit" text="YZ İşe Alım Sayısı"/>
+        <string id="BMS_AIRecruit_H" text="Takviye döngüsü başına YZ tarafından işe alınan askerler."/>
+        <string id="BMS_UpgradeXp" text="Yükseltme XP Gereksinimi"/>
+        <string id="BMS_UpgradeXp_H" text="Bir milisin birliklerini yükseltmeden önce biriktirilen XP."/>
+        <string id="BMS_StrongThreshold" text="Güçlü Parti Eşiği"/>
+        <string id="BMS_StrongThreshold_H" text="YZ'nin stratejik planlama için bir partiyi 'güçlü' saydığı asker sayısı."/>
+        <string id="BMS_WealthyThreshold" text="Varlıklı Eşiği"/>
+        <string id="BMS_WealthyThreshold_H" text="YZ'nin kendisini 'varlıklı' saydığı ve agresif genişlemeye yöneldiği altın miktarı."/>
+
+        <!-- Kariyer Kademe İsimleri -->
+        <string id="BM_Tier_Outlaw" text="Eşkıya"/>
+        <string id="BM_Tier_Rebel" text="Asi"/>
+        <string id="BM_Tier_Warlord" text="Ünlü Eşkıya"/>
+        <string id="BM_Tier_MinorLord" text="Savaş Lordu"/>
+        <string id="BM_Tier_Recognized" text="Hükümdar"/>
+        <string id="BM_Tier_Conqueror" text="Fatih"/>
+
+        <!-- Özel Unvanlar -->
+        <string id="BM_MinorLord" text="Savaş Lordu {NAME}"/>
+        <string id="BM_WarlordTitle" text="Savaş Lordu {NAME}"/>
+        <string id="BM_BanditLord" text="Eşkıya Lordu"/>
+        <string id="BM_Conqueror" text="Fatih"/>
+        <string id="BM_ConquerorArmy" text="Fatih'in Ordusu"/>
+
+        <!-- NPC Ses Etiketleri -->
+        <string id="BM_NPC_Merchant" text="Tüccar"/>
+        <string id="BM_NPC_Soldier" text="Muhafız"/>
+        <string id="BM_NPC_Elder" text="Yaşlı"/>
+        <string id="BM_NPC_Spy" text="Casus"/>
+        <string id="BM_NPC_Child" text="Çocuk"/>
+        <string id="BM_NPC_Bard" text="Ozan"/>
+        <string id="BM_NPC_Villager" text="Köylü"/>
+        <string id="BM_NPC_Fallback" text="Ben sadece bir köylüyüm, hiçbir şey bilmiyorum."/>
+    </strings>
+</base>
