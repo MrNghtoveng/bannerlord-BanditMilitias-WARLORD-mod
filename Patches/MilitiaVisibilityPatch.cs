@@ -1,12 +1,14 @@
 using BanditMilitias.Components;
 using HarmonyLib;
 using TaleWorlds.CampaignSystem;
-using TaleWorlds.CampaignSystem.GameComponents;
 using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.CampaignSystem.GameComponents;
+// Bazı versiyonlarda SandBox içinde olabilir
+// using SandBox.GameComponents; 
 
 namespace BanditMilitias.Patches
 {
-    [HarmonyPatch(typeof(DefaultPartyVisibilityModel), "GetPartyVisibilityRange")]
+    [HarmonyPatch("TaleWorlds.CampaignSystem.GameComponents.DefaultPartyVisibilityModel", "GetPartyVisibilityRange")]
     public class MilitiaVisibilityPatch
     {
         private static void Postfix(MobileParty party, ref float __result)

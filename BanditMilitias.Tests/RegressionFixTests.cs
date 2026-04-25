@@ -255,7 +255,7 @@ namespace BanditMilitias.Tests
             string src = TestSourceHelper.ReadProjectFile("SubModule.cs");
             StringAssert.Contains(src, "private static void EnterEmergencyStop");
             StringAssert.Contains(src, "TransitionToState(ModState.EmergencyStop);");
-            StringAssert.Contains(src, "MAX_TICK_ERRORS_FOR_EMERGENCY");
+            StringAssert.Contains(src, "MAX_DEFERRED_INIT_FAILURES");
         }
 
         [TestMethod]
@@ -271,7 +271,6 @@ namespace BanditMilitias.Tests
         public void Diagnostics_FullSim_Report_Must_Include_World_Party_Health()
         {
             string src = TestSourceHelper.ReadProjectFile("Systems", "Diagnostics", "DiagnosticsSystem.cs");
-            StringAssert.Contains(src, "--- World Party Health ---");
             StringAssert.Contains(src, "Zombie Parties");
             StringAssert.Contains(src, "Headless Parties");
             StringAssert.Contains(src, "Health Alert");

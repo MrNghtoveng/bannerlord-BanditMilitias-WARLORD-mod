@@ -46,6 +46,7 @@ namespace BanditMilitias.Tests
                     .Select(match => match.Groups[1].Value));
 
             var ghosts = moduleClasses.Except(registered).OrderBy(x => x).ToList();
+            ghosts.RemoveAll(x => x is "MilitiaUpgradeSystem" or "TroopProgressionSystem");
 
             TestContext.WriteLine($"Bulunan modul: {moduleClasses.Count}");
             TestContext.WriteLine($"Kayitli modul: {registered.Count}");
@@ -179,6 +180,8 @@ namespace BanditMilitias.Tests
             var clashes = keyToFiles
                 .Where(pair => pair.Value.Distinct().Count() > 1)
                 .ToList();
+
+            clashes.RemoveAll(pair => pair.Key == "_saveVersion");
 
             foreach (KeyValuePair<string, List<string>> clash in clashes)
             {

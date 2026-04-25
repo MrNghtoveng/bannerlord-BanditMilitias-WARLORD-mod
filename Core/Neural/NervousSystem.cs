@@ -579,6 +579,7 @@ namespace BanditMilitias.Core.Neural
             // ── FAZ 1: Algı — SharedPercept Güncelle ────────────────
             SharedPercept.Refresh();
             var percept = SharedPercept.Current;
+            if (percept == null) return;
 
             // ── FAZ 2–5: Kanallar Üzerinden Grupları Çalıştır ───────
             _inhibitory.Reset();

@@ -1,4 +1,5 @@
 using BanditMilitias.Core.Events;
+using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Core.Neural;

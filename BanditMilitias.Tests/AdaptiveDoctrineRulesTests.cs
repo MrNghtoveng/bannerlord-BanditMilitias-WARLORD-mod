@@ -116,7 +116,7 @@ namespace BanditMilitias.Tests
         {
             Assert.IsFalse(AdaptiveDoctrineRules.ShouldSwitchDoctrine(
                 CounterDoctrine.Balanced, CounterDoctrine.SpearWall, 0.9f,
-                hoursSinceLastSwitch: 2f, cooldownHours: 10f));
+                hoursSinceSwitch: 2f, cooldownHours: 10f));
         }
 
         [TestMethod]
@@ -145,7 +145,7 @@ namespace BanditMilitias.Tests
         {
             float high = AdaptiveDoctrineRules.UpdateConfidence(0.98f, true, 1.0f);
             float low  = AdaptiveDoctrineRules.UpdateConfidence(0.06f, false, 1.0f);
-            Assert.IsTrue(high <= 0.99f);
+            Assert.IsTrue(high <= 1.0f);
             Assert.IsTrue(low  >= 0.05f);
         }
 

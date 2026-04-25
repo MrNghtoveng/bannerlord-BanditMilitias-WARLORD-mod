@@ -1,4 +1,4 @@
-﻿// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 // DEVRE DIÅI â€” MilitiaProgressionSystem.cs ile birleÅŸtirildi
 // Bu dosya [AutoRegister] taÅŸÄ±mÄ±yor; ModuleManager tarafÄ±ndan yÃ¼klenmez.
 // TÃ¼m iÅŸlevsellik MilitiaProgressionSystem.TryUpgradeRoster() iÃ§indedir.
@@ -10,6 +10,7 @@
 using BanditMilitias.Core.Components;
 using BanditMilitias.Intelligence.Strategic;
 using System;
+using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 
 namespace BanditMilitias.Systems.Progression
@@ -38,7 +39,7 @@ namespace BanditMilitias.Systems.Progression
         public override void OnTick(float dt) { }
         public override void OnHourlyTick() { }
         public override string GetDiagnostics() => "MilitiaUpgradeSystem: DEVRE DIÅI";
-        public override void SyncData(TaleWorlds.SaveSystem.IDataStore ds) { }
+        public override void SyncData(IDataStore ds) { }
         public override void Cleanup() { }
     }
 }

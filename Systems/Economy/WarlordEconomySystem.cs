@@ -224,9 +224,9 @@ namespace BanditMilitias.Systems.Economy
             
             foreach (var party in w.CommandedMilitias)
             {
-                if (party == null || !party.IsActive || party.PrisonRoster == null || party.PrisonRoster.IsEmpty) continue;
+                if (party == null || !party.IsActive || CompatibilityLayer.IsTroopRosterEmpty(party.PrisonRoster)) continue;
                 
-                float distSq = party.Position2D.DistanceSquared(w.AssignedHideout.Position2D);
+                float distSq = CompatibilityLayer.GetPartyPosition(party).DistanceSquared(CompatibilityLayer.GetSettlementPosition(w.AssignedHideout));
                 if (distSq < 10f * 10f) // Sığınakta/Yakınındaysa
                 {
                     // Esirleri "karaborsada" sat
@@ -488,7 +488,7 @@ namespace BanditMilitias.Systems.Economy
                 
                 if (w.AssignedHideout != null)
                 {
-                    float distSq = m.Position2D.DistanceSquared(w.AssignedHideout.Position2D);
+                    float distSq = CompatibilityLayer.GetPartyPosition(m).DistanceSquared(CompatibilityLayer.GetSettlementPosition(w.AssignedHideout));
                     if (distSq < 20f * 20f) // 20 birim menzil
                     {
                         partyFoodCost *= 0.5f; // %50 tasarruf

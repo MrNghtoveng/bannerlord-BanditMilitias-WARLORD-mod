@@ -53,14 +53,15 @@ namespace BanditMilitias.Systems.Enhancement
         {
             if (party.PartyComponent is MilitiaPartyComponent mpc && mpc.HomeSettlement != null)
             {
-                float distSq = party.Position2D.DistanceSquared(mpc.HomeSettlement.Position2D);
+                float distSq = CompatibilityLayer.GetPartyPosition(party).DistanceSquared(CompatibilityLayer.GetSettlementPosition(mpc.HomeSettlement));
                 if (distSq < 15f * 15f) // Sığınağa yakınsa (15 birim)
                 {
                     // Yaralıları iyileştir
-                    if (party.MemberRoster.TotalWoundedTroops > 0)
+                    int wounded = CompatibilityLayer.GetTotalWoundedTroops(party.MemberRoster);
+                    if (wounded > 0)
                     {
-                        int healCount = Math.Max(1, party.MemberRoster.TotalWoundedTroops / 5);
-                        party.MemberRoster.HealWoundedTroops(healCount);
+                        int healCount = Math.Max(1, wounded / 5);
+                        CompatibilityLayer.HealWoundedTroops(party.MemberRoster, healCount);
                         
                         if (Settings.Instance?.TestingMode == true)
                             DebugLogger.TestLog($"[RECOVERY] {party.Name} sığınağa yakın, {healCount} asker iyileşti.");

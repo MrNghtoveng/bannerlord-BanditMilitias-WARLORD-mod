@@ -33,6 +33,8 @@ namespace BanditMilitias.Intelligence.Strategic
         public int InfightingTriggerCount => _infightingTriggers;
         public float TotalGlobalReserves => _allWarlords.Values.Sum(w => w.ReserveManpower);
 
+        public Warlord? GetWarlordById(string warlordId) => GetWarlord(warlordId);
+
         private Dictionary<string, Warlord> _allWarlords = new();
         private Dictionary<Settlement, Warlord> _warlordsByHideout = new();
         private Dictionary<Hero, Warlord> _warlordsByHero = new();

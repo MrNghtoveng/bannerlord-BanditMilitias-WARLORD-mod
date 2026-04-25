@@ -210,7 +210,7 @@ namespace BanditMilitias.Systems.Progression
                 int xpCost = element.Character.GetUpgradeXpCost(party.Party, 0);
                 if (xpCost <= 0) continue;
 
-                int currentXp = party.MemberRoster.GetElementXpAtIndex(i);
+                int currentXp = CompatibilityLayer.GetElementXpAtIndex(party.MemberRoster, i);
                 int upgradeReadyCount = currentXp / xpCost;
                 if (upgradeReadyCount <= 0) continue;
 
@@ -271,7 +271,7 @@ namespace BanditMilitias.Systems.Progression
                     if (el.Character != character) continue;
 
                     // Mevcut XP'den fazlasını sil — slot'u remainingXp'ye getir
-                    int current = party.MemberRoster.GetElementXpAtIndex(j);
+                    int current = CompatibilityLayer.GetElementXpAtIndex(party.MemberRoster, j);
                     if (current > remainingXp)
                     {
                         // AddXpToTroopAtIndex negatif değer almaz; sıfırdan yeniden kurmak gerekiyor.
@@ -327,7 +327,7 @@ namespace BanditMilitias.Systems.Progression
             return $"MilitiaProgression: HordePool={poolTotal} XP | Warlords={_hordeXpPool.Count}";
         }
 
-        public override void SyncData(TaleWorlds.SaveSystem.IDataStore ds)
+        public override void SyncData(IDataStore ds)
         {
             // Horde XP havuzu kalıcı değil (günlük sıfırlanır), kayıt gerekmez
         }

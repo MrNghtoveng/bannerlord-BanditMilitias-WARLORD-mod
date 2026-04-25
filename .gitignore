@@ -1,0 +1,25 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build outputs
+bin/
+obj/
+dist/
+
+# Test outputs
+TestResults/
+BanditMilitias.Tests/TestResults/
+BanditMilitias.Tests/bin/
+BanditMilitias.Tests/obj/
+
+# Logs and temp
+*.log
+*.tmp
+*.cache
+
+# Dotnet local home/cache used in this workspace
+.dotnet_home/

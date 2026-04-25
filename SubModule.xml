@@ -42,19 +42,19 @@
 
     <Xmls>
         <XmlNode>
-            <XmlName id="std_xml_source_file" path="Languages/EN/std_BanditMilitias_xml_en"/>
+            <XmlName id="std_xml_source_file" path="ModuleData/Languages/EN/std_BanditMilitias_xml_en.xml"/>
         </XmlNode>
         <XmlNode>
-            <XmlName id="std_xml_source_file" path="Languages/TR/std_BanditMilitias_xml_tr"/>
+            <XmlName id="std_xml_source_file" path="ModuleData/Languages/TR/std_BanditMilitias_xml_tr.xml"/>
         </XmlNode>
         <XmlNode>
-            <XmlName id="NPCCharacters" path="bandits"/>
+            <XmlName id="NPCCharacters" path="ModuleData/bandits.xml"/>
         </XmlNode>
         <XmlNode>
-            <XmlName id="NPCCharacters" path="lords"/>
+            <XmlName id="NPCCharacters" path="ModuleData/lords.xml"/>
         </XmlNode>
         <XmlNode>
-            <XmlName id="Prefabs" path="GUI/Prefabs"/>
+            <XmlName id="Prefabs" path="ModuleData/GUI/Prefabs"/>
         </XmlNode>
     </Xmls>
 </Module>

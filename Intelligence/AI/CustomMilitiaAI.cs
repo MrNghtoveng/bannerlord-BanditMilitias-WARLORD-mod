@@ -23,8 +23,8 @@ namespace BanditMilitias.Intelligence.AI
         private const float PATROL_RADIUS = 40f;
         private const float RAID_SEARCH_RADIUS = 60f;
         private const float ENEMY_DETECTION_RADIUS = 40f;
-        private const float THREAT_SCAN_RADIUS = 16f;
-        private const float THREAT_OVERPOWER_RATIO = 1.6f;
+        // FIX-DUAL-BRAIN: THREAT_SCAN_RADIUS ve THREAT_OVERPOWER_RATIO buradan kaldırıldı.
+        // Kaçış mantığı MilitiaDecider.TrySurvivalRetreat (Katman 0)'a taşındı.
         public const float STRATEGIC_ORDER_DURATION = 24f;
 
         private static bool _isInitialized = false;
@@ -149,6 +149,7 @@ namespace BanditMilitias.Intelligence.AI
             var component = party.PartyComponent as MilitiaPartyComponent;
             if (component == null) return;
 
+            // Ev savunma acil durumu
             if (!IsPartyWounded(party) && component.GetHomeSettlement() != null && component.GetHomeSettlement()!.LastAttackerParty != null)
             {
                 if (component.GetHomeSettlement()!.LastAttackerParty!.IsActive &&
@@ -169,31 +170,12 @@ namespace BanditMilitias.Intelligence.AI
                 }
             }
 
-            if (IsPartyWounded(party))
-            {
-                if (component.GetHomeSettlement() != null && party.CurrentSettlement == null)
-                {
-                    SetMoveGoTo(party, component.GetHomeSettlement()!);
-                    return;
-                }
-            }
-
-            if (TryRetreatFromOverwhelmingThreat(party, component))
-            {
-                return;
-            }
-
+            // FIX-DUAL-BRAIN: CurrentOrder olsa bile erken dönmüyoruz (return KALDIRILDI).
+            // MilitiaDecider artık bu emri Layer 2'de (Swarm'dan sonra) değerlendirecek.
             if (component.CurrentOrder != null)
             {
-                if (CampaignTime.Now - component.OrderTimestamp < CampaignTime.Hours(STRATEGIC_ORDER_DURATION))
+                if (CampaignTime.Now - component.OrderTimestamp >= CampaignTime.Hours(STRATEGIC_ORDER_DURATION))
                 {
-
-                    SetStrategicTargetForVanilla(party);
-                    return;
-                }
-                else
-                {
-
                     var evt = new BanditMilitias.Core.Events.CommandCompletionEvent
                     {
                         Party = party,
@@ -202,14 +184,12 @@ namespace BanditMilitias.Intelligence.AI
                         CompletionTime = CampaignTime.Now
                     };
                     NeuralEventRouter.Instance.Publish(evt);
-
                     component.CurrentOrder = null;
                 }
             }
 
             if (CheckForOpportunities(party, component))
             {
-                // Fırsat bulundu - hedefe olan mesafeye göre uyku süresi belirle
                 SetSleepByDistance(party, component);
                 return;
             }
@@ -218,11 +198,6 @@ namespace BanditMilitias.Intelligence.AI
             SetSleepByDistance(party, component);
         }
 
-        /// <summary>
-        /// Bannerlord'un "hedefe varınca uyu" modelini uygular.
-        /// Parti hedefine olan mesafeyi tahmin eder ve o süre + tolerans kadar uyur.
-        /// Savaş veya IsPriorityAIUpdate bu uyku modunu her zaman iptal eder.
-        /// </summary>
         private static void SetSleepByDistance(MobileParty party, MilitiaPartyComponent component)
         {
             if (party.MapEvent != null || component.IsPriorityAIUpdate) return;
@@ -231,15 +206,13 @@ namespace BanditMilitias.Intelligence.AI
 
             if (component.CurrentOrder != null && component.CurrentOrder.TargetLocation.IsValid)
             {
-                // Hedefe tahmini varış süresi: mesafe / ortalama hız (campaign birim/saat ~1.5)
                 Vec2 current = CompatibilityLayer.GetPartyPosition(party);
                 float dist = current.Distance(component.CurrentOrder.TargetLocation);
                 float speed = System.Math.Max(0.5f, CompatibilityLayer.GetPartySpeed(party));
-                sleepHours = System.Math.Min(dist / speed + 1f, 8f); // max 8 saat
+                sleepHours = System.Math.Min(dist / speed + 1f, 8f);
             }
             else
             {
-                // Hedef yok → role göre sabit uyku
                 sleepHours = component.Role == MilitiaPartyComponent.MilitiaRole.Guardian ? 6f : 4f;
             }
 
@@ -363,13 +336,11 @@ namespace BanditMilitias.Intelligence.AI
                 if (!p.IsActive) continue;
                 if (p.MapEvent != null || p.SiegeEvent != null)
                 {
-                    // SCAVENGE: Devam eden savaşları ganimet için takip et
                     if (p.MapEvent != null && p.MapEvent.WinningSide == BattleSideEnum.None)
                     {
                         var comp = p.PartyComponent as MilitiaPartyComponent;
                         if (comp != null)
                         {
-                            // NEW: Namı yüksek kaptanlar uzaktaki savaşlara "akbaba" (scavenge) gibi daha kolay çöker
                             float searchBoost = (comp.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? 20f : 0f) + (comp.Renown / 5f);
                             float scavengeScore = 15f + searchBoost + (p.MapEvent.AttackerSide.TroopCount + p.MapEvent.DefenderSide.TroopCount) / 10f;
                             if (scavengeScore > bestScore)
@@ -385,22 +356,18 @@ namespace BanditMilitias.Intelligence.AI
                 if (p.Army != null) continue;
                 if (p.MapFaction == null || me.MapFaction == null) continue;
 
-                // Milisler birbirini avlayabilir (Predatory AI)
                 bool isMilitia = p.PartyComponent is MilitiaPartyComponent;
-                
-                // Savaşta mıyız? (Veya rakip milis mi?)
+
                 if (!p.MapFaction.IsAtWarWith(me.MapFaction) && !isMilitia) continue;
 
                 float theirStr = CompatibilityLayer.GetTotalStrength(p);
 
-                // PREDATORY AI: Zayıf milisleri avla (0.7 kuralı)
                 if (isMilitia)
                 {
-                    if (theirStr > myStr * 0.7f) continue; // Fazla güçlü, bulaşma
-                    
-                    // NEW: Predatory Economics - Increase score if Warlord is poor
+                    if (theirStr > myStr * 0.7f) continue;
+
                     float predatoryScore = 20f + (myStr / (theirStr + 1f)) * 5f;
-                    
+
                     var warlord = WarlordSystem.Instance.GetWarlordForParty(me);
                     int availableGold = (int)(warlord?.Gold
                         ?? (me.PartyComponent as MilitiaPartyComponent)?.Gold
@@ -409,7 +376,7 @@ namespace BanditMilitias.Intelligence.AI
                         && (me.MemberRoster?.TotalManCount ?? 0) >= 18;
                     if (availableGold < 5000 && hasMinimumPowerForDesperation)
                     {
-                        predatoryScore *= 2.5f; // Desperation amplifies aggression only when the militia can actually finish the fight
+                        predatoryScore *= 2.5f;
                     }
 
                     if (predatoryScore > bestScore)
@@ -422,11 +389,10 @@ namespace BanditMilitias.Intelligence.AI
 
                 if (!p.IsCaravan && !p.IsVillager) continue;
 
-                if (!DecisionRules.IsAdvantageousEngagement(myStr, theirStr, 
+                if (!DecisionRules.IsAdvantageousEngagement(myStr, theirStr,
                     (p.PartyComponent as MilitiaPartyComponent)?.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? 1.05f : 1.25f)) continue;
 
-                // KERVAN YAĞMALAMA: Kervanlara daha yüksek öncelik ver
-                float valueBias = p.IsCaravan ? 40f : 15f; 
+                float valueBias = p.IsCaravan ? 40f : 15f;
                 float score = valueBias + (myStr - theirStr);
                 if (score > bestScore)
                 {
@@ -435,77 +401,6 @@ namespace BanditMilitias.Intelligence.AI
                 }
             }
             return bestTarget;
-        }
-
-        private static bool TryRetreatFromOverwhelmingThreat(MobileParty party, MilitiaPartyComponent component)
-        {
-            if (Campaign.Current == null) return false;
-            if (party.MapFaction == null) return false;
-            if (party.MapEvent != null || party.SiegeEvent != null) return false;
-
-            Vec2 myPos = CompatibilityLayer.GetPartyPosition(party);
-            if (!myPos.IsValid) return false;
-
-            float myStrength = CompatibilityLayer.GetTotalStrength(party);
-            float radiusSq = THREAT_SCAN_RADIUS * THREAT_SCAN_RADIUS;
-            MobileParty? threat = null;
-            float threatStrength = 0f;
-            float overwhelmRatio = THREAT_OVERPOWER_RATIO;
-            var doctrineSystem = ModuleManager.Instance.GetModule<AdaptiveAIDoctrineSystem>();
-            if (doctrineSystem != null && doctrineSystem.IsEnabled)
-            {
-                overwhelmRatio = doctrineSystem.GetOverwhelmingThreatRatio(party, THREAT_OVERPOWER_RATIO);
-            }
-
-            var nearby = new System.Collections.Generic.List<MobileParty>();
-            MilitiaSmartCache.Instance.GetNearbyParties(myPos, THREAT_SCAN_RADIUS, nearby);
-
-
-            foreach (MobileParty candidate in nearby)
-            {
-                if (candidate == null || !candidate.IsActive || candidate == party) continue;
-                if (CompatibilityLayer.GetPartyPosition(candidate).DistanceSquared(myPos) > radiusSq) continue;
-                if (candidate.MapFaction == null || !candidate.MapFaction.IsAtWarWith(party.MapFaction)) continue;
-                if (candidate.IsCaravan || candidate.IsVillager) continue;
-
-                float enemyStrength = CompatibilityLayer.GetTotalStrength(candidate);
-                
-                // SURVIVAL INSTINCT: Yaralı birimler daha erken kaçar (threshold 1.2x yerine 0.8x)
-                float currentOverwheelmRatio = IsPartyWounded(party) ? overwhelmRatio * 0.5f : overwhelmRatio;
-
-                if (DecisionRules.IsOverwhelmingThreat(myStrength, enemyStrength, currentOverwheelmRatio) &&
-                    enemyStrength > threatStrength)
-                {
-                    threat = candidate;
-                    threatStrength = enemyStrength;
-                }
-            }
-
-            if (threat == null) return false;
-
-            // NEW: Survival Instinct - Escape to nearest hideout or settlement
-            var home = component.GetHomeSettlement();
-            if (home != null)
-            {
-                SetMoveGoTo(party, home);
-            }
-            else
-            {
-                // Find nearest settlement using WorldMemory
-                var nearestSafe = BanditMilitias.Core.Memory.WorldMemory.Bedrock.GetNearest(myPos, 1, 100f).FirstOrDefault();
-                if (nearestSafe != null)
-                    SetMoveGoTo(party, nearestSafe);
-                else
-                {
-                    Vec2 fleeDir = (myPos - CompatibilityLayer.GetPartyPosition(threat)).Normalized();
-                    SetMoveGoTo(party, myPos + (fleeDir * 40f));
-                }
-            }
-
-            if (Settings.Instance?.TestingMode == true)
-                DebugLogger.TestLog($"[SURVIVAL] {party.Name} (Wounded: {IsPartyWounded(party)}) is fleeing from {threat.Name}");
-
-            return true;
         }
 
         private static bool TryExecuteComponentDecision(MobileParty party, MilitiaPartyComponent component)
@@ -536,6 +431,11 @@ namespace BanditMilitias.Intelligence.AI
 
                     case AIDecisionType.Flee:
                     case AIDecisionType.Retreat:
+                        if (decision.MovePoint.HasValue)
+                        {
+                            SetMoveGoTo(party, decision.MovePoint.Value);
+                            return true;
+                        }
                         if (decision.TargetParty != null && decision.TargetParty.IsActive)
                         {
                             MilitiaActionExecutor.ExecuteFlee(party, decision.TargetParty);
@@ -659,7 +559,7 @@ namespace BanditMilitias.Intelligence.AI
             }
         }
 
-        private static void AssignCommand(MobileParty party, StrategicCommand command)
+        public static void AssignCommand(MobileParty party, StrategicCommand command)
         {
             var component = party.PartyComponent as MilitiaPartyComponent;
             if (component == null) return;
@@ -748,24 +648,6 @@ namespace BanditMilitias.Intelligence.AI
             return DecisionRules.IsWounded(total, wounded);
         }
 
-        public static bool ExecuteCustomLogic(MobileParty party)
-        {
-
-            if (IsPartyWounded(party))
-            {
-                var component = party.PartyComponent as MilitiaPartyComponent;
-                if (component != null && component.HomeSettlement != null)
-                {
-                    if (party.CurrentSettlement == null)
-                    {
-                        SetMoveGoTo(party, component.HomeSettlement);
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
         public static bool IsCommandActive(MilitiaPartyComponent component)
         {
             if (component.CurrentOrder == null) return false;
@@ -816,7 +698,6 @@ namespace BanditMilitias.Intelligence.AI
         }
     }
 
-    // ── Inline: DecisionRules ─────────────────────────────────────
     public static class DecisionRules
     {
         public static bool IsWounded(int totalTroops, int woundedTroops)
@@ -842,7 +723,6 @@ namespace BanditMilitias.Intelligence.AI
         public static float GetChaseDistance(MilitiaPartyComponent.MilitiaRole role, float renown, float raiderDist = 25f, float guardianDist = 10f)
         {
             float baseDist = role == MilitiaPartyComponent.MilitiaRole.Raider ? raiderDist : guardianDist;
-            // Veteranlar %50 daha uzağa kovalar, nam her 500 puan için multiplier'a 1 ekler (aslında /500f)
             float multiplier = (role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? 1.5f : 1.0f) + (renown / 500f);
             return baseDist * multiplier;
         }

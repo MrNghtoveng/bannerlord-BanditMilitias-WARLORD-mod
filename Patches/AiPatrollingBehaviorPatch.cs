@@ -65,16 +65,18 @@ namespace BanditMilitias.Patches
 
             try
             {
-                // Restocking/sell-prisoners states should not consume tactical decisions.
-                if (component.CurrentState == MilitiaPartyComponent.WarlordState.Restocking ||
-                    component.CurrentState == MilitiaPartyComponent.WarlordState.SellingPrisoners)
-                    return false;
+                // ══ Karar Hiyerarşisi Süzgeci ═════════════════════════════
+                // Eğer modun özel bir stratejik planı (Swarm, Warlord Order, Survival) yoksa, 
+                // vanilla AI'nın hareket etmesine (patrol/idle) izin veriyoruz.
 
-                if (Intelligence.AI.CustomMilitiaAI.IsPartyWounded(mobileParty))
+                bool hasModOrder = component.CurrentOrder != null;
+                bool hasSwarmGroup = Intelligence.Swarm.SwarmCoordinator.Instance.IsInSwarm(mobileParty);
+                bool needsSurvival = Intelligence.AI.CustomMilitiaAI.IsPartyWounded(mobileParty);
+
+                if (!hasModOrder && !hasSwarmGroup && !needsSurvival)
                 {
-                    component.WakeUp();
-                    _ = Intelligence.AI.CustomMilitiaAI.ExecuteCustomLogic(mobileParty);
-                    return false;
+                    // Vanilla AI'ya (burden) devret
+                    return true; 
                 }
 
                 if (!ShouldUpdateDecision(mobileParty, component))

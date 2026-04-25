@@ -815,6 +815,5 @@ namespace BanditMilitias.Behaviors
             }
         }
 
-        public override string GetId() => "BanditMilitiaBehavior";
     }
 }

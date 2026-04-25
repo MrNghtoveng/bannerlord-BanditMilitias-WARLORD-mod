@@ -1,5 +1,6 @@
 using BanditMilitias.Core.Components;
 using BanditMilitias.Core.Events;
+using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Bounty;

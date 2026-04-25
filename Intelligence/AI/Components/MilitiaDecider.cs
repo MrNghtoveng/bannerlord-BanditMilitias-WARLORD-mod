@@ -34,10 +34,13 @@ namespace BanditMilitias.Intelligence.AI.Components
         private const float GUARDIAN_LEASH_SQ = 225f;
         private const float CMD_EXPIRE_HOURS = CustomMilitiaAI.STRATEGIC_ORDER_DURATION;
 
-        // ML sistemi ne kadar eğitilmişse o kadar güvenilir.
-        // Bu eşiğin üzerinde ML gerçek bir karar önerisi yapabilir.
-        private const float ML_CONFIDENCE_GATE = 0.15f;   // ~75-80 savaş
-        private const float ML_BONUS_WEIGHT = 20f;    // bonus puan (düşük güvende)
+        // FIX-DUAL-BRAIN: Kaçış sabitleri CustomMilitiaAI'dan buraya taşındı.
+        // TryRetreatFromOverwhelmingThreat artık Katman 0 olarak bu sınıfın içinde çalışır.
+        private const float THREAT_SCAN_RADIUS = 16f;
+        private const float THREAT_OVERPOWER_RATIO = 1.6f;
+
+        private const float ML_CONFIDENCE_GATE = 0.15f;
+        private const float ML_BONUS_WEIGHT = 20f;
 
         // ── Ana karar fonksiyonu ──────────────────────────────────
 
@@ -52,6 +55,18 @@ namespace BanditMilitias.Intelligence.AI.Components
             string source = "DefaultPatrol";
             string? targetId = null;
             float? score = null;
+
+            // ══ Katman 0: Hayatta kalma içgüdüsü ════════════════════════
+            // FIX-DUAL-BRAIN: TryRetreatFromOverwhelmingThreat buraya taşındı.
+            // Avantajı: Swarm'ın Retreat taktiği de bu katmandan geçer; eski kod
+            // erken return ile SwarmCoordinator'ı bypass ediyordu.
+            if (TrySurvivalRetreat(party, component, sensors, doctrineSystem, out var retreatResult))
+            {
+                result = retreatResult;
+                source = "SurvivalInstinct_K0";
+                LogAndReturn();
+                return result;
+            }
 
             // ══ Katman 1: SwarmCoordinator (her şeyi override eder) ══════
             if (SwarmCoordinator.Instance.TryGetOrder(party, out var swarmOrder))
@@ -141,7 +156,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 3.5: İç Tehdit (Cannibalization) - YENİ ═══════════
+            // ══ Katman 3.5: İç Tehdit (Cannibalization) ═══════════════════
             int totalMobileParties = Campaign.Current.MobileParties.Count;
             if (totalMobileParties > 1200 && component.Role >= MilitiaPartyComponent.MilitiaRole.Captain)
             {
@@ -226,8 +241,6 @@ namespace BanditMilitias.Intelligence.AI.Components
                     }
                 }
             }
-
-
 
             // ══ Katman 7: State-Aware Fallback Matrix ════════════════════
             float strength = CompatibilityLayer.GetTotalStrength(party);
@@ -330,7 +343,77 @@ namespace BanditMilitias.Intelligence.AI.Components
             }
         }
 
+        // ── Katman 0: Hayatta kalma içgüdüsü ─────────────────────────────
+        private static bool TrySurvivalRetreat(
+            MobileParty party,
+            MilitiaPartyComponent component,
+            MilitiaAISensors sensors,
+            AdaptiveAIDoctrineSystem? doctrineSystem,
+            out DecisionResult retreatResult)
+        {
+            retreatResult = new DecisionResult { Decision = AIDecisionType.Flee };
 
+            if (Campaign.Current == null || party.MapFaction == null) return false;
+            if (party.MapEvent != null || party.SiegeEvent != null) return false;
+
+            Vec2 myPos = CompatibilityLayer.GetPartyPosition(party);
+            if (!myPos.IsValid) return false;
+
+            float myStrength = CompatibilityLayer.GetTotalStrength(party);
+            float overwhelmRatio = THREAT_OVERPOWER_RATIO;
+
+            if (doctrineSystem != null && doctrineSystem.IsEnabled)
+                overwhelmRatio = doctrineSystem.GetOverwhelmingThreatRatio(party, THREAT_OVERPOWER_RATIO);
+
+            bool wounded = CustomMilitiaAI.IsPartyWounded(party);
+            float currentRatio = wounded ? overwhelmRatio * 0.5f : overwhelmRatio;
+
+            MobileParty? threat = null;
+            float threatStrength = 0f;
+            float radiusSq = THREAT_SCAN_RADIUS * THREAT_SCAN_RADIUS;
+
+            var nearby = sensors.GetNearbyEnemies();
+            foreach (var candidate in nearby)
+            {
+                if (!candidate.IsActive || candidate == party) continue;
+                if (CompatibilityLayer.GetPartyPosition(candidate).DistanceSquared(myPos) > radiusSq) continue;
+                if (candidate.IsCaravan || candidate.IsVillager) continue;
+
+                float enemyStrength = CompatibilityLayer.GetTotalStrength(candidate);
+                if (DecisionRules.IsOverwhelmingThreat(myStrength, enemyStrength, currentRatio)
+                    && enemyStrength > threatStrength)
+                {
+                    threat = candidate;
+                    threatStrength = enemyStrength;
+                }
+            }
+
+            if (threat == null) return false;
+
+            retreatResult.TargetParty = threat;
+
+            var home = component.GetHomeSettlement();
+            if (home != null)
+                retreatResult.MovePoint = CompatibilityLayer.GetSettlementPosition(home);
+            else
+            {
+                var nearestSafe = BanditMilitias.Core.Memory.WorldMemory.Bedrock
+                    .GetNearest(myPos, 1, 100f).FirstOrDefault();
+                if (nearestSafe != null)
+                    retreatResult.MovePoint = CompatibilityLayer.GetSettlementPosition(nearestSafe);
+                else
+                {
+                    Vec2 fleeDir = (myPos - CompatibilityLayer.GetPartyPosition(threat)).Normalized();
+                    retreatResult.MovePoint = myPos + (fleeDir * 40f);
+                }
+            }
+
+            if (Settings.Instance?.TestingMode == true)
+                BanditMilitias.Debug.DebugLogger.TestLog(
+                    $"[K0-SURVIVAL] {party.Name} (Wounded:{wounded}) fleeing from {threat.Name}");
+
+            return true;
+        }
 
         // ── Komut çevirisi ────────────────────────────────────────
 
@@ -471,8 +554,6 @@ namespace BanditMilitias.Intelligence.AI.Components
                 MovePoint = CompatibilityLayer.GetPartyPosition(target)
             };
         }
-
-        // ── Swarm çevirisi ────────────────────────────────────────
 
         private static AIDecisionType MapSwarmToDecision(SwarmTactic tactic) => tactic switch
         {

@@ -32,7 +32,6 @@ namespace BanditMilitias.Infrastructure
             AddClassDefinition(typeof(MilitiaPartyComponent), 1);
             AddClassDefinition(typeof(HideoutReputation), 2);
             AddClassDefinition(typeof(Warlord), 3);
-            AddClassDefinition(typeof(HideoutData), 4);
             AddClassDefinition(typeof(SettlementFearState), 5);
             AddClassDefinition(typeof(WarlordLegitimacyRecord), 6);
             AddClassDefinition(typeof(WarlordBountyRecord), 7);
@@ -99,7 +98,6 @@ namespace BanditMilitias.Infrastructure
             ConstructContainerDefinition(typeof(Dictionary<string, float>));
             ConstructContainerDefinition(typeof(Dictionary<string, CommandFeedback>));
             ConstructContainerDefinition(typeof(Dictionary<string, StrategicState>));
-            ConstructContainerDefinition(typeof(Dictionary<string, HideoutData>));
             ConstructContainerDefinition(typeof(Dictionary<string, SettlementFearState>));
             ConstructContainerDefinition(typeof(Dictionary<string, WarlordLegitimacyRecord>));
             ConstructContainerDefinition(typeof(Dictionary<string, WarlordBountyRecord>));

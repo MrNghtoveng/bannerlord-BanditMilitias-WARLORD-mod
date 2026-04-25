@@ -78,7 +78,7 @@ namespace BanditMilitias.Systems.Combat
                     if (profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.FastFlank || 
                         profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.ShockRaid)
                     {
-                        agent.SetBaseSpeedMultiplier(1.15f);
+                        CompatibilityLayer.SetAgentBaseSpeedMultiplier(agent, 1.15f);
                     }
                     
                     if (profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.DefensiveDepth)
@@ -461,8 +461,8 @@ namespace BanditMilitias.Systems.Combat
                     }
 
                     // AMBUSH BONUS: Pusu başarılı olursa +%50 ekstra XP
-                    if (winner.PartyComponent is MilitiaPartyComponent winnerComp && 
-                        winnerComp.CurrentOrder?.Type == Intelligence.Strategic.CommandType.Ambush)
+                    if (winner.PartyComponent is MilitiaPartyComponent ambushWinnerComp && 
+                        ambushWinnerComp.CurrentOrder?.Type == Intelligence.Strategic.CommandType.Ambush)
                     {
                         xpMultiplier *= 1.5f;
                     }

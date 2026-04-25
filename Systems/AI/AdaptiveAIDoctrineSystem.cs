@@ -16,6 +16,7 @@ using TaleWorlds.Core;
 using TaleWorlds.Library;
 using TaleWorlds.SaveSystem;
 using MathF = TaleWorlds.Library.MathF;
+using ArmyComposition = BanditMilitias.Systems.Enhancement.WarlordTacticsSystem.ArmyComposition;
 
 namespace BanditMilitias.Systems.AI
 {
@@ -799,9 +800,9 @@ namespace BanditMilitias.Systems.AI
         {
             return doctrine switch
             {
-                CounterDoctrine.FastFlank => 1.30f,
-                CounterDoctrine.ShockRaid => 1.45f,
-                CounterDoctrine.HarassScreen => 1.20f,
+                CounterDoctrine.FastFlank => isRaider ? 1.30f : 1.15f,
+                CounterDoctrine.ShockRaid => isRaider ? 1.45f : 1.25f,
+                CounterDoctrine.HarassScreen => isRaider ? 1.20f : 1.05f,
                 CounterDoctrine.DefensiveDepth => 0.70f,
                 _ => 1.00f
             };

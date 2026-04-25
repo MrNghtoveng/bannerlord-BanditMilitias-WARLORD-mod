@@ -1,6 +1,7 @@
 using BanditMilitias.Core.Components;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.AI;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Fear;
 using System;
@@ -185,7 +186,12 @@ namespace BanditMilitias.Systems.Economy
 
             if (closestMilitia != null)
             {
-                CompatibilityLayer.SetMoveEngageParty(closestMilitia, caravan);
+                CustomMilitiaAI.AssignCommand(closestMilitia, new StrategicCommand
+                {
+                    Type = CommandType.Engage,
+                    TargetParty = caravan,
+                    Reason = "Caravan resistance tax collection"
+                });
 
                 if (Settings.Instance?.TestingMode == true)
                 {

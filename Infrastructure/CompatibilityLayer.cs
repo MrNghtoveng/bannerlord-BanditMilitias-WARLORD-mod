@@ -6,8 +6,11 @@ using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Actions;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Party.PartyComponents;
+using TaleWorlds.CampaignSystem.Roster;
 using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
 using TaleWorlds.Library;
+using TaleWorlds.MountAndBlade;
 
 namespace BanditMilitias.Infrastructure
 {
@@ -470,6 +473,118 @@ namespace BanditMilitias.Infrastructure
                 }
             }
             return Vec2.Invalid;
+        }
+
+        public static bool IsTroopRosterEmpty(TroopRoster? roster)
+        {
+            return roster == null || roster.TotalManCount <= 0;
+        }
+
+        public static int GetTotalWoundedTroops(TroopRoster? roster)
+        {
+            if (roster == null) return 0;
+
+            try
+            {
+                var prop = typeof(TroopRoster).GetProperty("TotalWoundedTroops");
+                if (prop?.GetValue(roster) is int wounded)
+                    return wounded;
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityWarning("GetTotalWoundedTroops", ex);
+            }
+
+            int total = 0;
+            for (int i = 0; i < roster.Count; i++)
+            {
+                var element = roster.GetElementCopyAtIndex(i);
+                total += Math.Max(0, element.WoundedNumber);
+            }
+
+            return total;
+        }
+
+        public static void HealWoundedTroops(TroopRoster? roster, int count)
+        {
+            if (roster == null || count <= 0) return;
+
+            try
+            {
+                var method = typeof(TroopRoster).GetMethod("HealWoundedTroops", new[] { typeof(int) });
+                if (method != null)
+                {
+                    _ = method.Invoke(roster, new object[] { count });
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityWarning("HealWoundedTroops", ex);
+            }
+
+            int remaining = count;
+            for (int i = 0; i < roster.Count && remaining > 0; i++)
+            {
+                var element = roster.GetElementCopyAtIndex(i);
+                if (element.Character == null || element.WoundedNumber <= 0) continue;
+
+                int healAmount = Math.Min(element.WoundedNumber, remaining);
+                if (healAmount <= 0) continue;
+
+                roster.AddToCounts(element.Character, 0, insertAtFront: false, woundedCount: -healAmount, xpChange: 0, removeDepleted: false, index: i);
+                remaining -= healAmount;
+            }
+        }
+
+        public static int GetElementXpAtIndex(TroopRoster? roster, int index)
+        {
+            if (roster == null || index < 0 || index >= roster.Count) return 0;
+
+            try
+            {
+                var method = typeof(TroopRoster).GetMethod("GetElementXpAtIndex", new[] { typeof(int) });
+                if (method?.Invoke(roster, new object[] { index }) is int xp)
+                    return xp;
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityWarning("GetElementXpAtIndex", ex);
+            }
+
+            return 0;
+        }
+
+        public static void SetAgentBaseSpeedMultiplier(Agent? agent, float multiplier)
+        {
+            if (agent == null) return;
+
+            try
+            {
+                var method = typeof(Agent).GetMethod("SetBaseSpeedMultiplier", new[] { typeof(float) });
+                if (method != null)
+                {
+                    _ = method.Invoke(agent, new object[] { multiplier });
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityWarning("SetAgentBaseSpeedMultiplier", ex);
+            }
+
+            try
+            {
+                var method = typeof(Agent).GetMethod("SetMaximumSpeedLimit", new[] { typeof(float), typeof(bool) });
+                if (method != null)
+                {
+                    _ = method.Invoke(agent, new object[] { multiplier, false });
+                }
+            }
+            catch (Exception ex)
+            {
+                LogCompatibilityWarning("SetMaximumSpeedLimitFallback", ex);
+            }
         }
 
         private static readonly Lazy<Func<PartyBase, float>?> _totalStrengthDelegateLazy =

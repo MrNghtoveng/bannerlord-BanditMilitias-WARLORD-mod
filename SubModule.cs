@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Debug;
+using BanditMilitias.Debug;
 using HarmonyLib;
 using System;
 using System.Linq;
@@ -36,11 +36,7 @@ namespace BanditMilitias
         private static bool _harmonyPatched = false;
 
         private static int _initializationAttempts = 0;
-        private static int _tickErrorCount = 0;
-        private static DateTime _lastTickError = DateTime.MinValue;
         private const int MAX_INIT_ATTEMPTS = 3;
-        private const int MAX_TICK_ERRORS_PER_MINUTE = 10;
-        private const int MAX_TICK_ERRORS_FOR_EMERGENCY = 25;
         private const int MAX_DEFERRED_INIT_FAILURES = 3;
         private static int _deferredInitFailureCount = 0;
 
@@ -540,8 +536,8 @@ namespace BanditMilitias
             
             try
             {
-                Infrastructure.ModuleManager.Instance.OnGameEnd();
-                Infrastructure.FileLogger.Log("ModuleManager.OnGameEnd: done");
+                Infrastructure.ModuleManager.Instance.OnSessionEnd();
+                Infrastructure.FileLogger.Log("ModuleManager.OnSessionEnd: done");
             }
             catch (Exception ex) { DebugLogger.Warning("SubModule", $"ModuleManager cleanup failed: {ex.Message}"); }
 
@@ -817,7 +813,6 @@ namespace BanditMilitias
                 AddModelSafe(gameStarter, new Models.ModBanditDensityModel(), nameof(Models.ModBanditDensityModel));
                 AddModelSafe(gameStarter, new Models.MilitiaSpeedModel(), nameof(Models.MilitiaSpeedModel));
                 AddModelSafe(gameStarter, new Models.ModPartySizeLimitModel(), nameof(Models.ModPartySizeLimitModel));
-                AddModelSafe(gameStarter, new Models.BanditCombatSimulationModel(), nameof(Models.BanditCombatSimulationModel));
             }
             catch (Exception ex)
             {
@@ -872,8 +867,6 @@ namespace BanditMilitias
                 }
 
                 AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaBehavior(), nameof(Behaviors.MilitiaBehavior));
-                AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaHideoutCampaignBehavior(), nameof(Behaviors.MilitiaHideoutCampaignBehavior));
-                AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaRewardCampaignBehavior(), nameof(Behaviors.MilitiaRewardCampaignBehavior));
                 AddBehaviorSafe(registerBehavior, new Behaviors.MilitiaDiplomacyCampaignBehavior(), nameof(Behaviors.MilitiaDiplomacyCampaignBehavior));
                 AddBehaviorSafe(registerBehavior, new Behaviors.WarlordCampaignBehavior(), nameof(Behaviors.WarlordCampaignBehavior));
                 return true;
@@ -960,6 +953,12 @@ namespace BanditMilitias
         {
             string status = $"[BanditMilitias] Status: {_currentState} | AI:{(_aiSystemEnabled ? "ON" : "OFF")} | Warlord:{(_warlordSystemEnabled ? "ON" : "OFF")}";
             DisplayInfo(status, _currentState == ModState.Active ? Colors.Green : Colors.Yellow);
+        }
+
+        public static string GetDiagnostics()
+        {
+            return $"SubModule State: {_currentState} | DeferredInit={_deferredInitDone} | " +
+                   $"AI={_aiSystemEnabled} | EventBus={_eventBusEnabled} | Warlord={_warlordSystemEnabled} | Brain={_brainSystemEnabled}";
         }
 
         private void ValidateSettings()

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.SaveSystem;
@@ -576,7 +577,7 @@ namespace BanditMilitias.Systems.Fear
                     {
                         var nearbyParties = MobileParty.All.Where(p => 
                             p != null && p.IsActive && !p.IsBandit && 
-                            p.Position2D.DistanceSquared(hideoutPos) < 25f * 25f); // 25 birim yarıçap
+                            CompatibilityLayer.GetPartyPosition(p).DistanceSquared(hideoutPos) < 25f * 25f); // 25 birim yarıçap
 
                         foreach (var p in nearbyParties)
                         {

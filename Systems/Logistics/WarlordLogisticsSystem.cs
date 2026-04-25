@@ -1,7 +1,8 @@
-﻿using BanditMilitias.Components;
+using BanditMilitias.Components;
 using BanditMilitias.Core.Components;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.AI;
 using BanditMilitias.Intelligence.Strategic;
 using System;
 using System.Collections.Generic;
@@ -112,7 +113,12 @@ namespace BanditMilitias.Systems.Logistics
                 if (town != null)
                 {
                     ChangeState(militia, component, MilitiaPartyComponent.WarlordState.SellingPrisoners);
-                    SetMoveToSettlement(militia, town);
+                    CustomMilitiaAI.AssignCommand(militia, new StrategicCommand 
+                    { 
+                        Type = CommandType.Patrol, 
+                        TargetLocation = CompatibilityLayer.GetSettlementPosition(town),
+                        Reason = "Selling prisoners"
+                    });
 
                     if (Settings.Instance?.TestingMode == true)
                         DebugLogger.Info("Logistics", $"{militia.Name} has too many prisoners ({militia.PrisonRoster.TotalManCount}). Going to sell at {town.Name}.");
@@ -182,13 +188,23 @@ namespace BanditMilitias.Systems.Logistics
                     PerformFoodPurchase(militia, component, target);
 
                     ChangeState(militia, component, MilitiaPartyComponent.WarlordState.Patrolling);
-                    CompatibilityLayer.SetMovePatrolAroundSettlement(militia, target);
+                    CustomMilitiaAI.AssignCommand(militia, new StrategicCommand
+                    {
+                        Type = CommandType.Patrol,
+                        TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
+                        Reason = "Food purchase complete, returning to patrol"
+                    });
                 }
                 else
                 {
 
                     if (target != null && militia.TargetSettlement != target)
-                        SetMoveToSettlement(militia, target);
+                        CustomMilitiaAI.AssignCommand(militia, new StrategicCommand
+                        {
+                            Type = CommandType.Patrol,
+                            TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
+                            Reason = "Moving to restock food"
+                        });
                 }
             }
         }
@@ -203,12 +219,22 @@ namespace BanditMilitias.Systems.Logistics
                 PerformPrisonerSale(militia, component, target);
 
                 ChangeState(militia, component, MilitiaPartyComponent.WarlordState.Patrolling);
-                CompatibilityLayer.SetMovePatrolAroundSettlement(militia, target);
+                CustomMilitiaAI.AssignCommand(militia, new StrategicCommand
+                {
+                    Type = CommandType.Patrol,
+                    TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
+                    Reason = "Prisoner sale complete, returning to patrol"
+                });
             }
             else
             {
                 if (target != null && militia.TargetSettlement != target)
-                    SetMoveToSettlement(militia, target);
+                    CustomMilitiaAI.AssignCommand(militia, new StrategicCommand
+                    {
+                        Type = CommandType.Patrol,
+                        TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
+                        Reason = "Moving to sell prisoners"
+                    });
             }
         }
 

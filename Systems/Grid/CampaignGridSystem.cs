@@ -8,7 +8,6 @@ namespace BanditMilitias.Systems.Grid
 {
     public class CampaignGridSystem
     {
-        private static List<Settlement>? _cachedVillages;
         private static CampaignTime _lastCacheTime = CampaignTime.Zero;
 
         // Önbellek artık WorldMemory.Bedrock üzerinden yönetiliyor
@@ -51,9 +50,7 @@ namespace BanditMilitias.Systems.Grid
 
         public static void ResetCache()
         {
-            _cachedVillages = null;
             _lastCacheTime = CampaignTime.Zero;
         }
     }
 }
-

@@ -103,7 +103,7 @@ namespace BanditMilitias.Systems.Cleanup
                 // Magnet logic: Sığınağa doğru hareket et (Sürüleşme)
                 if (party.CurrentSettlement == null && party.ShortTermTargetSettlement != comp.HomeSettlement)
                 {
-                    party.SetMoveGoToSettlement(comp.HomeSettlement);
+                    party.SetMoveGoToSettlement(comp.HomeSettlement, default, true);
                     if (Settings.Instance?.TestingMode == true)
                         DebugLogger.TestLog($"[MAGNET] {party.Name} sığınağa doğru çekiliyor (Sürüleşme).");
                 }

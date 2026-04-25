@@ -62,7 +62,6 @@ namespace BanditMilitias.Systems.Diagnostics
 
         // ── Deep Probes Durum Takibi ─────────────────────────────
         private readonly Dictionary<string, (Vec2 Position, double Hour)> _stasisTracker = new();
-        private double _lastLinkIntegrityCheckHour = 0;
 
         public override void Initialize()
         {
@@ -492,7 +491,7 @@ namespace BanditMilitias.Systems.Diagnostics
                 if (party == null || !party.IsActive || party.PartyComponent is not MilitiaPartyComponent) continue;
 
                 string id = party.StringId;
-                Vec2 currentPos = party.Position2D;
+                Vec2 currentPos = CompatibilityLayer.GetPartyPosition(party);
 
                 if (_stasisTracker.TryGetValue(id, out var prev))
                 {
