@@ -1,0 +1,719 @@
+﻿Module ID: NervousSystem Class: NervousSystem Category: Core/Neural Source: C:\Users\firat\Documents\myproject\bannerlord-BanditMilitias-WARLORD-mod-master\BanditMilitias\Core\Neural\NervousSystem.cs AutoRegister: True Status: Aktif Dependencies: AISchedulerSystem, FearSystem, NervousSystem, NeuralAdvisor, NeuralEventRouter, PlayerTracker, WarlordLogisticsSystem, WarlordSystem RiskFlags: LazySingleton_NoCleanup  ================ SOURCE ================ // ============================================================
+// Core/Neural/NervousSystem.cs
+// BanditMilitias DaÄŸÄ±tÄ±k Sinir Sistemi â€” v1.0
+//
+// SORUN (Bu dosya olmadan):
+//   â€¢ 45 ayrÄ± sistem, her saatte ActiveMilitias'Ä± baÄŸÄ±msÄ±z tarÄ±yor
+//   â€¢ WarlordSystem.GetAllWarlords() 26 farklÄ± yerden Ã§aÄŸrÄ±lÄ±yor
+//   â€¢ PlayerTracker.GetThreatLevel(), FearSystem.GetSettlementFear()
+//     her saat 4-6 kez yeniden hesaplanÄ±yor
+//   â€¢ TÃ¼m modÃ¼ller ProcessModuleTicks'te seri olarak Ã§alÄ±ÅŸÄ±yor
+//   â€¢ HiÃ§bir sistem diÄŸerinin ne kadar yÃ¼klÃ¼ olduÄŸunu bilmiyor
+//
+// Ã‡Ã–ZÃœM (Bu dosya ile):
+//
+//  1. SharedPercept â€” "Duyusal AnlÄ±k GÃ¶rÃ¼ntÃ¼"
+//     Her saatin baÅŸÄ±nda TEK bir tarama: tÃ¼m milislerin pozisyonu,
+//     warlord listesi, tehdit seviyesi, korku durumu hesaplanÄ±r ve
+//     salt-okunur bir tampona yazÄ±lÄ±r. TÃ¼m sistemler bu tamponu okur.
+//
+//  2. DendriticPartitioner â€” "Ä°ÅŸ BÃ¶lÃ¼ÅŸÃ¼mÃ¼"
+//     ActiveMilitias listesi, kanalara (dendrite) deterministik olarak
+//     bÃ¶lÃ¼nÃ¼r. Her kanal belirli milis dilimini iÅŸler. Kanal sayÄ±sÄ±
+//     yÃ¼ke gÃ¶re dinamik artar (yÃ¼ksek yÃ¼k â†’ daha fazla kanal).
+//
+//  3. GanglionGroup â€” "Sinir DÃ¼ÄŸÃ¼mÃ¼"
+//     Ä°ÅŸlevsel olarak iliÅŸkili sistemleri bir arada tutan grup.
+//     â€¢ Sensory  : PlayerTracker, FearSystem, TerritorySystem
+//     â€¢ Motor    : AIScheduler, LogisticsSystem, BehaviorSystem
+//     â€¢ Associative : BanditBrain, SwarmCoordinator
+//     â€¢ Autonomic   : Economy, Workshop, Seasonal, Crisis
+//     Her grup kendi yÃ¼k bÃ¼tÃ§esini yÃ¶netir; aÅŸarsa Associative grubu yardÄ±ma gelir.
+//
+//  4. InhibitorySignal â€” "Ã‡ift Ä°ÅŸ Engeli"
+//     Bir kanal milisi iÅŸlemeye baÅŸladÄ±ÄŸÄ±nda, o milisi inhibitory
+//     kÃ¼mesine ekler. DiÄŸer kanallar aynÄ± milisi atlar.
+//
+//  5. MyelinCache â€” "HÄ±zlÄ± Yol Ã–nbelleÄŸi"
+//     SÄ±k eriÅŸilen hesaplamalar (warlord gÃ¼Ã§ skoru, tehdit mesafesi)
+//     tick boyunca Ã¶nbelleÄŸe alÄ±nÄ±r. Bir sonraki tick'te geÃ§erliliÄŸi
+//     sona erer.
+//
+// Entegrasyon:
+//   SubModule â†’ NervousSystem.Instance kaydÄ±
+//   NervousSystem.OnHourlyTick â†’ SharedPercept'i doldur â†’ kanallarÄ± Ã§alÄ±ÅŸtÄ±r
+//   Mevcut sistemler: DOKUNULMAZ â€” sadece SharedPercept.Current okuma
+//   eklenecek (isteÄŸe baÄŸlÄ±, geriye uyumlu).
+// ============================================================
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Linq;
+using BanditMilitias.Components;
+using BanditMilitias;
+using BanditMilitias.Core.Components;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Neural;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Systems.Diagnostics;
+using BanditMilitias.Systems.Fear;
+using BanditMilitias.Systems.Logistics;
+using BanditMilitias.Systems.Scheduling;
+using BanditMilitias.Systems.Tracking;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.Library;
+using TaleWorlds.SaveSystem;
+
+namespace BanditMilitias.Core.Neural
+{
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 1. SHARED PERCEPT â€” Duyusal AnlÄ±k GÃ¶rÃ¼ntÃ¼
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    /// <summary>
+    /// Bir saatlik tick'in baÅŸÄ±nda TEK kez doldurulur.
+    /// TÃ¼m sistemlerin tekrar hesaplamak zorunda kaldÄ±ÄŸÄ± pahalÄ± sorgularÄ±
+    /// Ã¶nbelleÄŸe alÄ±r. Sistemler bu nesneyi okur, EventBus sinyallerini deÄŸil.
+    ///
+    /// Ã–rnek tasarruf:
+    ///   GetAllWarlords() â€” 26 Ã§aÄŸrÄ± â†’ 1 Ã§aÄŸrÄ±
+    ///   GetThreatLevel() â€” 6 Ã§aÄŸrÄ±  â†’ 1 Ã§aÄŸrÄ±
+    /// </summary>
+    public sealed class SharedPercept
+    {
+        // â”€â”€ AnlÄ±k GÃ¶rÃ¼ntÃ¼ Verisi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        public IReadOnlyList<Warlord>      AllWarlords      { get; private set; } = Array.Empty<Warlord>();
+        public IReadOnlyList<MobileParty>  ActiveMilitias   { get; private set; } = Array.Empty<MobileParty>();
+        public float                       ThreatLevel      { get; private set; }
+        public bool                        IsHighLoad       { get; private set; }
+        public CampaignTime                SnapshotTime     { get; private set; }
+        public int                         TotalPartyCount  { get; private set; }
+
+        // â”€â”€ Korku & BÃ¶lge Ã–zeti â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        /// <summary>Key: WarlordStringId â†’ ortalama korku skoru</summary>
+        public IReadOnlyDictionary<string, float> WarlordFearIndex { get; private set; }
+            = new Dictionary<string, float>();
+
+        // â”€â”€ Myelin Ã–nbelleÄŸi (tick boyunca geÃ§erli) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private readonly Dictionary<string, float>  _myelinFloat  = new();
+        private readonly Dictionary<string, object> _myelinObject = new();
+
+        public bool IsStale =>
+            Campaign.Current == null ||
+            (CampaignTime.Now - SnapshotTime).ToHours > 1.5;
+
+        // â”€â”€ Singleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private static SharedPercept _current = new SharedPercept();
+        public  static SharedPercept Current  => _current;
+
+        // â”€â”€ Doldurma â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        internal static void Refresh()
+        {
+            if (Campaign.Current == null) return;
+
+            var next = new SharedPercept();
+            next.SnapshotTime    = CampaignTime.Now;
+            next.IsHighLoad      = DiagnosticsSystem.IsHighLoad;
+            next.TotalPartyCount = Campaign.Current.MobileParties.Count;
+
+            // Warlord listesi
+            var ws = WarlordSystem.Instance;
+            next.AllWarlords = ws != null
+                ? (IReadOnlyList<Warlord>)ws.GetAllWarlords()  // GetAllWarlords zaten IsAlive filtreli
+                : Array.Empty<Warlord>();
+
+            // Aktif milisler
+            var mm = ModuleManager.Instance;
+            next.ActiveMilitias = mm?.ActiveMilitias ?? Array.Empty<MobileParty>();
+
+            // Tehdit seviyesi
+            var tracker = PlayerTracker.Instance;
+            next.ThreatLevel = tracker != null ? tracker.GetThreatLevel() : 0f;
+
+            // Warlord korku indeksi
+            var fear = FearSystem.Instance;
+            if (fear != null && next.AllWarlords.Count > 0)
+            {
+                var fearIdx = new Dictionary<string, float>(next.AllWarlords.Count);
+                foreach (var w in next.AllWarlords)
+                    fearIdx[w.StringId] = fear.GetAverageFearForWarlord(w.StringId);
+                next.WarlordFearIndex = fearIdx;
+            }
+
+            // Atomik takas (eski percept'i bir anda yenisiyle deÄŸiÅŸtir)
+            System.Threading.Interlocked.Exchange(ref _current, next);
+        }
+
+        // â”€â”€ Myelin Ã–nbellek EriÅŸimi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        public bool TryGetCached(string key, out float value)
+            => _myelinFloat.TryGetValue(key, out value);
+
+        public void Cache(string key, float value)
+            => _myelinFloat[key] = value;
+
+        public bool TryGetCachedObject<T>(string key, out T? value) where T : class
+        {
+            if (_myelinObject.TryGetValue(key, out var raw) && raw is T typed)
+            { value = typed; return true; }
+            value = default;
+            return false;
+        }
+
+        public void CacheObject(string key, object value)
+            => _myelinObject[key] = value;
+    }
+
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 2. DENDRITIC PARTITIONER â€” Ä°ÅŸ BÃ¶lÃ¼ÅŸÃ¼mÃ¼
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    /// <summary>
+    /// ActiveMilitias listesini, belirlenen kanal sayÄ±sÄ±na bÃ¶ler.
+    /// Her kanal belirli bir milis dilimini iÅŸler. BÃ¶lme deterministiktir
+    /// (aynÄ± hash â†’ aynÄ± kanal) ve load-aware'dir (yÃ¼ksek yÃ¼k â†’ daha kÃ¼Ã§Ã¼k dilimler).
+    /// </summary>
+    public static class DendriticPartitioner
+    {
+        /// <summary>
+        /// Bir milisin hangi kanala ait olduÄŸunu belirler.
+        /// Bannerlord StringId deterministiktir â€” kanal atamasÄ± tutarlÄ± kalÄ±r.
+        /// </summary>
+        public static int GetChannel(MobileParty militia, int channelCount)
+        {
+            if (channelCount <= 1) return 0;
+            int hash = Math.Abs(militia.StringId?.GetHashCode() ?? militia.GetHashCode());
+            return hash % channelCount;
+        }
+
+        /// <summary>
+        /// Bir gruptaki aktif milisleri channel dahilindeki dilimine dÃ¶ndÃ¼rÃ¼r.
+        /// </summary>
+        public static IEnumerable<MobileParty> GetSlice(
+            IReadOnlyList<MobileParty> militias,
+            int channel,
+            int channelCount)
+        {
+            foreach (var m in militias)
+            {
+                if (m == null || !m.IsActive) continue;
+                if (GetChannel(m, channelCount) == channel)
+                    yield return m;
+            }
+        }
+    }
+
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 3. INHIBITORY SIGNAL â€” Ã‡ift Ä°ÅŸ Engeli
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    /// <summary>
+    /// AynÄ± tick iÃ§inde birden fazla grubun aynÃ½ milisi iÅŸlemesini engeller.
+    /// Bir grup milisi talep ettiÄŸinde inhibitory set'e eklenir;
+    /// diÄŸer gruplar bu seti kontrol ederek atlar.
+    ///
+    /// Biyolojik karÅŸÄ±lÄ±ÄŸÄ±: lateral inhibition â€” bir nÃ¶ron ateÅŸlendiÄŸinde
+    /// komÅŸularÄ±nÄ±n aynÄ± stimulus'a tepki vermesini bastÄ±rÄ±r.
+    /// </summary>
+    public sealed class InhibitorySignal
+    {
+        private readonly HashSet<string> _claimed = new HashSet<string>();
+
+        /// <summary>Milisi talep et. Zaten talep edilmiÅŸse false dÃ¶ner.</summary>
+        public bool TryClaim(MobileParty militia)
+        {
+            if (militia?.StringId == null) return false;
+            return _claimed.Add(militia.StringId);
+        }
+
+        /// <summary>Tick sonunda tÃ¼m talepleri serbest bÄ±rak.</summary>
+        public void Reset() => _claimed.Clear();
+
+        public int ClaimedCount => _claimed.Count;
+    }
+
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 4. GANGLION GROUP â€” Sinir DÃ¼ÄŸÃ¼mÃ¼
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    /// <summary>
+    /// Ä°ÅŸlevsel olarak iliÅŸkili sistemleri kapsÃ¼lleyen sinir dÃ¼ÄŸÃ¼mÃ¼.
+    ///
+    /// DÃ¶rt dÃ¼ÄŸÃ¼m tipi:
+    ///   Sensory     â†’ dÃ¼nyayÄ± algÄ±la (PlayerTracker, Fear, Territory)
+    ///   Associative â†’ karar ver     (BanditBrain, Swarm)
+    ///   Motor       â†’ hareket et    (AIScheduler, Logistics, Behavior)
+    ///   Autonomic   â†’ arka plan     (Economy, Workshop, Crisis, Seasonal)
+    ///
+    /// Her dÃ¼ÄŸÃ¼m:
+    ///   â€¢ Kendi iÅŸlemci bÃ¼tÃ§esini takip eder
+    ///   â€¢ AÅŸarsa yÃ¼k_taÅŸÄ±yÄ±cÄ± (overflow target) gruba sinyal gÃ¶nderir
+    ///   â€¢ SharedPercept'i kirletmez â€” sadece okur
+    /// </summary>
+    public sealed class GanglionGroup
+    {
+        public string  Name         { get; }
+        public int     TickBudget   { get; set; }   // Bu saatte iÅŸleyebileceÄŸi milis sayÄ±sÄ±
+        public int     Processed    { get; private set; }
+        public float   LoadRatio    => TickBudget > 0 ? (float)Processed / TickBudget : 0f;
+        public bool    IsOverloaded => LoadRatio > 0.85f;
+
+        private GanglionGroup? _overflowTarget;
+        private readonly List<Action<MobileParty, SharedPercept, InhibitorySignal>> _processors = new();
+        private readonly List<Action<SharedPercept>>  _groupProcessors = new();
+
+        public GanglionGroup(string name, int budget)
+        {
+            Name       = name;
+            TickBudget = budget;
+        }
+
+        // â”€â”€ BaÄŸlantÄ±lar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        /// <summary>YÃ¼k taÅŸÄ±yÄ±cÄ±: Bu grup aÅŸÄ±rÄ± yÃ¼klendiÄŸinde hedef gruba devret.</summary>
+        public GanglionGroup SetOverflowTarget(GanglionGroup target)
+        { _overflowTarget = target; return this; }
+
+        // â”€â”€ Ä°ÅŸleyici KayÄ±tlarÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        /// <summary>Milis baÅŸÄ±na Ã§alÄ±ÅŸacak iÅŸleyici ekle.</summary>
+        public GanglionGroup AddProcessor(Action<MobileParty, SharedPercept, InhibitorySignal> fn)
+        { _processors.Add(fn); return this; }
+
+        /// <summary>Grup dÃ¼zeyinde (tÃ¼m milislerden Ã¶nce) Ã§alÄ±ÅŸacak iÅŸleyici ekle.</summary>
+        public GanglionGroup AddGroupProcessor(Action<SharedPercept> fn)
+        { _groupProcessors.Add(fn); return this; }
+
+        // â”€â”€ Tick â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        public void Tick(SharedPercept percept, InhibitorySignal inhibitory, int channel, int channelCount)
+        {
+            Processed = 0;
+            foreach (var gp in _groupProcessors)
+            {
+                try { gp(percept); }
+                catch (Exception ex) { DebugLogger.Warning(Name, $"GroupProcessor: {ex.Message}"); }
+            }
+            TickMilitias(percept, inhibitory, channel, channelCount);
+        }
+
+        /// <summary>Sadece grup dÃ¼zeyindeki iÅŸlemleri Ã§alÄ±ÅŸtÄ±r (milis baÅŸÄ±na deÄŸil).</summary>
+        public void TickGroupOnly(SharedPercept percept)
+        {
+            foreach (var gp in _groupProcessors)
+            {
+                try { gp(percept); }
+                catch (Exception ex) { DebugLogger.Warning(Name, $"GroupProcessor: {ex.Message}"); }
+            }
+        }
+
+        /// <summary>Sadece milis dilimini iÅŸle (grup iÅŸlemleri hariÃ§).</summary>
+        public void TickMilitias(SharedPercept percept, InhibitorySignal inhibitory, int channel, int channelCount)
+        {
+            var slice = DendriticPartitioner.GetSlice(
+                percept.ActiveMilitias, channel, channelCount);
+
+            foreach (var militia in slice)
+            {
+                // YÃ¼k aÅŸÄ±ldÄ±ysa overflow grubuna devret
+                if (IsOverloaded)
+                {
+                    _overflowTarget?.AcceptOverflow(militia, percept, inhibitory);
+                    continue;
+                }
+
+                if (!inhibitory.TryClaim(militia)) continue;
+
+                foreach (var proc in _processors)
+                {
+                    try { proc(militia, percept, inhibitory); }
+                    catch (Exception ex)
+                    { DebugLogger.Warning(Name, $"Processor[{militia.Name}]: {ex.Message}"); }
+                }
+
+                Processed++;
+            }
+        }
+
+        /// <summary>Overflow alÄ±mÄ±: BaÅŸka bir grubun sÄ±ÄŸdÄ±ramadÄ±ÄŸÄ± milisleri iÅŸle.</summary>
+        public void AcceptOverflow(MobileParty militia, SharedPercept percept, InhibitorySignal inhibitory)
+        {
+            if (!inhibitory.TryClaim(militia)) return;
+            foreach (var proc in _processors)
+            {
+                try { proc(militia, percept, inhibitory); }
+                catch (Exception ex)
+                { DebugLogger.Warning($"{Name}[overflow]", $"{militia.Name}: {ex.Message}"); }
+            }
+            Processed++;
+        }
+
+        public void Reset() => Processed = 0;
+
+        public string GetDiagnostics() =>
+            $"[{Name,-14}] budget={TickBudget,3} done={Processed,3} " +
+            $"load={LoadRatio:P0} overloaded={IsOverloaded}";
+    }
+
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+    // 5. NERVOUS SYSTEM â€” Ana KoordinatÃ¶r
+    // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
+    /// <summary>
+    /// TÃ¼m sistemleri dÃ¶rt iÅŸlevsel dÃ¼ÄŸÃ¼m grubuna organize eder ve
+    /// her saatlik tick'i dÃ¶rt aÅŸamada yÃ¶netir:
+    ///
+    ///   Faz 1 â€” AlgÄ±  : SharedPercept doldurulur (tek tarama).
+    ///   Faz 2 â€” Duyum : Sensory grubu tehdit/korku sinyallerini iÅŸler.
+    ///   Faz 3 â€” Karar : Associative grubu kanallar Ã¼zerinden bÃ¶lÃ¼nmÃ¼ÅŸ Ã§alÄ±ÅŸÄ±r.
+    ///   Faz 4 â€” Hareket: Motor grubu kararlarÄ± Ã§alÄ±ÅŸtÄ±rÄ±r.
+    ///   Faz 5 â€” Otonom : Economy/Workshop/Seasonal arka planda Ã§alÄ±ÅŸÄ±r.
+    ///
+    /// Motor gruplar Associative'den taÅŸan iÅŸleri alabilir (inhibitory engel ile).
+    ///
+    /// Kanal SayÄ±sÄ±:
+    ///   Normal yÃ¼k â†’ 2 kanal (milislerin %50'si/kanal)
+    ///   YÃ¼ksek yÃ¼k â†’ 3 kanal (milislerin %33'Ã¼/kanal)
+    ///   Kritik yÃ¼k â†’ 4 kanal (sadece %25'i/kanal, Ã§erÃ§eve zamanÄ± korunur)
+    /// </summary>
+    [AutoRegister]
+    public sealed class NervousSystem : MilitiaModuleBase
+    {
+        // â”€â”€ Singleton â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private static readonly Lazy<NervousSystem> _inst = new(() => new NervousSystem());
+        public static NervousSystem Instance => _inst.Value;
+        private NervousSystem() { }
+
+        public override string ModuleName => "NervousSystem";
+        public override bool   IsEnabled  => Settings.Instance?.EnableWarlords ?? true;
+        public override bool   IsCritical => false;
+        public override int    Priority   => 98;   // NeuralCortex(99)'dan sonra, BanditBrain(95)'den Ã¶nce
+
+        // â”€â”€ Gruplar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private GanglionGroup _sensory     = null!;
+        private GanglionGroup _associative = null!;
+        private GanglionGroup _motor       = null!;
+        private GanglionGroup _autonomic   = null!;
+
+        // â”€â”€ Ä°nhibitory Sinyal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private readonly InhibitorySignal _inhibitory = new InhibitorySignal();
+
+        // â”€â”€ TanÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private long _tickCount          = 0;
+        private long _totalMilitiasServed = 0;
+        private long _totalOverflows      = 0;
+        private readonly Stopwatch _sw    = new Stopwatch();
+
+        // â”€â”€ KalÄ±cÄ± Durum â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private long   _savedTickCount     = 0;
+        private long   _savedMilitiasServed = 0;
+
+        // â”€â”€ BaÅŸlatma â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        public override void Initialize()
+        {
+            BuildGroups();
+            WireOverflow();
+
+            // â”€â”€ Neural AI BaÅŸlatÄ±mÄ± (geliÅŸtirici toggle, varsayÄ±lan KAPALI) â”€â”€
+            try
+            {
+                bool neuralEnabled = Settings.Instance?.EnableNeuralAI ?? false;
+                string weightsDir = System.IO.Path.Combine(
+                    System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments),
+                    "Mount and Blade II Bannerlord", "Warlord_Logs", "BanditMilitias", "Neural");
+
+                var advisor = NeuralAdvisor.CreateInstance();
+                advisor.Initialize(weightsDir, neuralEnabled);
+
+                // DevDataCollector iÃ§in export dizinini ayarla
+                NeuralDataExporter.SetExportDirectory(
+                    System.IO.Path.Combine(
+                        System.Environment.GetFolderPath(System.Environment.SpecialFolder.MyDocuments),
+                        "Mount and Blade II Bannerlord", "Warlord_Logs", "BanditMilitias", "AI", "exports"));
+
+                DebugLogger.Info(ModuleName,
+                    $"Neural AI: {(neuralEnabled ? "ACTIVE" : "PASSIVE (data collection only)")}");
+            }
+            catch (System.Exception ex)
+            {
+                DebugLogger.Warning(ModuleName, $"Neural AI init failed: {ex.Message}");
+            }
+
+            DebugLogger.Info(ModuleName,
+                "Sinir sistemi kuruldu: 4 ganglion grubu, inhibitory sinyal aktif.");
+        }
+
+        private void BuildGroups()
+        {
+            // â”€â”€ Sensory: DÃ¼nyayÄ± algÄ±la â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // FearSystem, TerritorySystem, PlayerTracker'Ä±n gÃ¼ncelleme
+            // sorumluluÄŸunu tek Ã§atÄ± altÄ±nda toplar.
+            // Sensory: SharedPercept gÃ¼ncelleme + Ã¶ncelik AI iÅŸaretÃ§ilerini temizle
+            _sensory = new GanglionGroup("Sensory", budget: 1) // GroupProcessor Ã§alÄ±ÅŸtÄ±rÄ±r, milis iÅŸlemez; budget=1 diagnostics'te anlamlÄ± gÃ¶rÃ¼nsÃ¼n
+                .AddGroupProcessor(static (p) =>
+                {
+                    // SharedPercept zaten OnHourlyTick baÅŸÄ±nda Refresh() edildi.
+                    // Burada: AI scheduler'a yÃ¼k bilgisi ilet.
+                    // YÃ¼k yÃ¼ksekse AI scheduler bÃ¼tÃ§eyi yarÄ±ya indirecek (zaten yapÄ±yor).
+                    // Ekstra: PlayerTracker tehdit bilgisini percept'te gÃ¼ncelle.
+                    if (p.ThreatLevel > 0.7f)
+                    {
+                        // YÃ¼ksek tehdit: TÃ¼m warlord'larÄ±n milis kuyruklarÄ±nÄ± urgent'a al
+                        var scheduler = ModuleManager.Instance?.GetModule<AISchedulerSystem>();
+                        if (scheduler == null) return;
+                        foreach (var w in p.AllWarlords)
+                        {
+                            if (w?.CommandedMilitias == null) continue;
+                            foreach (var m in w.CommandedMilitias)
+                            {
+                                if (m?.IsActive == true)
+                                    scheduler.EnqueueDecision(m, urgent: true);
+                            }
+                        }
+                    }
+                });
+
+            // â”€â”€ Associative: Karar ver â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // En aÄŸÄ±r grup â€” BanditBrain + Swarm mantÄ±ÄŸÄ±nÄ±
+            // milis baÅŸÄ±na Ã§alÄ±ÅŸtÄ±rÄ±r. Kanallar aracÄ±lÄ±ÄŸÄ±yla bÃ¶lÃ¼nÃ¼r.
+            _associative = new GanglionGroup("Associative", budget: 60)
+                .AddProcessor(static (militia, percept, inhibitory) =>
+                {
+                    // BanditBrain: Yeni milis spawn oldu veya tehdit haritasÄ± gÃ¼ncellendi
+                    // Burada hafif bir hint yeterli; aÄŸÄ±r karar BanditBrain.OnHourlyTick'te.
+                    // Bu satÄ±r gelecekte BanditBrain'e "bu milisi Ã¶ncelikle ele al" sinyali verebilir.
+                    var comp = militia.PartyComponent as MilitiaPartyComponent;
+                    if (comp?.IsPriorityAIUpdate == true)
+                    {
+                        var scheduler = ModuleManager.Instance?.GetModule<AISchedulerSystem>();
+                        scheduler?.EnqueueDecision(militia, urgent: true);
+                        comp.IsPriorityAIUpdate = false;
+                    }
+                });
+
+            // â”€â”€ Motor: Harekete geÃ§ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // Lojistik ve davranÄ±ÅŸ sistemleri iÃ§in: Ã¼retilen kararlarÄ± uygula.
+            // Associative'den taÅŸan milisleri alabilir.
+            _motor = new GanglionGroup("Motor", budget: 80)
+                .AddProcessor(static (militia, percept, inhibitory) =>
+                {
+                    // LogisticsSystem'in her milise ProcessMilitiaLogistics Ã§aÄŸrÄ±sÄ±nÄ±
+                    // burada merkezi olarak yapmak â€” ama LogisticsSystem zaten
+                    // OnHourlyTick'inde dÃ¶ngÃ¼ yapÄ±yor. Bu kanal, LogisticsSystem'in
+                    // overflow'unu alacak ÅŸekilde ileride refactor edilebilir.
+                    // Åimdilik: yÃ¼ksek yÃ¼kÃ¼ algÄ±la ve lojistiÄŸi ertele.
+                    if (!percept.IsHighLoad) return;
+
+                    var comp = militia.PartyComponent as MilitiaPartyComponent;
+                    if (comp == null) return;
+
+                    // YÃ¼ksek yÃ¼k â†’ sadece kritik lojistik (yiyecek < 10 birim)
+                    if (militia.FoodChange < -5f && militia.ItemRoster != null)
+                    {
+                        var logistics = ModuleManager.Instance
+                            ?.GetModule<WarlordLogisticsSystem>();
+                        // Mark for priority restock â€” logistics sistemi bu bayraÄŸÄ± okur
+                        comp.CurrentState = MilitiaPartyComponent.WarlordState.Restocking;
+                    }
+                });
+
+            // â”€â”€ Autonomic: Arka plan â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            // Economy, Workshop, Seasonal, Crisis â€” bunlar milis baÅŸÄ±na deÄŸil,
+            // warlord baÅŸÄ±na veya saf grup bazlÄ± Ã§alÄ±ÅŸÄ±r. YÃ¼k yÃ¼ksekse ertelenir.
+            _autonomic = new GanglionGroup("Autonomic", budget: 20)
+                .AddGroupProcessor(static (p) =>
+                {
+                    // YÃ¼k yÃ¼ksekse atla â€” otonom iÅŸler ertelenebilir
+                    if (p.IsHighLoad) return;
+
+                    // Gelecekteki otonom iÅŸleyiciler iÃ§in yer tutucu
+                });
+        }
+
+        private void WireOverflow()
+        {
+            // Associative aÅŸÄ±rÄ± yÃ¼klendiÄŸinde â†’ Motor alÄ±r
+            _associative.SetOverflowTarget(_motor);
+            // Motor aÅŸÄ±rÄ± yÃ¼klendiÄŸinde â†’ Autonomic alÄ±r (dÃ¼ÅŸÃ¼k Ã¶ncelikli iÅŸler ertelenir)
+            _motor.SetOverflowTarget(_autonomic);
+        }
+
+        // â”€â”€ Tick DÃ¶ngÃ¼sÃ¼ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        public override void OnHourlyTick()
+        {
+            if (!IsEnabled || Campaign.Current == null) return;
+            _sw.Restart();
+
+            // â”€â”€ FAZ 0: NeuralEventRouter â€” nÃ¶ron bÃ¼tÃ§elerini yÃ¼ke gÃ¶re ayarla â”€â”€
+            // SharedPercept.Refresh()'ten Ã–NCE Ã§aÄŸrÄ±lÄ±r; Ã¶nceki tick'in yÃ¼k bilgisini
+            // kullanarak yeni tick bÃ¼tÃ§elerini belirler ve nÃ¶ronlarÄ± sÄ±fÄ±rlar.
+            NeuralEventRouter.Instance.OnHourlyTick();
+
+            // â”€â”€ Neural: Tick baÅŸÄ±nda inference sayacÄ±nÄ± sÄ±fÄ±rla â”€â”€
+            NeuralAdvisor.Instance?.OnTickReset();
+
+            // FIX: Warlord yokken NeuralAdvisor tamamen uykuya al â€” CPU sÄ±fÄ±r tÃ¼ketim.
+            // Warlord varsa yÃ¼k seviyesine gÃ¶re bÃ¼tÃ§e ata.
+            if (NeuralAdvisor.Instance != null)
+            {
+                bool hasWarlords = SharedPercept.Current?.AllWarlords?.Count > 0;
+                if (!hasWarlords)
+                {
+                    // Tier 0â€“1: Warlord henÃ¼z yok, neural inference gereksiz â€” tam uyku
+                    NeuralAdvisor.Instance.SetMaxInferencesPerTick(0);
+                }
+                else
+                {
+                    bool isHigh = DiagnosticsSystem.IsHighLoad;
+                    int neuralBudget = isHigh ? 10 : 50;  // YÃ¼ksek yÃ¼k: 10, Normal: 50
+                    NeuralAdvisor.Instance.SetMaxInferencesPerTick(neuralBudget);
+                }
+            }
+
+            // Kanal sayÄ±sÄ±nÄ± yÃ¼ke gÃ¶re belirle
+            int channelCount = DetermineChannelCount();
+
+            // â”€â”€ FAZ 1: AlgÄ± â€” SharedPercept GÃ¼ncelle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            SharedPercept.Refresh();
+            var percept = SharedPercept.Current;
+
+            // â”€â”€ FAZ 2â€“5: Kanallar Ãœzerinden GruplarÄ± Ã‡alÄ±ÅŸtÄ±r â”€â”€â”€â”€â”€â”€â”€
+            _inhibitory.Reset();
+
+            // â”€â”€ FAZ 2: Sensory Grup Ä°ÅŸlemleri â€” SADECE BÄ°R KEZ â”€â”€â”€â”€â”€â”€
+            // GroupProcessor'lar kanal sayÄ±sÄ±ndan baÄŸÄ±msÄ±z, tick baÅŸÄ±na tek Ã§alÄ±ÅŸÄ±r.
+            _sensory.TickGroupOnly(percept);
+            _autonomic.TickGroupOnly(percept);
+
+            // â”€â”€ FAZ 3â€“4: Milis Dilimi Ä°ÅŸleme â€” Her Kanal Ä°Ã§in â”€â”€â”€â”€â”€â”€â”€
+            // Associative ve Motor, milisleri kanallara bÃ¶lerek iÅŸler.
+            for (int ch = 0; ch < channelCount; ch++)
+            {
+                _associative.TickMilitias(percept, _inhibitory, ch, channelCount);
+                _motor.TickMilitias(percept, _inhibitory, ch, channelCount);
+            }
+
+            // â”€â”€ TanÄ± SayaÃ§larÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+            _tickCount++;
+            int served = _inhibitory.ClaimedCount;
+            _totalMilitiasServed += served;
+
+            long overflows = (_associative.IsOverloaded ? 1L : 0L)
+                           + (_motor.IsOverloaded        ? 1L : 0L);
+            _totalOverflows += overflows;
+
+            _sw.Stop();
+
+            if (Settings.Instance?.TestingMode == true && _sw.ElapsedMilliseconds > 3)
+            {
+                DebugLogger.Info(ModuleName,
+                    $"Tick #{_tickCount} | ch={channelCount} | " +
+                    $"served={served} | {_sw.ElapsedMilliseconds}ms");
+            }
+        }
+
+        public override void OnDailyTick()
+        {
+            // GÃ¼nlÃ¼k sÄ±fÄ±rlama: Grup bÃ¼tÃ§elerini dinamik yenile
+            var percept = SharedPercept.Current;
+            int baseBudget = percept.ActiveMilitias.Count;
+
+            _associative.TickBudget = Math.Max(20, baseBudget / 2);
+            _motor.TickBudget       = Math.Max(30, baseBudget);
+            _autonomic.TickBudget   = Math.Max(10, baseBudget / 4);
+
+            _savedTickCount      = _tickCount;
+            _savedMilitiasServed = _totalMilitiasServed;
+        }
+
+        // â”€â”€ Kanal SayÄ±sÄ± HesabÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private static int DetermineChannelCount()
+        {
+            bool isHigh    = DiagnosticsSystem.IsHighLoad;
+            int  partyCount = Campaign.Current?.MobileParties.Count ?? 0;
+
+            if (isHigh && partyCount > 2000) return 4;
+            if (isHigh || partyCount > 1500) return 3;
+            return 2;
+        }
+
+        // â”€â”€ SyncData â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            try
+            {
+                _ = dataStore.SyncData("BM_NS_TickCount",    ref _savedTickCount);
+                _ = dataStore.SyncData("BM_NS_MilsServed",   ref _savedMilitiasServed);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning(ModuleName, $"SyncData: {ex.Message}");
+            }
+        }
+
+        // â”€â”€ Diagnostics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        public override string GetDiagnostics()
+        {
+            if (_sensory == null || _associative == null)
+                return $"{ModuleName}: Initializing ganglion groups...";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== {ModuleName} (Tick #{_tickCount}) ===");
+            sb.AppendLine($"SharedPercept: {SharedPercept.Current?.ActiveMilitias?.Count ?? 0} milis, " +
+                          $"tehdit={SharedPercept.Current?.ThreatLevel ?? 0:P0}, " +
+                          $"warlord={SharedPercept.Current?.AllWarlords?.Count ?? 0}");
+            sb.AppendLine($"Toplam iÅŸlenen: {_totalMilitiasServed} milis, {_totalOverflows} overflow");
+            sb.AppendLine(_sensory.GetDiagnostics());
+            sb.AppendLine(_associative.GetDiagnostics());
+            sb.AppendLine(_motor.GetDiagnostics());
+            sb.AppendLine(_autonomic.GetDiagnostics());
+
+            // Neural AI diagnostics
+            var advisor = NeuralAdvisor.Instance;
+            if (advisor != null)
+            {
+                sb.AppendLine($"Neural AI: {(advisor.IsEnabled ? "ACTIVE" : "PASSIVE")}");
+                sb.AppendLine($"  Confidence: {advisor.GlobalConfidence:F2}");
+                sb.AppendLine($"  Inferences: {advisor.TotalInferences}");
+                sb.AppendLine($"  Training: {advisor.TotalTrainingBatches} batches");
+            }
+
+            // NeuralEventRouter diagnostics
+            sb.AppendLine(NeuralEventRouter.Instance.GetDiagnostics());
+
+            return sb.ToString();
+        }
+
+        // â”€â”€ DÄ±ÅŸ EriÅŸim: DiÄŸer Sistemler SharedPercept Okuyabilir â”€â”€
+
+        /// <summary>
+        /// Mevcut sistemlerin SharedPercept'i okuyarak tekrar hesaplamalarÄ±
+        /// Ã¶nlemesi iÃ§in statik kÄ±sa yol.
+        ///
+        /// Ã–rnek kullanÄ±m (BanditBrain.cs iÃ§inde):
+        ///   var allWarlords = NervousSystem.Percept.AllWarlords;
+        ///   // yerine:
+        ///   // var allWarlords = WarlordSystem.Instance.GetAllWarlords();
+        /// </summary>
+        public static SharedPercept Percept => SharedPercept.Current;
+
+        /// <summary>
+        /// Myelin kÄ±sa yolu: PahalÄ± bir float deÄŸer Ã¶nbellekten al veya hesapla.
+        /// </summary>
+        public static float GetOrCompute(string key, Func<float> compute)
+        {
+            var p = SharedPercept.Current;
+            if (p.TryGetCached(key, out float val)) return val;
+            val = compute();
+            p.Cache(key, val);
+            return val;
+        }
+    }
+}
+

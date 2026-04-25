@@ -1,0 +1,836 @@
+﻿Module ID: NarrativeSystem Class: WarlordNarrativeSystem Category: Intelligence/Narrative Source: C:\Users\firat\Documents\myproject\bannerlord-BanditMilitias-WARLORD-mod-master\BanditMilitias\Intelligence\Narrative\WarlordNarrative.cs AutoRegister: True Status: Pasif/Kosullu Dependencies: EventBus, WarlordLegitimacySystem, WarlordSystem RiskFlags: StaticCollection  ================ SOURCE ================ using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Events;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Systems.Progression;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.Core;
+using TaleWorlds.Library;
+using TaleWorlds.Localization;
+
+namespace BanditMilitias.Intelligence.Narrative
+{
+    public interface INarrativeVoice
+    {
+        string? GetKillReaction(Warlord warlord, string playerName, int kills);
+        string? GetVictoryTaunt(Warlord warlord, string regionName);
+        string? GetRaidEcho(Warlord warlord, string villageName);
+        string? GetAmbientWhisper(Warlord warlord, string regionName);
+        string? GetThreatReaction(Warlord warlord);
+        string? GetRetreatReaction(Warlord warlord);
+    }
+    // â”€â”€ WarlordNarrativeSystem â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    [AutoRegister]
+    public class WarlordNarrativeSystem : MilitiaModuleBase
+    {
+        public override string ModuleName => "NarrativeSystem";
+        public override bool IsEnabled => Settings.Instance?.EnableWarlords ?? true;
+        public override int Priority => 35;
+
+        private static readonly Lazy<WarlordNarrativeSystem> _instance =
+            new Lazy<WarlordNarrativeSystem>(() => new WarlordNarrativeSystem());
+        public static WarlordNarrativeSystem Instance => _instance.Value;
+
+        private static readonly Dictionary<PersonalityType, INarrativeVoice> _voices = new()
+        {
+            { PersonalityType.Aggressive, new AggressiveVoice() },
+            { PersonalityType.Cautious,   new CautiousVoice()   },
+            { PersonalityType.Cunning,    new CunningVoice()     },
+            { PersonalityType.Vengeful,   new VengefulVoice()    },
+        };
+
+        private readonly Dictionary<string, NarrativeMemory> _warlordMemories = new();
+        private static readonly Dictionary<LegitimacyLevel, (string Title, string PlayerMsg, string WorldMsg)> _arcTexts = new()
+        {
+            [LegitimacyLevel.Rebel] = (
+                "A Name is Born",
+                "There's a new name on the lips of peasants: 'That man â€” I don't know his name, but everyone does now.'",
+                "A lord's spy filed a report: 'A new power has emerged in the region. Not a common outlaw â€” an organised force.'"
+            ),
+            [LegitimacyLevel.FamousBandit] = (
+                "Famous Bandit",
+                "A lord's herald blocked your path: 'My master wishes to speak with you. About the... famous bandit in the region.'",
+                "The bard at the tavern sings: '...He came down from mountains, counting the land / A famous bandit now, not an outlaw band...'"
+            ),
+            [LegitimacyLevel.Warlord] = (
+                "Warlord",
+                "A herald approached: 'The Council has formally recognized a new warlord in the region.'",
+                "Two soldiers talk quietly at the tavern: 'That bandit is no longer just a bandit. Cross him and you might regret it.'"
+            ),
+            [LegitimacyLevel.Recognized] = (
+                "Sovereign",
+                "A lord sent you a letter: 'We must acknowledge the sovereign power in the region. We propose a meeting.'",
+                "A lord whispers at the inn: 'We no longer ignore them. Alliance or negotiation â€” a decision must be made soon.'"
+            ),
+        };
+
+        private readonly Dictionary<string, int> _playerKillsPerWarlord = new();
+
+        private bool _isInitialized = false;
+        private readonly object _initLock = new();
+
+        private WarlordNarrativeSystem() { }
+
+        public override void Initialize()
+        {
+            lock (_initLock)
+            {
+                if (_isInitialized) return;
+
+                EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+                EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnRaidCompleted);
+                EventBus.Instance.Subscribe<WarlordLevelChangedEvent>(OnLevelChanged);
+                EventBus.Instance.Subscribe<WarlordAllianceFormedEvent>(OnAllianceFormed);
+                EventBus.Instance.Subscribe<AllianceOfferEvent>(OnAllianceOffer);
+                EventBus.Instance.Subscribe<WarlordRivalryEscalatedEvent>(OnRivalryEscalated);
+                EventBus.Instance.Subscribe<WarlordBackstabEvent>(OnBackstab);
+                EventBus.Instance.Subscribe<WarlordBountyThresholdReachedEvent>(OnBountyThreshold);
+                EventBus.Instance.Subscribe<AdaptiveDoctrineShiftedEvent>(OnDoctrineShifted);
+                EventBus.Instance.Subscribe<WarlordFallenEvent>(OnWarlordFallen);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.CrisisStartedEvent>(OnCrisisStarted);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.TributeCollectedEvent>(OnTributeCollected);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.VillageResistanceEvent>(OnVillageResistance);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.LegacyEchoActivatedEvent>(OnLegacyEcho);
+
+                _isInitialized = true;
+            }
+        }
+
+        public override void Cleanup()
+        {
+            lock (_initLock)
+            {
+                EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+                EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnRaidCompleted);
+                EventBus.Instance.Unsubscribe<WarlordLevelChangedEvent>(OnLevelChanged);
+                EventBus.Instance.Unsubscribe<WarlordAllianceFormedEvent>(OnAllianceFormed);
+                EventBus.Instance.Unsubscribe<AllianceOfferEvent>(OnAllianceOffer);
+                EventBus.Instance.Unsubscribe<WarlordRivalryEscalatedEvent>(OnRivalryEscalated);
+                EventBus.Instance.Unsubscribe<WarlordBackstabEvent>(OnBackstab);
+                EventBus.Instance.Unsubscribe<WarlordBountyThresholdReachedEvent>(OnBountyThreshold);
+                EventBus.Instance.Unsubscribe<AdaptiveDoctrineShiftedEvent>(OnDoctrineShifted);
+                EventBus.Instance.Unsubscribe<WarlordFallenEvent>(OnWarlordFallen);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.CrisisStartedEvent>(OnCrisisStarted);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.TributeCollectedEvent>(OnTributeCollected);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.VillageResistanceEvent>(OnVillageResistance);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.LegacyEchoActivatedEvent>(OnLegacyEcho);
+
+                _playerKillsPerWarlord.Clear();
+                _isInitialized = false;
+            }
+        }
+
+        private void OnMilitiaKilled(MilitiaKilledEvent evt)
+        {
+            if (!evt.WasPlayerKill) return;
+            if (evt.HomeHideout == null) return;
+
+            var warlord = WarlordSystem.Instance.GetWarlordForHideout(evt.HomeHideout);
+            if (warlord == null || !warlord.IsAlive) return;
+
+            if (!_voices.TryGetValue(warlord.Personality, out var voice)) return;
+
+            _ = _playerKillsPerWarlord.TryGetValue(warlord.StringId, out int kills);
+            kills++;
+            _playerKillsPerWarlord[warlord.StringId] = kills;
+
+            string playerName = Hero.MainHero?.Name?.ToString() ?? "stranger";
+            string? msg = voice.GetKillReaction(warlord, playerName, kills);
+            if (msg != null)
+                NarrativePresenter.Show(msg, warlord.Personality, kills);
+        }
+
+        private void OnHideoutCleared(HideoutClearedEvent evt)
+        {
+            if (evt.Clearer != Hero.MainHero) return;
+
+            string hideoutName = evt.Hideout?.Name?.ToString() ?? "this hideout";
+            string victoryMsg = $"GREAT VICTORY! {hideoutName} has been cleared. Your name will be remembered in these lands for a long time.";
+            NarrativePresenter.ShowVictoryResonance(victoryMsg, 3.0f);
+        }
+
+        private void OnRaidCompleted(MilitiaRaidCompletedEvent evt)
+        {
+            if (evt.RaiderParty == null || evt.TargetVillage == null) return;
+
+            var warlord = WarlordSystem.Instance.GetWarlordForParty(evt.RaiderParty);
+            if (warlord == null) return;
+
+            if (!_voices.TryGetValue(warlord.Personality, out var voice)) return;
+
+            string villageName = evt.TargetVillage.Name?.ToString() ?? "village";
+            string? msg = voice.GetRaidEcho(warlord, villageName);
+            if (msg != null)
+                NarrativePresenter.Show(msg, warlord.Personality);
+        }
+
+        private void OnLevelChanged(WarlordLevelChangedEvent evt)
+        {
+            if (evt.Warlord == null) return;
+            if (!_arcTexts.TryGetValue(evt.NewLevel, out var arc)) return;
+
+            var warlord = evt.Warlord;
+            bool isPromotion = evt.NewLevel > evt.OldLevel;
+
+            string voiceLine = string.Empty;
+            if (_voices.TryGetValue(warlord.Personality, out _))
+            {
+                voiceLine = warlord.Personality switch
+                {
+                    PersonalityType.Cunning => $"[{warlord.Name}]: 'Legitimacy. More dangerous than raw power.'",
+                    PersonalityType.Aggressive => $"[{warlord.Name}]: 'This power is mine now. I want more.'",
+                    PersonalityType.Vengeful => $"[{warlord.Name}]: 'Finally. These lands are mine.'",
+                    PersonalityType.Cautious => $"[{warlord.Name}]: 'The people know me. This is just the beginning.'",
+                    _ => string.Empty,
+                };
+            }
+
+            string playerMsg = arc.PlayerMsg;
+            string worldMsg = arc.WorldMsg;
+
+            if (isPromotion)
+            {
+                string fullText = $"{playerMsg}\n\n{worldMsg}";
+                if (!string.IsNullOrEmpty(voiceLine))
+                    fullText += $"\n\n{voiceLine}";
+
+                NarrativePresenter.ShowLegitimacyArc(
+                    $"[{warlord.Name}] â€” {arc.Title}",
+                    fullText);
+            }
+            else
+            {
+                string demotionMsg = $"[{warlord.Name}] has lost power. Now at {evt.NewLevel} status.";
+                NarrativePresenter.Show(demotionMsg, warlord.Personality);
+            }
+        }
+
+        private NarrativeMemory GetOrCreateMemory(string warlordId)
+        {
+            if (!_warlordMemories.TryGetValue(warlordId, out var mem))
+            {
+                mem = new NarrativeMemory();
+                _warlordMemories[warlordId] = mem;
+            }
+            return mem;
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!_isInitialized) return;
+
+            try
+            {
+                var warlords = WarlordSystem.Instance.GetAllWarlords()
+                    .Where(w => w.IsAlive && w.DaysActive > 5)
+                    .ToList();
+
+                if (warlords.Count == 0) return;
+
+                foreach (var w in warlords)
+                {
+                    var mem = GetOrCreateMemory(w.StringId);
+
+                    // Tension escalation check
+                    if (mem.ShouldEscalate())
+                    {
+                        mem.EscalateTension();
+                        // When tension rises, always generate rumor
+                        string tensionMsg = WorldVoiceSynthesizer.GenerateAmbientLine(w, mem);
+                        NarrativePresenter.ShowAmbient(tensionMsg);
+                    }
+                    else if (MBRandom.RandomFloat < 0.12f)
+                    {
+                        // Normal daily organic message chance
+                        string msg = WorldVoiceSynthesizer.GenerateAmbientLine(w, mem);
+                        NarrativePresenter.ShowAmbient(msg);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                BanditMilitias.Debug.DebugLogger.Warning("NarrativeSystem", $"OnDailyTick Error: {ex.Message}");
+            }
+        }
+
+        private void OnWarlordFallen(WarlordFallenEvent evt)
+        {
+            if (evt?.Warlord == null) return;
+            var msg = $"[Son] {evt.Warlord.Name} tarihe karÄ±ÅŸtÄ±. MirasÄ±nÄ± bÄ±raktÄ±: {evt.Warlord.DaysActive} gÃ¼n, {evt.Warlord.BattlesWon} zafer.";
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnCrisisStarted(BanditMilitias.Core.Events.CrisisStartedEvent evt)
+        {
+            if (evt == null || string.IsNullOrEmpty(evt.WarlordId)) return;
+            var warlord = BanditMilitias.Intelligence.Strategic.WarlordSystem.Instance.GetWarlord(evt.WarlordId!);
+            var msg = $"[Kriz] {warlord?.Name ?? evt.WarlordId} iÃ§inde fÄ±rtÄ±na kopuyor: {evt.CrisisType} (Åiddet: {evt.Intensity:F1})";
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnTributeCollected(BanditMilitias.Core.Events.TributeCollectedEvent evt)
+        {
+            if (evt?.Village == null) return;
+            var msg = $"[HaraÃ§] {evt.Village.Name} boyun eÄŸdi. Hazine doldu: {evt.Amount} altÄ±n.";
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnVillageResistance(BanditMilitias.Core.Events.VillageResistanceEvent evt)
+        {
+            if (evt?.Village == null) return;
+            var msg = $"[DireniÅŸ] {evt.Village.Name} kÃ¶ylÃ¼leri baskÄ±na karÅŸÄ± koydu!";
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnLegacyEcho(BanditMilitias.Core.Events.LegacyEchoActivatedEvent evt)
+        {
+            if (evt?.Record == null) return;
+            var msg = $"[Efsane] {evt.Record.WarlordName} adÄ±na dair sÃ¶ylentiler {evt.Hideout?.Name} Ã§evresinde yayÄ±lÄ±yor... (Echo: {evt.Echo:F2})";
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnAllianceOffer(AllianceOfferEvent evt)
+        {
+            if (evt?.Warlord == null) return;
+            var msg = $"[Diplomasi] {evt.Warlord?.Name} ittifak teklif aldÄ±: Kingdom {evt.KingdomId} (#{evt.OfferCount})";
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnAllianceFormed(WarlordAllianceFormedEvent evt)
+        {
+            if (evt.PrimaryWarlord == null || evt.SecondaryWarlord == null) return;
+
+            string msg = evt.PrimaryWarlord.Personality switch
+            {
+                PersonalityType.Cunning =>
+                    $"[{evt.PrimaryWarlord.Name}]: 'An alliance with {evt.SecondaryWarlord.Name}? Useful â€” for now.'",
+                PersonalityType.Aggressive =>
+                    $"[{evt.PrimaryWarlord.Name}]: '{evt.SecondaryWarlord.Name} and I will make this land tremble.'",
+                PersonalityType.Cautious =>
+                    $"[{evt.PrimaryWarlord.Name}]: 'Together with {evt.SecondaryWarlord.Name}, we are safer than apart.'",
+                PersonalityType.Vengeful =>
+                    $"[{evt.PrimaryWarlord.Name}]: 'My enemy's enemy is my ally. For now, {evt.SecondaryWarlord.Name}.'",
+                _ => $"Scouts report: {evt.PrimaryWarlord.Name} and {evt.SecondaryWarlord.Name} have formed an alliance."
+            };
+
+            NarrativePresenter.Show(msg, evt.PrimaryWarlord.Personality);
+        }
+
+        private void OnRivalryEscalated(WarlordRivalryEscalatedEvent evt)
+        {
+            if (evt.PrimaryWarlord == null || evt.SecondaryWarlord == null) return;
+
+            string msg = $"Tensions between {evt.PrimaryWarlord.Name} and {evt.SecondaryWarlord.Name} have reached a boiling point. " +
+                         $"Open conflict may be inevitable.";
+
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnBackstab(WarlordBackstabEvent evt)
+        {
+            if (evt.Betrayer == null || evt.Betrayed == null) return;
+
+            string msg = evt.Betrayer.Personality switch
+            {
+                PersonalityType.Cunning =>
+                    $"[{evt.Betrayer.Name}]: 'Loyalty is a weapon. I chose to aim it.'",
+                PersonalityType.Aggressive =>
+                    $"[{evt.Betrayer.Name}]: '{evt.Betrayed.Name} never saw it coming. That's the point.'",
+                PersonalityType.Vengeful =>
+                    $"[{evt.Betrayer.Name}]: 'This is what {evt.Betrayed.Name} deserves. And more.'",
+                PersonalityType.Cautious =>
+                    $"[{evt.Betrayer.Name}]: 'I had no choice. It was them or me.'",
+                _ => $"{evt.Betrayer.Name} has betrayed {evt.Betrayed.Name}. The bandit world watches in shock."
+            };
+
+            NarrativePresenter.ShowLegitimacyArc(
+                $"Betrayal â€” {evt.Betrayer.Name}",
+                msg + $"\n\nRelation score: {evt.RelationScoreAfter:F1}");
+        }
+
+        private void OnBountyThreshold(WarlordBountyThresholdReachedEvent evt)
+        {
+            if (evt.Warlord == null) return;
+
+            string msg = $"A bounty of {evt.BountyAmount} gold has been placed on {evt.Warlord.Name}. " +
+                         $"Hunters have been dispatched.";
+
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        private void OnDoctrineShifted(AdaptiveDoctrineShiftedEvent evt)
+        {
+            if (evt.Warlord == null) return;
+            if (Settings.Instance?.TestingMode != true) return;
+
+            string msg = $"[AI] {evt.Warlord.Name} shifted doctrine: {evt.OldDoctrine} -> {evt.NewDoctrine} " +
+                         $"(confidence: {evt.Confidence:P0})";
+
+            NarrativePresenter.ShowAmbient(msg);
+        }
+
+        public INarrativeVoice? GetVoice(PersonalityType personality)
+            => _voices.TryGetValue(personality, out var v) ? v : null;
+    }
+
+    // â”€â”€ NarrativeMemory â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public class NarrativeMemory
+    {
+        private readonly Dictionary<string, int> _templateFatigue = new();
+        private readonly Queue<string> _recentEvents = new();
+        private const int MAX_RECENT_MEMORY = 8;
+
+        public int DaysSinceEscalation { get; private set; } = 0;
+        public int TensionLevel { get; private set; } = 0; // 0-5
+
+        // Yeni bir olay kaydedildiÄŸinde
+        public void RecordEvent(string templateKey, int currentDay)
+        {
+            if (_templateFatigue.TryGetValue(templateKey, out int count))
+                _templateFatigue[templateKey] = count + 1;
+            else
+                _templateFatigue[templateKey] = 1;
+
+            _recentEvents.Enqueue(templateKey);
+            if (_recentEvents.Count > MAX_RECENT_MEMORY)
+                _ = _recentEvents.Dequeue();
+
+            // Her olay tansiyonu sÄ±fÄ±rlar veya hafifletir
+            DaysSinceEscalation++;
+        }
+
+        // Bir ÅŸablonun "yorgunluk" (ne kadar kullanÄ±ldÄ±) skorunu getirir. Max %90
+        public float GetFatigue(string templateKey)
+        {
+            if (!_templateFatigue.TryGetValue(templateKey, out int count))
+                return 0f;
+
+            return Math.Min(0.9f, count * 0.15f);
+        }
+
+        // Son 3 olayda geÃ§ip geÃ§mediÄŸini kontrol eder
+        public bool IsRecentlyUsed(string templateKey)
+        {
+            return _recentEvents.Reverse().Take(3).Contains(templateKey);
+        }
+
+        public bool ShouldEscalate() => DaysSinceEscalation > 6;
+
+        public void EscalateTension()
+        {
+            TensionLevel = Math.Min(5, TensionLevel + 1);
+            DaysSinceEscalation = 0;
+        }
+
+        public void ResetTension()
+        {
+            TensionLevel = 0;
+            DaysSinceEscalation = 0;
+        }
+
+        // AÄŸÄ±rlÄ±klÄ± rastgele seÃ§im motoru (YorulmuÅŸ cÃ¼mleleri cezalandÄ±rarak en tazesini seÃ§er)
+        public T WeightedPick<T>(IEnumerable<T> candidates, Func<T, string> keySelector)
+        {
+            var pool = new List<T>();
+            foreach (var candidate in candidates)
+            {
+                string key = keySelector(candidate);
+                float fatigue = GetFatigue(key);
+                bool isRecent = IsRecentlyUsed(key);
+
+                int baseWeight = 4;
+                int recentPenalty = isRecent ? -3 : 0;
+                int fatiguePenalty = (int)(fatigue * 4); // max -3
+
+                int finalWeight = Math.Max(1, baseWeight + recentPenalty - fatiguePenalty);
+
+                for (int i = 0; i < finalWeight; i++)
+                    pool.Add(candidate);
+            }
+
+            if (pool.Count == 0) return candidates.First();
+            return pool[TaleWorlds.Core.MBRandom.RandomInt(pool.Count)];
+        }
+    }
+
+    // â”€â”€ NarrativePresenter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public static class NarrativePresenter
+    {
+        public static void Show(string message, PersonalityType personality, int intensity = 1)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return;
+
+            var color = GetPersonalityColor(personality);
+
+            if (intensity >= 10)
+            {
+                InformationManager.ShowInquiry(new InquiryData(
+                    "Ã¢Å¡Â  Warlord MesajÃ„Â±",
+                    message,
+                    true, false, "Tamam", null, null, null));
+            }
+            else
+            {
+                InformationManager.DisplayMessage(new InformationMessage(message, color));
+            }
+        }
+
+        public static void ShowAmbient(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return;
+            InformationManager.DisplayMessage(new InformationMessage(message, new Color(0.55f, 0.55f, 0.55f)));
+        }
+
+        public static void ShowVictoryResonance(string message, float powerRatio)
+        {
+            if (string.IsNullOrWhiteSpace(message)) return;
+            Color color;
+            if (powerRatio >= 3.0f) color = new Color(1.0f, 0.9f, 0.2f);
+            else if (powerRatio >= 1.5f) color = new Color(0.4f, 0.9f, 0.5f);
+            else color = new Color(0.7f, 0.7f, 0.7f);
+
+            InformationManager.DisplayMessage(new InformationMessage(message, color));
+        }
+
+        public static void ShowLegitimacyArc(string title, string message)
+        {
+            InformationManager.ShowInquiry(new InquiryData(
+                title,
+                message,
+                true, false, "Devam", null, null, null));
+        }
+
+        private static Color GetPersonalityColor(PersonalityType personality)
+        {
+            return personality switch
+            {
+                PersonalityType.Aggressive => new Color(0.75f, 0.20f, 0.20f),
+                PersonalityType.Vengeful => new Color(0.85f, 0.45f, 0.10f),
+                PersonalityType.Cunning => new Color(0.55f, 0.25f, 0.70f),
+                PersonalityType.Cautious => new Color(0.20f, 0.45f, 0.75f),
+                _ => new Color(0.80f, 0.80f, 0.80f),
+            };
+        }
+    }
+
+    // â”€â”€ PersonalityVoices â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public static class VoiceResolver
+    {
+        public static string ResolveNarrative(string baseId, Warlord warlord, string extraParam1 = "", string extraParam2 = "")
+        {
+            // Find current warlord level (0 = Outlaw, 1 = Rebel, 2 = FamousBandit, 3 = Warlord, 4 = Recognized)
+            int level = (int)WarlordLegitimacySystem.Instance.GetLevel(warlord.StringId);
+
+            // 1. Try Kill-Count specific ID: e.g. {=BM_Nar_Agg_Kill10_1}
+            if (baseId.EndsWith("_Kill") && int.TryParse(extraParam2, out int kills))
+            {
+                int[] thresholds = { 10, 3, 1 };
+                foreach (int t in thresholds)
+                {
+                    if (kills >= t)
+                    {
+                        // Try variants 1, 2, 3
+                        for (int v = 1; v <= 3; v++)
+                        {
+                            string killId = $"{baseId}{t}_{v}";
+                            var killTextObj = new TextObject("{=" + killId + "}");
+                            string resolvedKill = killTextObj.ToString();
+                            if (!string.IsNullOrEmpty(resolvedKill) && resolvedKill != killId && !resolvedKill.Contains(baseId))
+                            {
+                                return $"[{warlord.Name}]: " + resolvedKill.Replace("{PLAYER}", extraParam1).Replace("{WARLORD}", warlord.Name);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Try pulling from XML: e.g. {=BM_Nar_Agg_Kill_Lvl2}
+            string idWithLevel = $"{baseId}_Lvl{level}";
+            var textObjWithLevel = new TextObject("{=" + idWithLevel + "}");
+            string resolvedWithLevel = textObjWithLevel.ToString();
+
+            // If level-specific ID not found, try fallback (no level)
+            if (string.IsNullOrEmpty(resolvedWithLevel) || resolvedWithLevel == idWithLevel || resolvedWithLevel.Contains(baseId))
+            {
+                var fallbackTextObj = new TextObject("{=" + baseId + "}FALLBACK");
+                resolvedWithLevel = fallbackTextObj.ToString();
+
+                // If XML fallback also missing, return C# hardcoded strings
+                if (resolvedWithLevel == "FALLBACK")
+                    return GetHardcodedFallback(baseId, warlord, level, extraParam1, extraParam2);
+            }
+
+            // Fill variables
+            resolvedWithLevel = resolvedWithLevel
+                .Replace("{WARLORD}", warlord.Name)
+                .Replace("{PLAYER}", extraParam1)
+                .Replace("{EXTRA}", extraParam2);
+
+            return $"[{warlord.Name}]: {resolvedWithLevel}";
+        }
+
+        private static string GetHardcodedFallback(string baseId, Warlord warlord, int level, string param1, string param2)
+        {
+            // If no text found in XML either, return these backup texts. (COMBO MATRIX)
+            if (baseId.Contains("Agg_Kill"))
+            {
+                if (level >= 3) return $"[{warlord.Name}]: My entire army hunts {param1}. Nowhere to hide!";
+                return $"[{warlord.Name}]: You owe me a man, {param1}.";
+            }
+            if (baseId.Contains("Cau_Kill"))
+            {
+                if (level >= 3) return $"[{warlord.Name}]: The council is assembled. We will isolate and crush {param1}.";
+                return $"[{warlord.Name}]: Fall back. {param1} has proven dangerous.";
+            }
+            if (baseId.Contains("Cun_Kill"))
+            {
+                if (level >= 3) return $"[{warlord.Name}]: Watch {param1} until we find a weakness.";
+                return $"[{warlord.Name}]: Interesting tactic, {param1}. I've taken note.";
+            }
+            if (baseId.Contains("Ven_Kill"))
+            {
+                if (level >= 3) return $"[{warlord.Name}]: I've written your name in blood, {param1}! These lands will be your grave!";
+                return $"[{warlord.Name}]: I will avenge my fallen brothers, {param1}.";
+            }
+            return $"[{warlord.Name}]: Target {param1} spotted.";
+        }
+    }
+
+    public class AggressiveVoice : INarrativeVoice
+    {
+        public string? GetKillReaction(Warlord warlord, string playerName, int kills)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Agg_Kill", warlord, playerName, kills.ToString());
+
+        public string? GetVictoryTaunt(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Agg_Victory", warlord, regionName);
+
+        public string? GetRaidEcho(Warlord warlord, string villageName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Agg_Raid", warlord, villageName);
+
+        public string? GetAmbientWhisper(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Agg_Ambient", warlord, regionName);
+
+        public string? GetThreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Agg_Threat", warlord);
+
+        public string? GetRetreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Agg_Retreat", warlord);
+    }
+
+    public class CautiousVoice : INarrativeVoice
+    {
+        public string? GetKillReaction(Warlord warlord, string playerName, int kills)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cau_Kill", warlord, playerName, kills.ToString());
+
+        public string? GetVictoryTaunt(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cau_Victory", warlord, regionName);
+
+        public string? GetRaidEcho(Warlord warlord, string villageName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cau_Raid", warlord, villageName);
+
+        public string? GetAmbientWhisper(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cau_Ambient", warlord, regionName);
+
+        public string? GetThreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cau_Threat", warlord);
+
+        public string? GetRetreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cau_Retreat", warlord);
+    }
+
+    public class CunningVoice : INarrativeVoice
+    {
+        public string? GetKillReaction(Warlord warlord, string playerName, int kills)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cun_Kill", warlord, playerName, kills.ToString());
+
+        public string? GetVictoryTaunt(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cun_Victory", warlord, regionName);
+
+        public string? GetRaidEcho(Warlord warlord, string villageName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cun_Raid", warlord, villageName);
+
+        public string? GetAmbientWhisper(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cun_Ambient", warlord, regionName);
+
+        public string? GetThreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cun_Threat", warlord);
+
+        public string? GetRetreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Cun_Retreat", warlord);
+    }
+
+    public class VengefulVoice : INarrativeVoice
+    {
+        public string? GetKillReaction(Warlord warlord, string playerName, int kills)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Kill", warlord, playerName, kills.ToString());
+
+        public string? GetVictoryTaunt(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Victory", warlord, regionName);
+
+        public string? GetRaidEcho(Warlord warlord, string villageName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Raid", warlord, villageName);
+
+        public string? GetAmbientWhisper(Warlord warlord, string regionName)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Ambient", warlord, regionName);
+
+        public string? GetThreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Threat", warlord);
+
+        public string? GetRetreatReaction(Warlord warlord)
+            => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Retreat", warlord);
+    }
+
+    // â”€â”€ WorldVoiceSynthesizer â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    public enum NpcVoiceType
+    {
+        Merchant,
+        Soldier,
+        Elder,
+        Spy,
+        Child,
+        Bard
+    }
+
+    public static class WorldVoiceSynthesizer
+    {
+        // Dynamic lists (populated from XML at game load)
+        private static readonly Dictionary<NpcVoiceType, List<string>> _prefixes = new();
+        private static readonly List<string> _idioms = new();
+        private static readonly List<string> _fallbackCors = new();
+        private static bool _isInitialized = false;
+
+        public static void InitializeFromXML()
+        {
+            if (_isInitialized) return;
+
+            // Pull unlimited sentences from XML for 6 different NPC types
+            var types = (NpcVoiceType[])Enum.GetValues(typeof(NpcVoiceType));
+            foreach (var type in types)
+            {
+                _prefixes[type] = new List<string>();
+                string typeKey = type.ToString().ToLower();
+                int index = 1;
+
+                while (true)
+                {
+                    // e.g.: {=bm_npc_merchant_1}
+                    string id = $"{{=bm_npc_{typeKey}_{index}}}";
+                    var textObj = new TaleWorlds.Localization.TextObject(id);
+                    string localized = textObj.ToString();
+
+                    // If no such ID exists in XML, Bannerlord returns the ID itself.
+                    // Or returns empty. This tells us the array ended in XML!
+                    if (string.IsNullOrEmpty(localized) || localized == id || localized.Contains($"bm_npc_{typeKey}"))
+                        break; // Break loop, array ended!
+
+                    _prefixes[type].Add(localized);
+                    index++;
+                }
+
+                // If XML is missing (fallback) prevent crash
+                if (_prefixes[type].Count == 0)
+                {
+                    _prefixes[type].Add(new TaleWorlds.Localization.TextObject($"{{=bm_npc_fallback_{typeKey}}}I'm just a villager, I don't know anything.").ToString());
+                }
+            }
+
+            // Bard sayings / proverbs from XML
+            int idiomIndex = 1;
+            while (true)
+            {
+                string id = $"{{=bm_idiom_{idiomIndex}}}";
+                var textObj = new TaleWorlds.Localization.TextObject(id);
+                string localized = textObj.ToString();
+
+                if (string.IsNullOrEmpty(localized) || localized == id || localized.Contains("bm_idiom_")) break;
+
+                _idioms.Add(localized);
+                idiomIndex++;
+            }
+
+            // Core events (will be shaped further with Combo_Matrix)
+            int coreIndex = 1;
+            while (true)
+            {
+                string id = $"{{=bm_core_event_{coreIndex}}}";
+                var textObj = new TaleWorlds.Localization.TextObject(id);
+                string localized = textObj.ToString();
+
+                if (string.IsNullOrEmpty(localized) || localized == id || localized.Contains("bm_core_event_")) break;
+
+                _fallbackCors.Add(localized);
+                coreIndex++;
+            }
+
+            _isInitialized = true;
+        }
+
+        public static string GenerateAmbientLine(Warlord warlord, NarrativeMemory memory)
+        {
+            if (!_isInitialized) InitializeFromXML();
+
+            var types = (NpcVoiceType[])Enum.GetValues(typeof(NpcVoiceType));
+            var type = types[MBRandom.RandomInt(types.Length)];
+
+            string prefix = GetPrefix(type, memory);
+            string core = GetCoreEvent(warlord, memory);
+            string idiom = GetIdiom(memory);
+
+            // Random idiom addition (30%)
+            bool addIdiom = MBRandom.RandomFloat < 0.3f && !memory.IsRecentlyUsed(idiom);
+
+            string finalMessage = $"{GetTypeLabel(type)}: \"{prefix} {core}";
+            if (addIdiom)
+            {
+                finalMessage += $" {idiom}\"";
+                memory.RecordEvent(idiom, memory.DaysSinceEscalation);
+            }
+            else
+            {
+                finalMessage += "\"";
+            }
+
+            memory.RecordEvent(prefix, memory.DaysSinceEscalation);
+            memory.RecordEvent(core, memory.DaysSinceEscalation);
+
+            return finalMessage;
+        }
+
+        private static string GetPrefix(NpcVoiceType type, NarrativeMemory memory)
+        {
+            if (!_prefixes.TryGetValue(type, out var list)) return "";
+            return memory.WeightedPick(list, x => x);
+        }
+
+        private static string GetCoreEvent(Warlord warlord, NarrativeMemory memory)
+        {
+            string raw = memory.WeightedPick(_fallbackCors, x => x);
+            return raw.Replace("{WARLORD}", warlord.Name);
+        }
+
+        private static string GetIdiom(NarrativeMemory memory)
+        {
+            return memory.WeightedPick(_idioms, x => x);
+        }
+
+        private static string GetTypeLabel(NpcVoiceType type)
+        {
+            return type switch
+            {
+                NpcVoiceType.Merchant => new TextObject("{=BM_NPC_Merchant}Merchant").ToString(),
+                NpcVoiceType.Soldier => new TextObject("{=BM_NPC_Soldier}Soldier").ToString(),
+                NpcVoiceType.Elder => new TextObject("{=BM_NPC_Elder}Elder").ToString(),
+                NpcVoiceType.Spy => new TextObject("{=BM_NPC_Spy}Spy").ToString(),
+                NpcVoiceType.Child => new TextObject("{=BM_NPC_Child}Child").ToString(),
+                NpcVoiceType.Bard => new TextObject("{=BM_NPC_Bard}Bard").ToString(),
+                _ => new TextObject("{=BM_NPC_Villager}Villager").ToString()
+            };
+        }
+    }
+
+}
+

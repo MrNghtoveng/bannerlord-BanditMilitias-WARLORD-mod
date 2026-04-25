@@ -1,0 +1,244 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<NPCCharacters>
+  <NPCCharacter id="bm_hero_looters_1"
+                default_group="Infantry"
+                age="30"
+                voice="curt"
+                is_hero="true"
+                culture="Culture.looters"
+                occupation="Bandit"
+                name="{=BM_Hero_Looter}Looter Warlord"
+                is_hidden_encyclopedia="true"
+                face_mesh_cache="false">
+    <face>
+      <BodyProperties version="4"
+                      key="0011CC0FC6FC0088E45555148D5569926C95A9AB67B906A757469877267AB9A8000452B50B6D62B800001105000030A30000001F000000000000000000A09000" />
+    </face>
+    <skills>
+      <skill id="Athletics" value="150" />
+      <skill id="OneHanded" value="180" />
+      <skill id="Throwing" value="150" />
+      <skill id="Tactics" value="80" />
+      <skill id="Leadership" value="90" />
+      <skill id="Riding" value="80" />
+    </skills>
+    <Traits>
+      <Trait id="Commander" value="8" />
+      <Trait id="Valor" value="1" />
+      <Trait id="Generosity" value="-1" />
+    </Traits>
+    <Equipments>
+      <EquipmentRoster>
+        <equipment slot="Item0" id="Item.peasant_hatchet_1_t1" />
+        <equipment slot="Item2" id="Item.mountain_hunting_bow" />
+        <equipment slot="Item3" id="Item.range_arrows" />
+        <equipment slot="Body" id="Item.studded_leather_coat" />
+        <equipment slot="Leg" id="Item.wrapped_leather_boots" />
+        <equipment slot="Gloves" id="Item.armwraps" />
+        <equipment slot="Head" id="Item.leather_cap" />
+      </EquipmentRoster>
+    </Equipments>
+  </NPCCharacter>
+
+  <NPCCharacter id="bm_hero_sea_raiders_1"
+                default_group="Infantry"
+                age="35"
+                voice="curt"
+                is_hero="true"
+                culture="Culture.sea_raiders"
+                occupation="Bandit"
+                name="{=BM_Hero_SeaRaider}Sea Raider Chieftain"
+                is_hidden_encyclopedia="true"
+                face_mesh_cache="false">
+    <face>
+      <BodyProperties version="4"
+                      key="00167C04487C32C27C7537B7A8C398C6CA7B94247BD3B7A374A37946969CC9BA000434C30C89979900001105000030A30000001F000000000000000000504000" />
+    </face>
+    <skills>
+      <skill id="Athletics" value="180" />
+      <skill id="OneHanded" value="220" />
+      <skill id="Throwing" value="180" />
+      <skill id="Tactics" value="100" />
+      <skill id="Leadership" value="100" />
+      <skill id="TwoHanded" value="160" />
+    </skills>
+    <Traits>
+      <Trait id="Commander" value="8" />
+      <Trait id="Valor" value="1" />
+    </Traits>
+    <Equipments>
+      <EquipmentRoster>
+        <equipment slot="Item0" id="Item.sturgia_axe_4_t4" />
+        <equipment slot="Item1" id="Item.heavy_round_shield" />
+        <equipment slot="Item2" id="Item.northern_throwing_axe_1_t1" />
+        <equipment slot="Body" id="Item.nordic_lamellar_vest" />
+        <equipment slot="Head" id="Item.sturgian_helmet_b_close" />
+        <equipment slot="Leg" id="Item.rough_tied_boots" />
+        <equipment slot="Gloves" id="Item.padded_mitten" />
+        <equipment slot="Cape" id="Item.wolf_shoulder" />
+      </EquipmentRoster>
+    </Equipments>
+  </NPCCharacter>
+
+  <NPCCharacter id="bm_hero_mountain_bandits_1"
+                default_group="Infantry"
+                age="40"
+                voice="curt"
+                is_hero="true"
+                culture="Culture.mountain_bandits"
+                occupation="Bandit"
+                name="{=BM_Hero_Mountain}Mountain King"
+                is_hidden_encyclopedia="true"
+                face_mesh_cache="false">
+    <face>
+      <BodyProperties version="4"
+                      key="0033940CC00012865897773981684655D9D8C798581B5696684C587363987795000404950CC7C49A00001105000030A30000001F000000000000000000007000" />
+    </face>
+    <skills>
+      <skill id="Athletics" value="160" />
+      <skill id="TwoHanded" value="200" />
+      <skill id="Bow" value="180" />
+      <skill id="Tactics" value="90" />
+      <skill id="Leadership" value="95" />
+      <skill id="Riding" value="100" />
+    </skills>
+    <Traits>
+      <Trait id="Commander" value="8" />
+      <Trait id="Cruel" value="1" />
+    </Traits>
+    <Equipments>
+      <EquipmentRoster>
+        <equipment slot="Item0" id="Item.vlandia_2hsword_1_t5" />
+        <equipment slot="Item2" id="Item.noble_bow" />
+        <equipment slot="Item3" id="Item.piercing_arrows" />
+        <equipment slot="Body" id="Item.mail_shirt" />
+        <equipment slot="Head" id="Item.full_helm_over_mail_coif" />
+        <equipment slot="Leg" id="Item.mail_chausses" />
+        <equipment slot="Gloves" id="Item.mail_mitten" />
+        <equipment slot="Cape" id="Item.bearskin" />
+      </EquipmentRoster>
+    </Equipments>
+  </NPCCharacter>
+
+  <NPCCharacter id="bm_hero_forest_bandits_1"
+                default_group="Ranged"
+                age="28"
+                voice="curt"
+                is_hero="true"
+                culture="Culture.forest_bandits"
+                occupation="Bandit"
+                name="{=BM_Hero_Forest}Master Ranger"
+                is_hidden_encyclopedia="true"
+                face_mesh_cache="false">
+    <face>
+      <BodyProperties version="4"
+                      key="00166400083C20C55ACA7947C4642588B888929C37A98B74576645CB59574AD700044AB4097569ED00001105000030A30000001F000000000000000000507000" />
+    </face>
+    <skills>
+      <skill id="Athletics" value="180" />
+      <skill id="Bow" value="250" />
+      <skill id="TwoHanded" value="150" />
+      <skill id="Tactics" value="100" />
+      <skill id="Leadership" value="90" />
+      <skill id="Scouting" value="200" />
+    </skills>
+    <Traits>
+      <Trait id="Commander" value="8" />
+    </Traits>
+    <Equipments>
+      <EquipmentRoster>
+        <equipment slot="Item0" id="Item.battania_axe_2_t4" />
+        <equipment slot="Item1" id="Item.noble_bow" />
+        <equipment slot="Item2" id="Item.piercing_arrows" />
+        <equipment slot="Item3" id="Item.piercing_arrows" />
+        <equipment slot="Body" id="Item.battania_warlord_armor" />
+        <equipment slot="Head" id="Item.battanian_crowned_helmet" />
+        <equipment slot="Leg" id="Item.battania_warlord_boots" />
+        <equipment slot="Gloves" id="Item.battania_warlord_bracers" />
+        <equipment slot="Cape" id="Item.battania_shoulder_furr" />
+      </EquipmentRoster>
+    </Equipments>
+  </NPCCharacter>
+
+  <NPCCharacter id="bm_hero_desert_bandits_1"
+                default_group="Cavalry"
+                age="32"
+                voice="curt"
+                is_hero="true"
+                culture="Culture.desert_bandits"
+                occupation="Bandit"
+                name="{=BM_Hero_Desert}Desert Shaikh"
+                is_hidden_encyclopedia="true"
+                face_mesh_cache="false">
+    <face>
+      <BodyProperties version="4"
+                      key="001C2805807C24852639456D593473A9968446B5568C66A8C53582B9AB545C3400044934068B5AB300001105000030A30000001F000000000000000000508000" />
+    </face>
+    <skills>
+      <skill id="Riding" value="200" />
+      <skill id="Polearm" value="200" />
+      <skill id="Bow" value="180" />
+      <skill id="OneHanded" value="180" />
+      <skill id="Tactics" value="95" />
+      <skill id="Leadership" value="110" />
+    </skills>
+    <Traits>
+      <Trait id="Commander" value="8" />
+    </Traits>
+    <Equipments>
+      <EquipmentRoster>
+        <equipment slot="Item0" id="Item.eastern_spear_4_t4" />
+        <equipment slot="Item1" id="Item.ridged_sabre_sword_t4" />
+        <equipment slot="Item2" id="Item.leather_round_shield" />
+        <equipment slot="Item3" id="Item.eastern_javelin_3_t4" />
+        <equipment slot="Body" id="Item.southern_lamellar_armor" />
+        <equipment slot="Head" id="Item.turban" />
+        <equipment slot="Leg" id="Item.eastern_leather_boots" />
+        <equipment slot="Gloves" id="Item.eastern_plated_leather_vambraces" />
+        <equipment slot="Horse" id="Item.aserai_horse" />
+        <equipment slot="HorseHarness" id="Item.half_scale_barding" />
+      </EquipmentRoster>
+    </Equipments>
+  </NPCCharacter>
+
+  <NPCCharacter id="bm_hero_steppe_bandits_1"
+                default_group="HorseArcher"
+                age="45"
+                voice="curt"
+                is_hero="true"
+                culture="Culture.steppe_bandits"
+                occupation="Bandit"
+                name="{=BM_Hero_Steppe}Steppe Khan"
+                is_hidden_encyclopedia="true"
+                face_mesh_cache="false">
+    <face>
+      <BodyProperties version="4"
+                      key="001F2806407C24852639456D593273A9968446B5568C66A8C53582B9AB545C3400042935068B5AB300001105000030A30000001F000000000000000000008000" />
+    </face>
+    <skills>
+      <skill id="Riding" value="250" />
+      <skill id="Bow" value="220" />
+      <skill id="OneHanded" value="180" />
+      <skill id="Polearm" value="180" />
+      <skill id="Tactics" value="120" />
+      <skill id="Leadership" value="120" />
+    </skills>
+    <Traits>
+      <Trait id="Commander" value="8" />
+    </Traits>
+    <Equipments>
+      <EquipmentRoster>
+        <equipment slot="Item0" id="Item.noble_bow" />
+        <equipment slot="Item1" id="Item.piercing_arrows" />
+        <equipment slot="Item2" id="Item.khuzait_sword_4_t4" />
+        <equipment slot="Item3" id="Item.eastern_spear_3_t3" />
+        <equipment slot="Body" id="Item.eastern_lamellar_armor" />
+        <equipment slot="Head" id="Item.spiked_helmet_with_facemask" />
+        <equipment slot="Leg" id="Item.lamellar_plate_boots" />
+        <equipment slot="Gloves" id="Item.studded_leather_vambraces" />
+        <equipment slot="Horse" id="Item.khuzait_horse" />
+        <equipment slot="HorseHarness" id="Item.steppe_half_barding" />
+      </EquipmentRoster>
+    </Equipments>
+  </NPCCharacter>
+</NPCCharacters>

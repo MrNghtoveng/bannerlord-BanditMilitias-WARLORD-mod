@@ -1,0 +1,590 @@
+using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Events;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Core.Neural;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
+using TaleWorlds.SaveSystem;
+using MathF = TaleWorlds.Library.MathF;
+
+namespace BanditMilitias.Systems.Fear
+{
+
+    [Serializable]
+    public class SettlementFearState
+    {
+
+        [SaveableProperty(1)]
+        public float Fear { get; set; } = 0.05f;
+
+        [SaveableProperty(2)]
+        public float Respect { get; set; } = 0.02f;
+
+        [SaveableProperty(3)]
+        public float BetrayalRisk { get; set; } = 0.5f;
+
+        [SaveableProperty(4)]
+        public string? ControllingWarlordId { get; set; }
+
+        [SaveableProperty(5)]
+        public CampaignTime LastPressureTime { get; set; } = CampaignTime.Zero;
+
+        [SaveableProperty(6)]
+        public int TotalTributePaid { get; set; } = 0;
+
+        [SaveableProperty(7)]
+        public bool IsResisting { get; set; } = false;
+    }
+
+    public class FearEventArgs
+    {
+        public Settlement? Settlement { get; set; }
+        public string? WarlordId { get; set; }
+        public float FearDelta { get; set; }
+        public float RespectDelta { get; set; }
+        public string? Reason { get; set; }
+    }
+
+    public class FearSystem : MilitiaModuleBase
+    {
+
+        public override string ModuleName => "FearSystem";
+        public override bool IsEnabled => Settings.Instance?.EnableFearSystem ?? true;
+        public override int Priority => 75;
+
+        private static readonly Lazy<FearSystem> _instance =
+            new Lazy<FearSystem>(() => new FearSystem());
+        public static FearSystem Instance => _instance.Value;
+
+        private Dictionary<string, SettlementFearState> _fearStates =
+            new Dictionary<string, SettlementFearState>();
+
+        private readonly Dictionary<string, Infrastructure.PIDController> _fearControllers =
+            new Dictionary<string, Infrastructure.PIDController>();
+        private readonly Dictionary<string, int> _controlledSettlementCount =
+            new Dictionary<string, int>();
+        private string _cachedDiagnosticSnapshot = "Not Ready";
+        private DateTime _lastSnapshotTime = DateTime.MinValue;
+
+        private const float FEAR_OPTIMAL_MIN = 0.40f;
+        private const float FEAR_OPTIMAL_MAX = 0.70f;
+        private const float RESPECT_OPTIMAL_MIN = 0.25f;
+
+        private const float FEAR_HOURLY_DECAY = 0.0015f;
+        private const float RESPECT_DAILY_DECAY = 0.004f;
+
+        private const float MIN_TAX_EFFICIENCY = 0.30f;
+        private const float MAX_TAX_EFFICIENCY = 1.15f;
+
+        private const float OVERFEAR_THRESHOLD = 0.85f;
+        private const float BETRAYAL_BASE = 0.45f;
+
+        private const float PID_KP = 0.25f;
+        private const float PID_KI = 0.04f;
+        private const float PID_KD = 0.08f;
+        private const float PID_SETPOINT = 0.55f;
+
+        private bool _isInitialized = false;
+
+        private FearSystem() { }
+
+        public override void Initialize()
+        {
+            if (_isInitialized) return;
+
+            // FIX: Settlement.All erişimi kaldırıldı (Sandbox donmasını önlemek için).
+            // Veriler ilk OnHourlyTick / OnDailyTick anında 'EnsureDataPopulated' ile doldurulacak.
+
+            EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            RebuildControlIndex();
+
+            _isInitialized = true;
+
+            if (Settings.Instance?.TestingMode == true)
+                DebugLogger.Info("FearSystem", "Initialized (Passive). Data will be populated on first tick check.");
+        }
+
+        public override void Cleanup()
+        {
+            EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            _fearStates.Clear();
+            _fearControllers.Clear();
+            _controlledSettlementCount.Clear();
+            _isInitialized = false;
+        }
+
+        public override void OnHourlyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            EnsureDataPopulated();
+            if (_fearStates.Count == 0) return;
+
+            UpdateDiagnosticSnapshot();
+            foreach (var kvp in _fearStates)
+            {
+                var state = kvp.Value;
+
+                state.Fear = MathF.Max(0f, state.Fear - FEAR_HOURLY_DECAY);
+
+                if (state.Fear > OVERFEAR_THRESHOLD)
+                {
+                    state.BetrayalRisk = MathF.Min(1f, state.BetrayalRisk + 0.003f);
+                    state.Respect = MathF.Max(0f, state.Respect - 0.001f);
+                }
+
+                if (state.Fear < 0.20f)
+                {
+                    state.BetrayalRisk = MathF.Min(1f, state.BetrayalRisk + 0.002f);
+                    state.IsResisting = state.BetrayalRisk > 0.70f;
+                }
+                else
+                {
+                    state.BetrayalRisk = MathF.Max(0f, state.BetrayalRisk - 0.0005f);
+                    state.IsResisting = false;
+                }
+            }
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            EnsureDataPopulated();
+            if (_fearStates.Count == 0) return;
+
+            int betrayalsToday = 0;
+            foreach (var kvp in _fearStates)
+            {
+                var state = kvp.Value;
+
+                state.Respect = MathF.Max(0f, state.Respect - RESPECT_DAILY_DECAY);
+
+                if (state.IsResisting && MBRandom.RandomFloat < state.BetrayalRisk * 0.1f)
+                {
+                    TriggerBetrayal(kvp.Key, state);
+                    betrayalsToday++;
+                }
+            }
+
+            // HİBRİT AI: Pasif Korku Aurasi Güncellemesi
+            UpdatePassiveFearAura();
+
+            if (Settings.Instance?.TestingMode == true && betrayalsToday > 0)
+                DebugLogger.Info("FearSystem", $"Daily: {betrayalsToday} betrayal(s) triggered.");
+        }
+
+        public void ApplyPressureEvent(
+            Settlement settlement,
+            string warlordId,
+            float fearDelta,
+            float respectDelta,
+            string reason)
+        {
+            if (settlement == null) return;
+
+            var state = GetOrCreateState(settlement.StringId);
+            float oldFear = state.Fear;
+            string? previousController = state.ControllingWarlordId;
+
+            state.ControllingWarlordId = warlordId;
+            UpdateControlIndex(previousController, state.ControllingWarlordId);
+            state.LastPressureTime = CampaignTime.Now;
+
+            var pid = GetOrCreatePID(warlordId);
+            pid.Update(state.Fear, 1.0f);
+            float pidAdjustment = pid.Output;
+
+            float adjustedFearDelta = fearDelta + MathF.Max(0f, pidAdjustment * 0.03f);
+
+            state.Fear = MathF.Clamp(state.Fear + adjustedFearDelta, 0f, 1f);
+            state.Respect = MathF.Clamp(state.Respect + respectDelta, 0f, 1f);
+
+            if (state.Fear > OVERFEAR_THRESHOLD)
+                ApplyOverfearConsequence(settlement, state, warlordId);
+
+            if (Settings.Instance?.TestingMode == true)
+                DebugLogger.Info("FearSystem",
+                    $"{settlement.Name}: Fear {oldFear:P0}{state.Fear:P0} ({reason})");
+        }
+
+        public float GetTaxEfficiencyMultiplier(Settlement settlement)
+        {
+            if (settlement == null) return 1f;
+
+            var state = GetOrCreateState(settlement.StringId);
+            float fear = state.Fear;
+            float respect = state.Respect;
+
+            float fearFactor = fear switch
+            {
+                < 0.10f => 0.55f,
+                < 0.20f => 0.55f + (fear - 0.10f) * 3.5f,
+                < 0.40f => 0.90f + (fear - 0.20f) * 0.50f,
+                < 0.70f => 1.00f + (fear - 0.40f) * 0.33f,
+                < 0.85f => 1.10f - (fear - 0.70f) * 2.00f,
+                _ => 0.80f - (fear - 0.85f) * 3.33f
+            };
+
+            float respectBonus = MathF.Min(0.10f, respect * 0.20f);
+
+            return MathF.Clamp(fearFactor + respectBonus, MIN_TAX_EFFICIENCY, MAX_TAX_EFFICIENCY);
+        }
+
+        public float GetBetrayalProbability(Settlement settlement)
+        {
+            if (settlement == null) return BETRAYAL_BASE;
+            return GetOrCreateState(settlement.StringId).BetrayalRisk;
+        }
+
+        public float GetAverageFearForWarlord(string warlordId)
+        {
+            if (string.IsNullOrEmpty(warlordId)) return 0f;
+
+            float totalFear = 0f;
+            int count = 0;
+
+            foreach (var state in _fearStates.Values)
+            {
+                if (state.ControllingWarlordId != warlordId) continue;
+                totalFear += state.Fear;
+                count++;
+            }
+
+            return count == 0 ? 0f : totalFear / count;
+        }
+
+        public float GetSettlementFear(string settlementId)
+        {
+            if (string.IsNullOrEmpty(settlementId)) return 0f;
+            return _fearStates.TryGetValue(settlementId, out var state) ? state.Fear : 0f;
+        }
+
+        public string? GetControllingWarlordId(string settlementId)
+        {
+            if (string.IsNullOrEmpty(settlementId)) return null;
+            return _fearStates.TryGetValue(settlementId, out var state) ? state.ControllingWarlordId : null;
+        }
+
+        public void AssignSettlementToWarlord(Settlement settlement, string warlordId)
+        {
+            if (settlement == null) return;
+            var state = GetOrCreateState(settlement.StringId);
+            string? previousController = state.ControllingWarlordId;
+            state.ControllingWarlordId = warlordId;
+            UpdateControlIndex(previousController, state.ControllingWarlordId);
+        }
+
+        public int GetControlledSettlementCount(string warlordId)
+        {
+            if (string.IsNullOrEmpty(warlordId)) return 0;
+            return _controlledSettlementCount.TryGetValue(warlordId, out int count) ? count : 0;
+        }
+
+        public void OnWarlordDefeated(string warlordId)
+        {
+            foreach (var state in _fearStates.Values)
+            {
+                if (state.ControllingWarlordId != warlordId) continue;
+                state.Fear = MathF.Max(0f, state.Fear - 0.35f);
+                state.Respect = MathF.Max(0f, state.Respect - 0.20f);
+                state.ControllingWarlordId = null;
+                state.IsResisting = false;
+            }
+
+            _ = _controlledSettlementCount.Remove(warlordId);
+        }
+
+        private void OnMilitiaKilled(MilitiaKilledEvent evt)
+        {
+            if (evt.HomeHideout == null) return;
+
+            var hideoutPos = CompatibilityLayer.GetSettlementPosition(evt.HomeHideout);
+            var nearby = ModuleManager.Instance.GetNearbySettlements(hideoutPos, 40f, SettlementType.Any);
+
+            int processed = 0;
+            foreach (var settlement in nearby)
+            {
+                if (processed >= 5) break;
+                if (settlement == null || (!settlement.IsVillage && !settlement.IsTown)) continue;
+
+                if (_fearStates.TryGetValue(settlement.StringId, out var state))
+                {
+                    state.Fear = MathF.Max(0f, state.Fear - 0.06f);
+                    state.BetrayalRisk = MathF.Min(1f, state.BetrayalRisk + 0.08f);
+                    processed++;
+                }
+            }
+        }
+
+        private void TriggerBetrayal(string settlementId, SettlementFearState state)
+        {
+            var settlement = Settlement.Find(settlementId);
+            if (settlement == null) return;
+
+            DebugLogger.Warning("FearSystem",
+                $"BETRAYAL: {settlement.Name} reported warlord activities to authorities!");
+
+            if (!string.IsNullOrEmpty(state.ControllingWarlordId))
+            {
+                var threatEvt = EventBus.Instance.Get<ThreatLevelChangedEvent>();
+                threatEvt.NewThreatLevel = 0.7f;
+                threatEvt.OldThreatLevel = 0.4f;
+                threatEvt.ThreatDelta = threatEvt.NewThreatLevel - threatEvt.OldThreatLevel;
+                threatEvt.ChangeTime = CampaignTime.Now;
+                threatEvt.Reason = $"Betrayal at {settlement.Name}";
+                NeuralEventRouter.Instance.Publish(threatEvt);
+                EventBus.Instance.Return(threatEvt);
+
+                Warlord? warlord = WarlordSystem.Instance.GetWarlord(state.ControllingWarlordId!);
+                if (warlord != null)
+                {
+                    var betrayalEvt = EventBus.Instance.Get<WarlordBetrayedEvent>();
+                    betrayalEvt.VictimWarlord = warlord;
+                    betrayalEvt.BetrayingSettlement = settlement;
+                    NeuralEventRouter.Instance.Publish(betrayalEvt);
+                    EventBus.Instance.Return(betrayalEvt);
+                }
+            }
+
+            state.IsResisting = false;
+            state.BetrayalRisk = MathF.Max(0.2f, state.BetrayalRisk - 0.3f);
+        }
+
+        private void ApplyOverfearConsequence(
+            Settlement settlement,
+            SettlementFearState state,
+            string warlordId)
+        {
+            var pid = GetOrCreatePID(warlordId);
+
+            pid.Setpoint = MathF.Max(0.30f, pid.Setpoint - 0.05f);
+
+            state.Fear = MathF.Max(0f, state.Fear - 0.10f);
+
+            DebugLogger.Warning("FearSystem",
+                $"OVERFEAR at {settlement.Name}! Population fleeing. Income penalty applied.");
+        }
+
+        private SettlementFearState GetOrCreateState(string settlementId)
+        {
+            if (!_fearStates.TryGetValue(settlementId, out var state))
+            {
+                state = new SettlementFearState { BetrayalRisk = BETRAYAL_BASE };
+                _fearStates[settlementId] = state;
+            }
+            return state;
+        }
+
+        private void UpdateControlIndex(string? oldWarlordId, string? newWarlordId)
+        {
+            if (!string.IsNullOrEmpty(oldWarlordId) && oldWarlordId != newWarlordId)
+            {
+                string oldId = oldWarlordId!;
+                if (_controlledSettlementCount.TryGetValue(oldId, out int oldCount))
+                {
+                    if (oldCount <= 1) _ = _controlledSettlementCount.Remove(oldId);
+                    else _controlledSettlementCount[oldId] = oldCount - 1;
+                }
+            }
+
+            if (!string.IsNullOrEmpty(newWarlordId) && oldWarlordId != newWarlordId)
+            {
+                string newId = newWarlordId!;
+                if (_controlledSettlementCount.TryGetValue(newId, out int newCount))
+                    _controlledSettlementCount[newId] = newCount + 1;
+                else
+                    _controlledSettlementCount[newId] = 1;
+            }
+        }
+
+        private void RebuildControlIndex()
+        {
+            _controlledSettlementCount.Clear();
+            foreach (var state in _fearStates.Values)
+            {
+                string? controller = state.ControllingWarlordId;
+                if (string.IsNullOrEmpty(controller)) continue;
+                string controllerId = controller!;
+
+                if (_controlledSettlementCount.TryGetValue(controllerId, out int count))
+                    _controlledSettlementCount[controllerId] = count + 1;
+                else
+                    _controlledSettlementCount[controllerId] = 1;
+            }
+        }
+
+        private Infrastructure.PIDController GetOrCreatePID(string warlordId)
+        {
+            if (!_fearControllers.TryGetValue(warlordId, out var pid))
+            {
+                pid = new Infrastructure.PIDController(PID_KP, PID_KI, PID_KD, PID_SETPOINT);
+                _fearControllers[warlordId] = pid;
+            }
+            return pid;
+        }
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            _ = dataStore.SyncData("_fearStates_v1", ref _fearStates);
+
+            if (dataStore.IsLoading && _fearStates == null)
+                _fearStates = new Dictionary<string, SettlementFearState>();
+
+            if (dataStore.IsLoading)
+                RebuildControlIndex();
+        }
+
+        private void EnsureDataPopulated()
+        {
+            if (_fearStates.Count > 0) return;
+            if (!CompatibilityLayer.IsGameFullyInitialized()) return;
+
+            try
+            {
+                foreach (var settlement in CompatibilityLayer.GetSafeSettlements())
+                {
+                    if (settlement == null) continue;
+                    if (!settlement.IsVillage && !settlement.IsTown && !settlement.IsCastle) continue;
+
+                    if (!_fearStates.ContainsKey(settlement.StringId))
+                    {
+                        _fearStates[settlement.StringId] = new SettlementFearState
+                        {
+                            Fear = MBRandom.RandomFloat * 0.15f,
+                            Respect = MBRandom.RandomFloat * 0.08f,
+                            BetrayalRisk = BETRAYAL_BASE
+                        };
+                    }
+                }
+                RebuildControlIndex();
+                UpdateDiagnosticSnapshot();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning("FearSystem", $"Lazy data population failed: {ex.Message}");
+            }
+        }
+
+        private void UpdateDiagnosticSnapshot()
+        {
+            if (_fearStates.Count == 0)
+            {
+                _cachedDiagnosticSnapshot = "No data (pending initialization)";
+                return;
+            }
+
+            try
+            {
+                // 5 ayrı iterasyon yerine tek geçişte tüm metrikler
+                float totalFear = 0f, totalRespect = 0f;
+                int highFear = 0, resisting = 0, controlled = 0;
+                foreach (var s in _fearStates.Values)
+                {
+                    totalFear    += s.Fear;
+                    totalRespect += s.Respect;
+                    if (s.Fear > 0.70f)                            highFear++;
+                    if (s.IsResisting)                             resisting++;
+                    if (!string.IsNullOrEmpty(s.ControllingWarlordId)) controlled++;
+                }
+                int n = _fearStates.Count;
+                float avgFear    = n > 0 ? totalFear    / n : 0f;
+                float avgRespect = n > 0 ? totalRespect / n : 0f;
+
+                _cachedDiagnosticSnapshot = $"Tracked: {n} | Controlled: {controlled}\n" +
+                                            $"Avg Fear: {avgFear:P0} | Avg Respect: {avgRespect:P0}\n" +
+                                            $"High Fear: {highFear} | Resisting: {resisting}";
+                _lastSnapshotTime = DateTime.Now;
+            }
+            catch
+            {
+                // Snapshot sessizce başarısız olabilir, eski değeri koru.
+            }
+        }
+
+        public override string GetDiagnostics()
+        {
+            return $"FearSystem ({(_isInitialized ? "Active" : "Initializing")}):\n" +
+                   $"  {_cachedDiagnosticSnapshot}\n" +
+                   $"  Last Snapshot: {_lastSnapshotTime:HH:mm:ss}";
+        }
+
+        /// <summary>
+        /// HİBRİT AI: Haydut varlığından (Tier/Sayı) kaynaklanan pasif korku üretimi.
+        /// Yağma olmasa bile bölgedeki güçlü haydut birlikleri korku saçar.
+        /// </summary>
+        public void UpdatePassiveFearAura()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            foreach (var hideout in ModuleManager.Instance.HideoutCache)
+            {
+                if (hideout == null || !hideout.IsActive) continue;
+
+                float auraPower = 0f;
+                int linkedMilitias = 0;
+
+                foreach (var party in ModuleManager.Instance.ActiveMilitias)
+                {
+                    if (party == null || !party.IsActive) continue;
+                    var comp = party.PartyComponent as BanditMilitias.Components.MilitiaPartyComponent;
+                    if (comp != null && comp.HomeSettlement == hideout)
+                    {
+                        linkedMilitias++;
+                        // Asker sayısı + Tier çarpanı (Kalite korkuyu artırır)
+                        foreach (var troop in party.MemberRoster.GetTroopRoster())
+                        {
+                            if (troop.Character != null)
+                                auraPower += troop.Number * (troop.Character.Tier * 0.20f);
+                        }
+                    }
+                }
+
+                if (linkedMilitias > 0 && auraPower > 5f)
+                {
+                    var hideoutPos = CompatibilityLayer.GetSettlementPosition(hideout);
+                    var nearby = ModuleManager.Instance.GetNearbySettlements(hideoutPos, 40f, Infrastructure.SettlementType.Any);
+
+                    foreach (var settlement in nearby)
+                    {
+                        if (settlement == null || (!settlement.IsVillage && !settlement.IsTown)) continue;
+                        
+                        var state = GetOrCreateState(settlement.StringId);
+                        float currentFear = state.Fear;
+
+                        // Günlük pasif artış (Logaritmik fren ile)
+                        float fearGain = MathF.Clamp(auraPower * 0.003f, 0f, 0.035f);
+                        float resistance = 1.0f - (currentFear / 1.0f);
+                        float finalGain = fearGain * resistance;
+
+                        state.Fear = MathF.Clamp(state.Fear + finalGain, 0f, 1f);
+                        
+                        if (Settings.Instance?.TestingMode == true && finalGain > 0.001f)
+                        {
+                            DebugLogger.TestLog($"[AURA] {hideout.Name}, {settlement.Name} üzerine {finalGain:P1} pasif korku yaydı.");
+                        }
+                    }
+
+                    // ── TERÖR AURASI: Yakındaki Düşman Ordularının Moralini Bozma ─────────
+                    if (auraPower > 50f) // Sadece güçlü sığınaklar terör yayar
+                    {
+                        var nearbyParties = MobileParty.All.Where(p => 
+                            p != null && p.IsActive && !p.IsBandit && 
+                            p.Position2D.DistanceSquared(hideoutPos) < 25f * 25f); // 25 birim yarıçap
+
+                        foreach (var p in nearbyParties)
+                        {
+                            p.RecentEventsMorale -= 10f; // Günlük moral cezası
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

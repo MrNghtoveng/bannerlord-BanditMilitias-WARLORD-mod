@@ -1,0 +1,22 @@
+AI-Assisted Development
+
+This project uses a human-directed but AI-assisted workflow.
+
+TOOLS USED
+
+- Antigravity IDE
+- Codex
+- Claude
+
+TYPICAL USES
+
+- codebase inspection
+- architecture discussion
+- log and test analysis
+- documentation drafting
+- refactor planning
+- regression investigation
+
+FINAL RESPONSIBILITY
+
+Final design choices, code selection, and shipped repository content remain with the maintainer.

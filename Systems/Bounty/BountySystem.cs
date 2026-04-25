@@ -1,0 +1,385 @@
+﻿using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Events;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Core.Neural;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.CampaignSystem.Roster;
+using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
+using TaleWorlds.Library;
+using TaleWorlds.SaveSystem;
+using MathF = TaleWorlds.Library.MathF;
+
+namespace BanditMilitias.Systems.Bounty
+{
+    public enum BountySource
+    {
+        Kingdom,
+        Village,
+        Merchant,
+        Vendetta
+    }
+
+    [Serializable]
+    public class WarlordBountyRecord
+    {
+        [SaveableProperty(1)]
+        public string? WarlordId { get; set; }
+        [SaveableProperty(2)]
+        public int TotalBounty { get; set; } = 0;
+        [SaveableProperty(3)]
+        public float Notoriety { get; set; } = 0f;
+        [SaveableProperty(4)]
+        public CampaignTime LastBountyUpdate { get; set; } = CampaignTime.Zero;
+
+        [SaveableProperty(5)]
+        public Dictionary<BountySource, int> BountyDetails { get; set; } = new();
+
+        [SaveableProperty(6)]
+        public int ActiveHuntersCount { get; set; } = 0;
+    }
+
+    public class BountySystem : MilitiaModuleBase
+    {
+
+        public override string ModuleName => "BountySystem";
+        public override bool IsEnabled => Settings.Instance?.EnableBountySystem ?? true;
+        public override int Priority => 60;
+
+        private static readonly Lazy<BountySystem> _instance =
+            new Lazy<BountySystem>(() => new BountySystem());
+        public static BountySystem Instance => _instance.Value;
+
+        private Dictionary<string, WarlordBountyRecord> _records = new();
+
+        private Dictionary<string, string> _activeHunters = new();
+
+        private const int THRESHOLD_NOTICE = 1500;
+        private const int THRESHOLD_HUNT = 4500;
+        private const int THRESHOLD_ARMY = 12000;
+
+        private const int DAILY_DECAY = 50;
+        private const float LAY_LOW_MULTIPLIER = 3.0f;
+
+        private bool _isInitialized = false;
+
+        private BountySystem() { }
+
+        public override void Initialize()
+        {
+            if (_isInitialized) return;
+            _isInitialized = true;
+
+            EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnVillageRaided);
+
+            DebugLogger.Info("BountySystem", "BountySystem initialized.");
+        }
+
+        public override void Cleanup()
+        {
+            EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnVillageRaided);
+            _records.Clear();
+            _activeHunters.Clear();
+            _isInitialized = false;
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled || !_isInitialized) return;
+
+            ProcessDeadHunters();
+
+            var warlords = WarlordSystem.Instance.GetAllWarlords();
+
+            foreach (var warlord in warlords)
+            {
+                var record = GetOrCreateRecord(warlord.StringId);
+
+                bool isLayingLow = WarlordSystem.Instance.GetStrategicState(warlord)?.ActiveCommandType == CommandType.CommandLayLow;
+                int decay = isLayingLow ? (int)(DAILY_DECAY * LAY_LOW_MULTIPLIER) : DAILY_DECAY;
+
+                DecreaseBounty(record, decay);
+
+                if (record.TotalBounty > THRESHOLD_HUNT && record.ActiveHuntersCount == 0)
+                {
+
+                    int totalActiveHunters = _records.Values.Sum(r => r.ActiveHuntersCount);
+                    if (totalActiveHunters < 3)
+                    {
+
+                        if (MBRandom.RandomFloat < 0.15f)
+                        {
+                            SpawnHunterParty(warlord, record.TotalBounty);
+                        }
+                    }
+                }
+            }
+        }
+
+        private void OnVillageRaided(MilitiaRaidCompletedEvent evt)
+        {
+            if (evt.RaiderParty == null) return;
+            var warlord = WarlordSystem.Instance.GetWarlordForParty(evt.RaiderParty);
+            if (warlord == null) return;
+
+            int bountyIncrease;
+            BountySource source = BountySource.Village;
+
+            switch (evt.Intensity)
+            {
+                case Raiding.RaidIntensity.Skirmish:
+                    bountyIncrease = 150;
+                    break;
+                case Raiding.RaidIntensity.Standard:
+                    bountyIncrease = 400;
+                    source = BountySource.Kingdom;
+                    break;
+                case Raiding.RaidIntensity.Pillage:
+                    bountyIncrease = 1200;
+                    source = BountySource.Vendetta;
+                    break;
+                default:
+                    bountyIncrease = 100;
+                    break;
+            }
+
+            AddBounty(warlord, bountyIncrease, source);
+        }
+
+        public void OnLordHarmed(Warlord warlord, Hero lord)
+        {
+            AddBounty(warlord, 2500, BountySource.Vendetta);
+            InformationManager.DisplayMessage(new InformationMessage(
+                $"?? WANTED: {warlord.Name} placed under bounty by {lord.Name}!",
+                Colors.Red));
+        }
+
+        private void SpawnHunterParty(Warlord warlord, int bountyAmount)
+        {
+            DebugLogger.Info("BountySystem", $"Spawning real hunter party for {warlord.Name} (Bounty: {bountyAmount})");
+
+            var state = WarlordSystem.Instance.GetStrategicState(warlord);
+            if (state != null)
+            {
+                state.ThreatLevel = MathF.Min(state.ThreatLevel + 0.5f, 1.0f);
+                state.PlayerThreatLevel = MathF.Min(state.PlayerThreatLevel + 0.3f, 1.0f);
+            }
+
+            Settlement? spawnTown = null;
+            if (warlord.AssignedHideout != null)
+            {
+                var hideoutPos = CompatibilityLayer.GetSettlementPosition(warlord.AssignedHideout);
+                spawnTown = ModuleManager.Instance.TownCache
+                    .OrderBy(t => CompatibilityLayer.GetSettlementPosition(t).DistanceSquared(hideoutPos))
+                    .FirstOrDefault();
+            }
+            spawnTown ??= ModuleManager.Instance.TownCache.FirstOrDefault();
+
+            if (spawnTown == null)
+            {
+                DebugLogger.Warning("BountySystem", "No town found to spawn hunter party near.");
+                goto FallbackCounterOnly;
+            }
+
+            Clan? hunterClan = Clan.All?
+                .Where(c => c != null && !c.IsEliminated && !c.IsBanditFaction
+                            && c.Kingdom != null && c.IsMinorFaction == false)
+                .OrderBy(_ => MBRandom.RandomFloat)
+                .FirstOrDefault();
+
+            if (hunterClan == null)
+            {
+                DebugLogger.Warning("BountySystem", "No valid kingdom clan found for hunter party.");
+                goto FallbackCounterOnly;
+            }
+
+            var roster = TroopRoster.CreateDummyTroopRoster();
+            var basicTroop = hunterClan.Culture?.MeleeMilitiaTroop ?? hunterClan.Culture?.BasicTroop;
+            if (basicTroop != null)
+            {
+                int count = MBRandom.RandomInt(15, 30);
+                _ = roster.AddToCounts(basicTroop, count);
+            }
+            else
+            {
+                DebugLogger.Warning("BountySystem", "No troop template found for hunter party, using counter fallback.");
+                goto FallbackCounterOnly;
+            }
+
+            string partyId = "BountyHunter_" + warlord.StringId + "_" + Guid.NewGuid().ToString("N").Substring(0, 6);
+            var hunterComponent = new BanditMilitias.Components.MilitiaPartyComponent(spawnTown);
+            MobileParty? hunterParty = CompatibilityLayer.CreatePartySafe(partyId, hunterComponent, hunterClan, false);
+
+            if (hunterParty == null)
+            {
+                DebugLogger.Warning("BountySystem", "CreatePartySafe returned null for hunter party.");
+                goto FallbackCounterOnly;
+            }
+
+            var spawnPos2D = CompatibilityLayer.GetSettlementPosition(spawnTown);
+            var spawnPos = CompatibilityLayer.CreateCampaignVec2(spawnPos2D);
+
+            hunterParty.InitializeMobilePartyAtPosition(roster, TroopRoster.CreateDummyTroopRoster(), spawnPos);
+            hunterParty.Aggressiveness = 1.0f;
+
+            if (warlord.AssignedHideout != null)
+                CompatibilityLayer.SetMoveGoToSettlement(hunterParty, warlord.AssignedHideout);
+
+            var record = GetOrCreateRecord(warlord.StringId);
+            record.ActiveHuntersCount++;
+            record.Notoriety = MathF.Min(1.0f, record.Notoriety + 0.15f);
+            _activeHunters[hunterParty.StringId] = warlord.StringId;
+
+            var evt = EventBus.Instance.Get<WarlordBountyThresholdReachedEvent>();
+            evt.Warlord = warlord;
+            evt.Threshold = THRESHOLD_HUNT;
+            evt.BountyAmount = bountyAmount;
+            NeuralEventRouter.Instance.Publish(evt);
+            EventBus.Instance.Return(evt);
+
+            if (Hero.MainHero?.PartyBelongedTo != null)
+            {
+                InformationManager.DisplayMessage(new InformationMessage(
+                    $"?? Bounty hunters dispatched to hunt {warlord.Name}! (Bounty: {bountyAmount})",
+                    Colors.Yellow));
+            }
+            return;
+
+        FallbackCounterOnly:
+
+            var rec = GetOrCreateRecord(warlord.StringId);
+            rec.ActiveHuntersCount++;
+            rec.Notoriety = MathF.Min(1.0f, rec.Notoriety + 0.15f);
+
+            var fallbackEvt = EventBus.Instance.Get<WarlordBountyThresholdReachedEvent>();
+            fallbackEvt.Warlord = warlord;
+            fallbackEvt.Threshold = THRESHOLD_HUNT;
+            fallbackEvt.BountyAmount = bountyAmount;
+            NeuralEventRouter.Instance.Publish(fallbackEvt);
+            EventBus.Instance.Return(fallbackEvt);
+        }
+
+        private void ProcessDeadHunters()
+        {
+
+            var toRemove = new List<string>();
+            foreach (var kvp in _activeHunters)
+            {
+                string partyId = kvp.Key;
+                string warlordId = kvp.Value;
+
+                bool partyAlive = Campaign.Current?.MobileParties
+                    .Any(p => p != null && p.IsActive && p.StringId == partyId) == true;
+
+                if (!partyAlive)
+                {
+                    toRemove.Add(partyId);
+                    var record = GetOrCreateRecord(warlordId);
+                    if (record.ActiveHuntersCount > 0)
+                        record.ActiveHuntersCount--;
+                    DebugLogger.Info("BountySystem", $"Hunter party {partyId} is gone (killed or disbanded).");
+                }
+            }
+
+            foreach (var key in toRemove)
+                _ = _activeHunters.Remove(key);
+
+            // _activeHunters.Count(lambda) her warlord için O(H) yerine
+            // önce warlord→hunterCount dict'i O(H) bir geçişte oluştur
+            var hunterCountByWarlord = new Dictionary<string, int>();
+            foreach (var kvp in _activeHunters)
+            {
+                if (kvp.Value != null)
+                    hunterCountByWarlord[kvp.Value] = hunterCountByWarlord.TryGetValue(kvp.Value, out int c) ? c + 1 : 1;
+            }
+
+            foreach (var warlord in WarlordSystem.Instance.GetAllWarlords())
+            {
+                var record = GetOrCreateRecord(warlord.StringId);
+                int realParties = hunterCountByWarlord.TryGetValue(warlord.StringId, out int rc) ? rc : 0;
+                int surplus = record.ActiveHuntersCount - realParties;
+                if (surplus > 0 && MBRandom.RandomFloat < 0.2f)
+                {
+                    record.ActiveHuntersCount = Math.Max(realParties, record.ActiveHuntersCount - 1);
+                    DebugLogger.Info("BountySystem", $"Counter-only hunter for {warlord.Name} gave up.");
+                }
+            }
+        }
+
+        public void AddBounty(Warlord warlord, int amount, BountySource source)
+        {
+            var record = GetOrCreateRecord(warlord.StringId);
+
+            if (!record.BountyDetails.ContainsKey(source))
+                record.BountyDetails[source] = 0;
+
+            record.BountyDetails[source] += amount;
+            record.TotalBounty += amount;
+            record.LastBountyUpdate = CampaignTime.Now;
+
+            if (amount > 500 && Settings.Instance?.TestingMode == true)
+            {
+                DebugLogger.Info("BountySystem",
+                    $"Bounty Increase [{warlord.Name}]: +{amount} ({source}) Â› Total: {record.TotalBounty}");
+            }
+        }
+
+        private void DecreaseBounty(WarlordBountyRecord record, int amount)
+        {
+            if (record.TotalBounty <= 0) return;
+
+            record.TotalBounty = MathF.Max(0, record.TotalBounty - amount);
+
+        }
+
+        private WarlordBountyRecord GetOrCreateRecord(string warlordId)
+        {
+            if (!_records.TryGetValue(warlordId, out var record))
+            {
+                record = new WarlordBountyRecord { WarlordId = warlordId };
+                _records[warlordId] = record;
+            }
+            return record;
+        }
+
+        public int GetBounty(string warlordId)
+        {
+            if (_records.TryGetValue(warlordId, out var r))
+                return r.TotalBounty;
+            return 0;
+        }
+
+        public bool HasHunterParty(string warlordId)
+        {
+            if (_records.TryGetValue(warlordId, out var r))
+                return r.ActiveHuntersCount > 0;
+            return false;
+        }
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            _ = dataStore.SyncData("_bountyRecords_v1", ref _records);
+
+            if (dataStore.IsLoading && _records == null)
+                _records = new Dictionary<string, WarlordBountyRecord>();
+        }
+
+        public override string GetDiagnostics()
+        {
+            int totalBounty = _records.Values.Sum(r => r.TotalBounty);
+            int wantedCriminals = _records.Values.Count(r => r.TotalBounty > 1000);
+            int hunted = _records.Values.Count(r => r.ActiveHuntersCount > 0);
+
+            return $"BountySystem:\n" +
+                   $"  Total Global Bounty: {totalBounty:N0}\n" +
+                   $"  Most Wanted Count: {wantedCriminals}\n" +
+                   $"  Actively Hunted: {hunted}";
+        }
+    }
+}

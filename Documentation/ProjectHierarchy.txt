@@ -1,0 +1,44 @@
+BANDIT MILITIAS: WARLORD - PROJE KLASOR YAPISI
+
+Bu belge, repodaki ana klasorlerin rollerini kisa sekilde aciklar.
+
+KOK DOSYALAR
+- BanditMilitias.csproj: ana mod projesi, referanslar ve build ayarlari
+- BanditMilitias.sln: cozum dosyasi
+- SubModule.xml: Bannerlord mod tanimi
+- KURULUM.md: kisa kurulum ve derleme notlari
+- README.md / README.html / README.txt: kullaniciya donuk belge seti
+
+KAYNAK KOD KLASORLERI
+- Core: olaylar ve ortak sozlesmeler
+- Infrastructure: save, uyumluluk ve teknik altyapi
+- Components: partilere eklenen mod verileri
+- Behaviors: oyun tick akisina baglanan davranislar
+- Systems: oynanisin ana moduler sistemleri
+- Intelligence: stratejik, taktik, swarm, ML ve narrative katmanlari
+- Patches: Harmony yamalari
+- GUI: arayuz katmani
+- Models: veri tasiyici modeller
+- Debug: tanilama yardimcilari
+- tools: gelistirme yardimcilari
+
+ICERIK VE CIKTI
+- ModuleData: oyuna kopyalanan veri ve icerik dosyalari
+- dist: paketleme ciktisi
+- bin / obj: build dosyalari
+
+TEST VE BELGELER
+- BanditMilitias.Tests: masaustu test projesi
+- Documentation: mimari ve akis notlari
+- Documentation\InGameTestingGuide.md: oyun ici test kilavuzu
+- Documentation\AIArchitecture.md: AI katmanlari ve sistem ozeti
+- Documentation\AI_Assisted_Development.md: kullanilan araclar ve AI destekli gelistirme akisi
+
+OKUMA SIRASI
+1. README.md
+2. Documentation\ProjectHierarchy.md
+3. Documentation\ModuleHierarchy.md
+4. Documentation\SystemFlowTree.md
+5. Documentation\InGameTestingGuide.md
+6. Documentation\AIArchitecture.md
+7. ilgili Systems ve Intelligence modulleri

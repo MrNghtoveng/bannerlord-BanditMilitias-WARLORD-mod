@@ -1,0 +1,87 @@
+{
+  "format": 1,
+  "restore": {
+    "C:\\Users\\firat\\Documents\\myproject\\bannerlord-BanditMilitias-WARLORD-mod-master\\BanditMilitias\\BanditMilitias.csproj": {}
+  },
+  "projects": {
+    "C:\\Users\\firat\\Documents\\myproject\\bannerlord-BanditMilitias-WARLORD-mod-master\\BanditMilitias\\BanditMilitias.csproj": {
+      "version": "1.0.0",
+      "restore": {
+        "projectUniqueName": "C:\\Users\\firat\\Documents\\myproject\\bannerlord-BanditMilitias-WARLORD-mod-master\\BanditMilitias\\BanditMilitias.csproj",
+        "projectName": "BanditMilitias",
+        "projectPath": "C:\\Users\\firat\\Documents\\myproject\\bannerlord-BanditMilitias-WARLORD-mod-master\\BanditMilitias\\BanditMilitias.csproj",
+        "packagesPath": "C:\\Users\\firat\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\firat\\Documents\\myproject\\bannerlord-BanditMilitias-WARLORD-mod-master\\BanditMilitias\\obj\\",
+        "projectStyle": "PackageReference",
+        "fallbackFolders": [
+          "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
+        ],
+        "configFilePaths": [
+          "C:\\Users\\firat\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+        ],
+        "originalTargetFrameworks": [
+          "net472"
+        ],
+        "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+          "https://api.nuget.org/v3/index.json": {}
+        },
+        "frameworks": {
+          "net472": {
+            "targetAlias": "net472",
+            "projectReferences": {}
+          }
+        },
+        "warningProperties": {
+          "noWarn": [
+            "NU1900"
+          ],
+          "warnAsError": [
+            "NU1605"
+          ]
+        },
+        "restoreAuditProperties": {
+          "enableAudit": "true",
+          "auditLevel": "low",
+          "auditMode": "direct"
+        },
+        "SdkAnalysisLevel": "10.0.200"
+      },
+      "frameworks": {
+        "net472": {
+          "targetAlias": "net472",
+          "dependencies": {
+            "Bannerlord.MCM": {
+              "suppressParent": "None",
+              "target": "Package",
+              "version": "[5.11.3, )"
+            },
+            "CsvHelper": {
+              "target": "Package",
+              "version": "[33.0.1, )"
+            },
+            "Lib.Harmony": {
+              "target": "Package",
+              "version": "[2.4.2, )"
+            },
+            "MathNet.Numerics": {
+              "target": "Package",
+              "version": "[5.0.0, )"
+            },
+            "Newtonsoft.Json": {
+              "target": "Package",
+              "version": "[13.0.4, )"
+            },
+            "Polly": {
+              "target": "Package",
+              "version": "[8.4.1, )"
+            }
+          },
+          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\10.0.202\\RuntimeIdentifierGraph.json"
+        }
+      }
+    }
+  }
+}

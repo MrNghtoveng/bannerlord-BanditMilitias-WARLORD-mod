@@ -1,0 +1,256 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║          BannerlordTestSim v2.1 — Konsol Komut Referansı                   ║
+║          Oyun içi ~ (tilde) tuşuyla açılan konsolda kullanılır.            ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+Köşeli parantez [ ] = zorunlu parametre
+Süslü parantez  { } = opsiyonel parametre
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  GENEL KONTROL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.status              Tüm pluginlerin anlık durum özeti
+  sim.version             BannerlordTestSim sürüm bilgisi
+  sim.flush               Log ve metrik dosyalarını diske yaz
+  sim.reset               Tüm aktif senaryoları durdur, assertion'ları sıfırla
+  sim.headless            Headless modunu aç / kapat (toggle)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TOPLU SENARYO & OTOMATİK ÇIKTI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.runall              Kayıtlı TÜM senaryoları aynı anda başlat
+  sim.runall.headless     Sadece headless uyumlu senaryoları başlat
+  sim.runall.status       Toplu çalışmanın anlık durumu (aktif/biten sayıları)
+  sim.collect             Tüm çıktıları hemen topla ve diske yaz
+                            - Metrik CSV flush
+                            - Son snapshot
+                            - AI gözlemci raporu
+                            - Regresyon HTML raporu
+                            - Senaryo özeti
+                            - Performans profili
+                            - Snapshot diff
+                            - Watch geçmişi
+                            - Log flush
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SENARYO MOTORU
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.scenario.list              Kayıtlı tüm senaryoları listele
+  sim.scenario.run [id]          Senaryo başlat          Örn: sim.scenario.run spawn_stress
+  sim.scenario.stop              Tüm aktif senaryoları durdur
+  sim.scenario.status            Aktif senaryo durumu (adım, geçen gün)
+
+  Yerleşik Senaryo ID'leri:
+    spawn_stress          30 günde 10+ milisya üretilmeli
+    warlord_career        60 günde Tier 3 warlord
+    economy_stability     20 gün warlord ekonomisi pozitif kalmalı
+    ai_observation        15 gün AI metrikleri toplanır → headless_smoke zinciri
+    combined_regression   Tüm sistemler sıralı regresyon
+    headless_smoke        CI hızlı sağlık kontrol testi
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  AI GÖZLEMCI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.ai.qtable           Q-Table anlık görüntüsü (state/action/Q değerleri)
+  sim.ai.htn              HTN plan geçmişi (başarı/başarısız oranı)
+  sim.ai.timeline         AI davranış zaman çizelgesi (son 20 olay)
+  sim.ai.timeline [n]     Son N olay                  Örn: sim.ai.timeline 50
+  sim.ai.report           Tam AI gözlem raporu (Q-Table + HTN + Timeline)
+  sim.ai.sample           Manuel Q-Table + HTN örneklemesi tetikle
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  REGRESYON
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.reg.status                   Assertion özeti (geçti/başarısız/toplam)
+  sim.reg.failed                   Başarısız assertion'ları listele
+  sim.reg.report                   HTML rapor üret (TestSimOutput klasörüne)
+  sim.reg.reset                    Tüm assertion'ları sıfırla
+  sim.reg.assert [id] [true|false] Manuel assertion tetikle
+                                    Örn: sim.reg.assert spawn_ok true
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  METRİK TOPLAYICI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.metric.summary              Tüm metriklerin istatistik özeti (avg/min/max)
+  sim.metric.get [isim]           Tek metrik detayı   Örn: sim.metric.get warlord_tier_test
+  sim.metric.record [isim] [val]  Manuel metrik kaydet Örn: sim.metric.record my_val 42.5
+  sim.metric.flush                CSV dosyasını diske yaz
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PERFORMANS PROFİLER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.prof.report                  Tüm sistem performans raporu (en yavaş → en hızlı)
+  sim.prof.bottleneck              Sadece darboğaz olan sistemleri göster
+  sim.prof.reset {sistem}          Tüm profiler verilerini sıfırla
+                                    Örn: sim.prof.reset BM.HTNEngine
+  sim.prof.threshold [sistem] [ms] Darboğaz uyarı eşiği ayarla (milisaniye)
+                                    Örn: sim.prof.threshold BM.DailyTick 10
+  sim.prof.measure [isim]          Anlık debug ölçümü başlat
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SNAPSHOT SİSTEMİ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.snap.capture {etiket}        Anlık campaign snapshot al
+  sim.snap.list                    Tüm snapshot'ları listele
+  sim.snap.diff {from} {to}        İki snapshot farkı — boşsa son ikisi karşılaştırılır
+                                    Örn: sim.snap.diff snap_000 snap_005
+  sim.snap.show [id]               Snapshot detaylarını göster
+  sim.snap.interval [gün]          Otomatik checkpoint aralığını ayarla (varsayılan: 7)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  FAULT INJECTION (DİKKATLİ KULLAN)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.fault.list                   Mevcut tüm fault türlerini listele
+  sim.fault.inject [FaultType] {arg} Fault uygula
+                                    Örn: sim.fault.inject DrainWarlordGold
+                                    Örn: sim.fault.inject SlowTick 500
+  sim.fault.history                Geçmiş fault kayıtlarını göster
+  sim.fault.drain                  Kısayol: Warlord altınını sıfırla
+  sim.fault.corrupt                Kısayol: Q-Table'ı boz
+  sim.fault.clear                  Kısayol: Tüm milisyaları sil
+  sim.fault.flood {n}              Kısayol: N milisya flood (varsayılan: 20)
+  sim.fault.slow {ms}              Kısayol: Tick'i ms kadar yavaşlat (varsayılan: 500ms)
+
+  Fault Türleri:
+    DrainWarlordGold       Warlord altınını sıfırla
+    SetNegativeIncome      Milisya başına geliri -50 yap
+    BankruptAllWarlords    Tüm warlordları iflasa zorla
+    StopAllSpawns          (Geliştirme aşamasında)
+    ForceSpawnFlood        Aşırı milisya spawn tetikle
+    ClearAllMilitia        Tüm milisyaları yok et
+    CorruptQTable          Q-Table değerlerini sıfırla
+    RandomizeAIDecisions   5 rastgele AI kararı yayınla
+    DrainPlayerGold        Oyuncunun tüm altınını al
+    GivePlayerGold         Oyuncuya 1.000.000 altın ver
+    SlowTick               Tick'i yapay yavaşlat
+    MemoryPressure         Büyük nesne alloc/dealloc testi
+    DestroyAllSettlements  Tüm settlement loyalty'sini 0 yap
+    ForceNullReference     Kontrollü NullRef (crash guard testi)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  WATCH SİSTEMİ (OTOMATİK UYARI)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.watch.list                   Aktif watch kurallarını listele
+  sim.watch.add [Metrik] [Koşul] [Eşik]  Yeni kural ekle
+                                    Örn: sim.watch.add MilitiaCount Below 5
+                                    Örn: sim.watch.add WarlordEconomy Below 0
+                                    Örn: sim.watch.add PlayerGold Above 500000
+  sim.watch.remove [id]            Kuralı sil
+  sim.watch.history                Tetikleme geçmişi
+
+  Watch Metrikleri:
+    MilitiaCount  WarlordCount  WarlordTier  WarlordEconomy
+    PlayerGold    QTableDelta   SettlementLoyalty  SettlementProsperity
+    PartyCount    ActiveWars    CustomMetric
+
+  Watch Koşulları:
+    Above  Below  AboveOrEqual  BelowOrEqual  Equal  Changed  ChangedBy
+
+  Varsayılan Kurallar (otomatik yüklü):
+    militia_zero            Milisya 0'a düşerse → Kritik uyarı
+    warlord_economy_negative Warlord ekonomisi < 0 → Uyarı
+    qtable_converged        Q-Table deltası < 0.001 → Bilgi
+    player_broke            Oyuncu altını ≤ 100 → Uyarı
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  SENARYO KAYDEDICI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.rec.start {oturum_adı}       Kaydı başlat
+  sim.rec.stop                     Kaydı durdur ve diske yaz
+  sim.rec.mark [etiket]            Mevcut ana işaret koy
+  sim.rec.export                   C# ScenarioDefinition dosyası üret
+  sim.rec.status                   Kayıt durumu ve olay sayısı
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  HTTP DASHBOARD
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.http.start          HTTP dashboard'u başlat (varsayılan: localhost:7373)
+  sim.http.stop           HTTP dashboard'u durdur
+  sim.http.url            Dashboard URL'sini göster
+
+  Dashboard adresi: http://localhost:7373
+  - Plugin durumları, assertion özeti, metrik barlar, olay akışı
+  - 2 saniyede bir otomatik güncelleme
+  - Tarayıcıda gerçek zamanlı izleme
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  PLUGİN YÖNETİMİ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim.plugin.list                  Tüm pluginleri ve durumlarını listele
+  sim.plugin.enable [id]           Plugin'i etkinleştir
+  sim.plugin.disable [id]          Plugin'i devre dışı bırak
+
+  Plugin ID'leri:
+    SimProfiler        AIObserver         RegressionRunner
+    ScenarioEngine     MetricCollector    SnapshotSystem
+    FaultInjector      WatchSystem        ScenarioRecorder
+    AutoOutputCollector  HUDPlugin        HttpServer
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ÇIKTI DOSYALARI (TestSimOutput klasörü)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  sim_YYYYMMDD_HHmmss.log          Tam yapılandırılmış log
+  metrics_YYYYMMDD_HHmmss.csv      Metrik akışı (CSV)
+  TestReport_YYYYMMDD_HHmmss.html  Regresyon HTML raporu
+  ai_report_YYYYMMDD_HHmmss.txt   AI gözlemci tam raporu
+  perf_report_YYYYMMDD_HHmmss.txt  Performans profil raporu
+  scenario_summary_*.txt           Senaryo çalışma özeti
+  snapshot_diff_*.txt              Snapshot karşılaştırması
+  watch_history_*.txt              Watch tetikleme geçmişi
+  collect_summary_*.txt            sim.collect özet raporu
+  Recordings/                      Senaryo kayıt dosyaları (.log + .cs)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  TIPIK KULLANIM AKIŞLARI
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  Hızlı Regresyon:
+    sim.runall          → bekle → sim.collect
+
+  Tek Senaryo Testi:
+    sim.scenario.run spawn_stress
+    sim.scenario.status   (takip için)
+    sim.reg.status        (sonuçlar için)
+
+  Resilience Testi:
+    sim.scenario.run economy_stability
+    sim.fault.inject SetNegativeIncome
+    sim.watch.list        (ekonomi watch'u tetiklenecek mi?)
+    sim.reg.status
+
+  AI Analizi:
+    sim.scenario.run ai_observation
+    sim.ai.qtable
+    sim.ai.htn
+    sim.ai.timeline 30
+    sim.collect
+
+  Kayıt & Tekrar Oynatma:
+    sim.rec.start benim_oturumum
+    ... oyun oynarken ...
+    sim.rec.mark "Önemli an"
+    sim.rec.stop
+    sim.rec.export        (C# senaryo dosyası üretilir)
+
+  HTTP Dashboard:
+    sim.http.start
+    → Tarayıcıda http://localhost:7373 aç
+    → Gerçek zamanlı izle
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  BannerlordTestSim v2.1 — github.com/MrNghtoveng/BanditMilitias
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
