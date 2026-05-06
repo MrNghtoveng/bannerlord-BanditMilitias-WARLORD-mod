@@ -111,15 +111,6 @@ Gelişmiş diagnostic test sistemi için mod içerisinden şu konsol komutların
 - `bandit.test_run all`: Tüm modülleri (warm-up, pipeline, warlord logic) test eder.
 - `bandit.test_report`: "Cold module" analizi ve ihlal özetini sunar.
 
-### Dokümantasyon
-
-- [Documentation/ProjectHierarchy.md](Documentation/ProjectHierarchy.md)
-- [Documentation/ModuleHierarchy.md](Documentation/ModuleHierarchy.md)
-- [Documentation/SystemFlowTree.md](Documentation/SystemFlowTree.md)
-- [Documentation/InGameTestingGuide.md](Documentation/InGameTestingGuide.md)
-- [Documentation/AIArchitecture.md](Documentation/AIArchitecture.md)
-- [Documentation/AI_Assisted_Development.md](Documentation/AI_Assisted_Development.md)
-
 ### Karakter Notu
 
 Bazı terminal veya editör yapılandırmalarında Türkçe karakterler bozuk görünebilir. README dosyası UTF-8 olarak yazılmıştır; GitHub ve modern editörlerde doğru görünmelidir.
@@ -230,15 +221,6 @@ You can use the following console commands for advanced diagnostics:
 - `bandit.test_list`: Lists all available tests and health checks.
 - `bandit.test_run all`: Tests all modules (warm-up, pipeline, warlord logic).
 - `bandit.test_report`: Provides a "cold module" analysis and violation summary.
-
-### Documentation
-
-- [Documentation/ProjectHierarchy.md](Documentation/ProjectHierarchy.md)
-- [Documentation/ModuleHierarchy.md](Documentation/ModuleHierarchy.md)
-- [Documentation/SystemFlowTree.md](Documentation/SystemFlowTree.md)
-- [Documentation/InGameTestingGuide.md](Documentation/InGameTestingGuide.md)
-- [Documentation/AIArchitecture.md](Documentation/AIArchitecture.md)
-- [Documentation/AI_Assisted_Development.md](Documentation/AI_Assisted_Development.md)
 
 ### Encoding Note
 
