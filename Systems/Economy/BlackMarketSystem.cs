@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Debug;
+using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using System;
@@ -122,7 +122,7 @@ namespace BanditMilitias.Systems.Economy
                 if (Settings.Instance?.TestingMode == true)
                 {
                     InformationManager.DisplayMessage(new InformationMessage(
-                        $"ğŸ•µï¸ Black Market: {warlord.Name} established a network in {target.Name}! (+{DAILY_INCOME_PER_AGREEMENT}g/day)",
+                        $"🕵️ Black Market: {warlord.Name} established a network in {target.Name}! (+{DAILY_INCOME_PER_AGREEMENT}g/day)",
                         Colors.Yellow));
                 }
             }
@@ -143,7 +143,7 @@ namespace BanditMilitias.Systems.Economy
                 .FirstOrDefault();
         }
 
-        /// <summary>AscensionEvaluator için: belirtilen warlord'un aktif kara borsa ağ sayısı.</summary>
+
         public int GetNetworkCount(string warlordId)
         {
             if (string.IsNullOrEmpty(warlordId)) return 0;

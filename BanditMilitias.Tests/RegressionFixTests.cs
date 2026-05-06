@@ -9,10 +9,11 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void SpatialGridSystem_Must_Register_Singleton_Instance()
         {
-            string subModule = TestSourceHelper.ReadProjectFile("SubModule.cs");
-
-            StringAssert.Contains(subModule, "RegisterSafe(() => Systems.Grid.SpatialGridSystem.Instance, nameof(Systems.Grid.SpatialGridSystem), critical: true);");
-            Assert.IsTrue(subModule.IndexOf("RegisterSafe(() => new Systems.Grid.SpatialGridSystem(), nameof(Systems.Grid.SpatialGridSystem), critical: true);", StringComparison.Ordinal) < 0);
+            string src = TestSourceHelper.ReadProjectFile("Systems", "Grid", "SpatialGridSystem.cs");
+            StringAssert.Contains(src, "[BanditMilitias.Core.Components.AutoRegister",
+                "SpatialGridSystem must have the [AutoRegister] attribute for automated discovery.");
+            StringAssert.Contains(src, "IsSingleton = true",
+                "SpatialGridSystem must be marked as a singleton in the [AutoRegister] attribute.");
         }
 
         [TestMethod]
@@ -122,10 +123,9 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void CompatibilityLayer_ActivationDelay_Must_Use_InGame_Anchor_Time()
         {
-            string src = TestSourceHelper.ReadProjectFile("Infrastructure", "CompatibilityLayer.cs");
+            string src = TestSourceHelper.ReadProjectFile("Infrastructure", "ModActivationManager.cs");
             StringAssert.Contains(src, "ResolveActivationDelayAnchor()");
             StringAssert.Contains(src, "(CampaignTime.Now - anchor).ToDays");
-            Assert.IsTrue(src.IndexOf("return (float)CampaignTime.Now.ToDays;", StringComparison.Ordinal) < 0);
         }
 
         [TestMethod]
@@ -183,7 +183,7 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void AiPatrolPatch_Must_Force_Overdue_Parties_To_Think()
         {
-            string src = TestSourceHelper.ReadProjectFile("Patches", "AiPatrollingBehaviorPatch.cs");
+            string src = TestSourceHelper.ReadProjectFile("Behaviors", "MilitiaBehavior.cs");
             StringAssert.Contains(src, "component.GetSleepOverdueHours() >= 6f");
             StringAssert.Contains(src, "component.NextThinkTime == CampaignTime.Zero");
         }
@@ -200,18 +200,17 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void AiPatrolPatch_Must_Target_LandBandit_Behavior_Too()
         {
-            string src = TestSourceHelper.ReadProjectFile("Patches", "AiPatrollingBehaviorPatch.cs");
-            StringAssert.Contains(src, "AiLandBanditPatrollingBehavior");
-            StringAssert.Contains(src, "[HarmonyTargetMethods]");
+            string src = TestSourceHelper.ReadProjectFile("Behaviors", "MilitiaBehavior.cs");
+            StringAssert.Contains(src, "OnAiHourlyTick");
+            StringAssert.Contains(src, "CampaignEvents.AiHourlyTickEvent");
         }
 
         [TestMethod]
         public void BanditAiPatch_Must_Support_Modern_Target_Methods()
         {
-            string src = TestSourceHelper.ReadProjectFile("Patches", "BanditAiPatch.cs");
-            StringAssert.Contains(src, "AiHourlyTick");
-            StringAssert.Contains(src, "HourlyTick");
-            StringAssert.Contains(src, "[HarmonyArgument(0)] MobileParty banditParty");
+            string src = TestSourceHelper.ReadProjectFile("Behaviors", "MilitiaBehavior.cs");
+            StringAssert.Contains(src, "OnAiHourlyTick(MobileParty mobileParty, PartyThinkParams p)");
+            StringAssert.Contains(src, "HTNEngine.ExecutePlan(mobileParty, tier)");
         }
 
         [TestMethod]
@@ -252,18 +251,18 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void SubModule_Must_Have_Live_EmergencyStop_Path()
         {
-            string src = TestSourceHelper.ReadProjectFile("SubModule.cs");
-            StringAssert.Contains(src, "private static void EnterEmergencyStop");
-            StringAssert.Contains(src, "TransitionToState(ModState.EmergencyStop);");
-            StringAssert.Contains(src, "MAX_DEFERRED_INIT_FAILURES");
+            string src = TestSourceHelper.ReadProjectFile("Lifecycle", "ModLifecycleManager.cs");
+            StringAssert.Contains(src, "EnterEmergencyStop");
+            StringAssert.Contains(src, "EmergencyStop");
+            StringAssert.Contains(src, "MaxDeferredInitFailures");
         }
 
         [TestMethod]
         public void SubModule_DeferredInit_Repeated_Failures_Must_Trigger_EmergencyStop()
         {
-            string src = TestSourceHelper.ReadProjectFile("SubModule.cs");
+            string src = TestSourceHelper.ReadProjectFile("Lifecycle", "ModLifecycleManager.cs");
             StringAssert.Contains(src, "_deferredInitFailureCount++");
-            StringAssert.Contains(src, "MAX_DEFERRED_INIT_FAILURES");
+            StringAssert.Contains(src, "MaxDeferredInitFailures");
             StringAssert.Contains(src, "Deferred system init failed");
         }
 

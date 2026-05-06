@@ -4,6 +4,7 @@ using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Fear;
+using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Core.Neural;
 using System;
@@ -16,6 +17,7 @@ using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.Localization;
 using TaleWorlds.SaveSystem;
+using TaleWorlds.Library;
 using BanditPersonality = BanditMilitias.Intelligence.Strategic.PersonalityType;
 using MathF = TaleWorlds.Library.MathF;
 
@@ -278,6 +280,19 @@ namespace BanditMilitias.Systems.Raiding
 
                 DistributeRaidLoot(militia, goldLooted);
 
+                if (Settings.Instance?.EnableRaidNotices == true && Settings.Instance?.TestingMode == true)
+                {
+                    if (target.MapFaction == Hero.MainHero?.MapFaction || target.OwnerClan == Clan.PlayerClan)
+                    {
+                        InformationManager.DisplayMessage(new InformationMessage(
+                            new TextObject("{=BM_Raid_Notice}WARNING: Your property {SETTLEMENT} is being raided by {ATTACKER}!")
+                                .SetTextVariable("SETTLEMENT", target.Name)
+                                .SetTextVariable("ATTACKER", militia.Name)
+                                .ToString(),
+                            Colors.Red));
+                    }
+                }
+
                 NotifyFearSystem(militia, target, intensity, success);
                 NotifyLegitimacySystem(militia, target, intensity);
             }
@@ -321,13 +336,13 @@ namespace BanditMilitias.Systems.Raiding
         {
             float lootMultiplier = Settings.Instance?.RaidLootMultiplier ?? 1.0f;
 
-            // Mevsimsel baskın çarpanı (Sonbahar +%25, Kış -%30, Yaz -%10)
+
             try
             {
                 lootMultiplier *= BanditMilitias.Systems.Seasonal.SeasonalEffectsSystem.Instance.RaidLootMultiplier;
             }
-            catch (Exception ex) 
-            { 
+            catch (Exception ex)
+            {
                 DebugLogger.Warning("RaidSystem", $"Seasonal loot multiplier failed: {ex.Message}");
             }
 
@@ -516,33 +531,33 @@ namespace BanditMilitias.Systems.Raiding
             int goldLooted,
             RaidIntensity intensity)
         {
-            var raidEvent = EventBus.Instance.Get<MilitiaRaidEvent>();
+            var raidEvent = BanditMilitias.Core.Events.EventBus.Instance.Get<MilitiaRaidEvent>();
             raidEvent.Raider = militia;
             raidEvent.Target = target;
             raidEvent.Success = outcome == RaidOutcome.Success || outcome == RaidOutcome.PartialSuccess;
             raidEvent.LootGained = goldLooted;
             NeuralEventRouter.Instance.Publish(raidEvent);
-            EventBus.Instance.Return(raidEvent);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(raidEvent);
 
-            var completedEvent = EventBus.Instance.Get<MilitiaRaidCompletedEvent>();
+            var completedEvent = BanditMilitias.Core.Events.EventBus.Instance.Get<MilitiaRaidCompletedEvent>();
             completedEvent.RaiderParty = militia;
             completedEvent.TargetVillage = target;
             completedEvent.Outcome = outcome;
             completedEvent.GoldLooted = goldLooted;
             completedEvent.Intensity = intensity;
             NeuralEventRouter.Instance.Publish(completedEvent);
-            EventBus.Instance.Return(completedEvent);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(completedEvent);
 
-            // Köy direnişi → VillageResistanceEvent
+
             if (outcome == RaidOutcome.Aborted || outcome == RaidOutcome.Repelled)
             {
-                var resistEvt = EventBus.Instance.Get<BanditMilitias.Core.Events.VillageResistanceEvent>();
+                var resistEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<BanditMilitias.Core.Events.VillageResistanceEvent>();
                 if (resistEvt != null)
                 {
                     resistEvt.Village = target;
                     resistEvt.WarlordId = (militia?.PartyComponent as BanditMilitias.Components.MilitiaPartyComponent)?.WarlordId ?? "";
                     NeuralEventRouter.Instance.Publish(resistEvt);
-                    EventBus.Instance.Return(resistEvt);
+                    BanditMilitias.Core.Events.EventBus.Instance.Return(resistEvt);
                 }
             }
         }

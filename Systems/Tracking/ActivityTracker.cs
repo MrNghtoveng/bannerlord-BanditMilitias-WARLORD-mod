@@ -13,8 +13,9 @@ using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Systems.Tracking
 {
-    // ── CaravanActivityTracker ─────────────────────────────────────────
 
+
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 61, IsSingleton = true)]
     public class CaravanActivityTracker : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         private static CaravanActivityTracker? _instance;
@@ -108,19 +109,19 @@ namespace BanditMilitias.Systems.Tracking
         private void ApplyDecay()
         {
             _keysToRemoveBuffer.Clear();
-            
-            // Silinecekleri topla
+
+
             foreach (var kvp in _tradeIntensityGrid)
             {
                 if (kvp.Value * (1.0f - DECAY_RATE) < 0.1f)
                     _keysToRemoveBuffer.Add(kvp.Key);
             }
 
-            // Sil
+
             foreach (var key in _keysToRemoveBuffer)
                 _ = _tradeIntensityGrid.Remove(key);
 
-            // Kalanları güncelle
+
             foreach (var key in _tradeIntensityGrid.Keys.ToArray())
             {
                 _tradeIntensityGrid[key] *= (1.0f - DECAY_RATE);
@@ -130,8 +131,8 @@ namespace BanditMilitias.Systems.Tracking
         private void CleanupOldEvents()
         {
             var cutoffTime = CampaignTime.DaysFromNow(-30);
-            
-            // OPTIMIZASYON: .ToList() ve new Queue() yerine Dequeue döngüsü
+
+
             while (_recentEvents.Count > 0 && _recentEvents.Peek().Timestamp <= cutoffTime)
             {
                 _recentEvents.Dequeue();
@@ -187,8 +188,8 @@ namespace BanditMilitias.Systems.Tracking
         public CampaignTime Timestamp;
     }
 
-    // ── WarActivityTracker ─────────────────────────────────────────
 
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsSingleton = true)]
     public class WarActivityTracker : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         private static WarActivityTracker? _instance;
@@ -328,20 +329,18 @@ namespace BanditMilitias.Systems.Tracking
         {
             _keysToRemoveBuffer.Clear();
 
-            // Tahsis yapmadan anahtarları topla
+
             foreach (var kvp in _warIntensityGrid)
             {
                 if (kvp.Value * (1.0f - INTENSITY_DECAY_RATE) < 0.1f)
                     _keysToRemoveBuffer.Add(kvp.Key);
             }
 
-            // Silinecekleri kaldır
+
             foreach (var key in _keysToRemoveBuffer)
                 _ = _warIntensityGrid.Remove(key);
 
-            // Geriye kalanları güncelle (ayrı döngüde çünkü foreach sırasında modifikasyon yasak)
-            // Not: Dictionary entry'lerini güncellemek için .ToList() kullanmak zorundayız 
-            // ya da Keys üzerinden gitmeliyiz. Ama en verimlisi Keys kopyasıdır.
+
             foreach (var key in _warIntensityGrid.Keys.ToArray())
             {
                 _warIntensityGrid[key] *= (1.0f - INTENSITY_DECAY_RATE);
@@ -399,7 +398,7 @@ namespace BanditMilitias.Systems.Tracking
         {
             var cutoffTime = CampaignTime.DaysFromNow(-30);
 
-            // OPTIMIZASYON: Dequeue döngüsü
+
             while (_recentEvents.Count > 0 && _recentEvents.Peek().Timestamp <= cutoffTime)
             {
                 _recentEvents.Dequeue();

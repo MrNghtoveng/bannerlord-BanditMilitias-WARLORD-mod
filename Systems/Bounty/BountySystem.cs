@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Components;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
@@ -45,6 +45,7 @@ namespace BanditMilitias.Systems.Bounty
         public int ActiveHuntersCount { get; set; } = 0;
     }
 
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 90, IsCritical = false)]
     public class BountySystem : MilitiaModuleBase
     {
 
@@ -76,14 +77,14 @@ namespace BanditMilitias.Systems.Bounty
             if (_isInitialized) return;
             _isInitialized = true;
 
-            EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnVillageRaided);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnVillageRaided);
 
             DebugLogger.Info("BountySystem", "BountySystem initialized.");
         }
 
         public override void Cleanup()
         {
-            EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnVillageRaided);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnVillageRaided);
             _records.Clear();
             _activeHunters.Clear();
             _isInitialized = false;
@@ -236,12 +237,12 @@ namespace BanditMilitias.Systems.Bounty
             record.Notoriety = MathF.Min(1.0f, record.Notoriety + 0.15f);
             _activeHunters[hunterParty.StringId] = warlord.StringId;
 
-            var evt = EventBus.Instance.Get<WarlordBountyThresholdReachedEvent>();
+            var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<WarlordBountyThresholdReachedEvent>();
             evt.Warlord = warlord;
             evt.Threshold = THRESHOLD_HUNT;
             evt.BountyAmount = bountyAmount;
             NeuralEventRouter.Instance.Publish(evt);
-            EventBus.Instance.Return(evt);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
 
             if (Hero.MainHero?.PartyBelongedTo != null)
             {
@@ -257,12 +258,12 @@ namespace BanditMilitias.Systems.Bounty
             rec.ActiveHuntersCount++;
             rec.Notoriety = MathF.Min(1.0f, rec.Notoriety + 0.15f);
 
-            var fallbackEvt = EventBus.Instance.Get<WarlordBountyThresholdReachedEvent>();
+            var fallbackEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<WarlordBountyThresholdReachedEvent>();
             fallbackEvt.Warlord = warlord;
             fallbackEvt.Threshold = THRESHOLD_HUNT;
             fallbackEvt.BountyAmount = bountyAmount;
             NeuralEventRouter.Instance.Publish(fallbackEvt);
-            EventBus.Instance.Return(fallbackEvt);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(fallbackEvt);
         }
 
         private void ProcessDeadHunters()
@@ -290,8 +291,7 @@ namespace BanditMilitias.Systems.Bounty
             foreach (var key in toRemove)
                 _ = _activeHunters.Remove(key);
 
-            // _activeHunters.Count(lambda) her warlord için O(H) yerine
-            // önce warlord→hunterCount dict'i O(H) bir geçişte oluştur
+
             var hunterCountByWarlord = new Dictionary<string, int>();
             foreach (var kvp in _activeHunters)
             {
@@ -383,3 +383,5 @@ namespace BanditMilitias.Systems.Bounty
         }
     }
 }
+
+

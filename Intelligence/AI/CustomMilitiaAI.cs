@@ -23,8 +23,8 @@ namespace BanditMilitias.Intelligence.AI
         private const float PATROL_RADIUS = 40f;
         private const float RAID_SEARCH_RADIUS = 60f;
         private const float ENEMY_DETECTION_RADIUS = 40f;
-        // FIX-DUAL-BRAIN: THREAT_SCAN_RADIUS ve THREAT_OVERPOWER_RATIO buradan kaldırıldı.
-        // Kaçış mantığı MilitiaDecider.TrySurvivalRetreat (Katman 0)'a taşındı.
+
+
         public const float STRATEGIC_ORDER_DURATION = 24f;
 
         private static bool _isInitialized = false;
@@ -38,9 +38,9 @@ namespace BanditMilitias.Intelligence.AI
 
                 try
                 {
-                    EventBus.Instance.Subscribe<StrategicCommandEvent>(OnStrategicCommand);
-                    EventBus.Instance.Subscribe<CommandCompletionEvent>(OnCommandCompletion);
-                    EventBus.Instance.Subscribe<BanditMilitias.Systems.Territory.TerritoryOpportunityEvent>(OnTerritoryOpportunity);
+                    BanditMilitias.Core.Events.EventBus.Instance.Subscribe<StrategicCommandEvent>(OnStrategicCommand);
+                    BanditMilitias.Core.Events.EventBus.Instance.Subscribe<CommandCompletionEvent>(OnCommandCompletion);
+                    BanditMilitias.Core.Events.EventBus.Instance.Subscribe<BanditMilitias.Systems.Territory.TerritoryOpportunityEvent>(OnTerritoryOpportunity);
 
                     _isInitialized = true;
 
@@ -51,7 +51,8 @@ namespace BanditMilitias.Intelligence.AI
                 }
                 catch (Exception ex)
                 {
-                    DebugLogger.Error("CustomMilitiaAI", $"Initialization failed: {ex.Message}");
+                    RollbackSubscriptions();
+                    DebugLogger.Error("CustomMilitiaAI", $"Initialization failed (subscriptions rolled back): {ex.Message}");
                 }
             }
         }
@@ -61,18 +62,21 @@ namespace BanditMilitias.Intelligence.AI
             lock (_initLock)
             {
                 if (!_isInitialized) return;
-
-                EventBus.Instance.Unsubscribe<StrategicCommandEvent>(OnStrategicCommand);
-                EventBus.Instance.Unsubscribe<CommandCompletionEvent>(OnCommandCompletion);
-                EventBus.Instance.Unsubscribe<BanditMilitias.Systems.Territory.TerritoryOpportunityEvent>(OnTerritoryOpportunity);
-
+                RollbackSubscriptions();
                 _isInitialized = false;
             }
         }
 
+        private static void RollbackSubscriptions()
+        {
+            try { BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<StrategicCommandEvent>(OnStrategicCommand); } catch { }
+            try { BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<CommandCompletionEvent>(OnCommandCompletion); } catch { }
+            try { BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<BanditMilitias.Systems.Territory.TerritoryOpportunityEvent>(OnTerritoryOpportunity); } catch { }
+        }
+
         public static void SetStrategicTargetForVanilla(MobileParty party)
         {
-            var component = party.PartyComponent as MilitiaPartyComponent;
+            var component = party.GetMilitiaComponent();
             if (component?.CurrentOrder == null) return;
 
             var command = component.CurrentOrder;
@@ -146,10 +150,10 @@ namespace BanditMilitias.Intelligence.AI
 
         public static void UpdateTacticalDecision(MobileParty party)
         {
-            var component = party.PartyComponent as MilitiaPartyComponent;
+            var component = party.GetMilitiaComponent();
             if (component == null) return;
 
-            // Ev savunma acil durumu
+
             if (!IsPartyWounded(party) && component.GetHomeSettlement() != null && component.GetHomeSettlement()!.LastAttackerParty != null)
             {
                 if (component.GetHomeSettlement()!.LastAttackerParty!.IsActive &&
@@ -170,8 +174,7 @@ namespace BanditMilitias.Intelligence.AI
                 }
             }
 
-            // FIX-DUAL-BRAIN: CurrentOrder olsa bile erken dönmüyoruz (return KALDIRILDI).
-            // MilitiaDecider artık bu emri Layer 2'de (Swarm'dan sonra) değerlendirecek.
+
             if (component.CurrentOrder != null)
             {
                 if (CampaignTime.Now - component.OrderTimestamp >= CampaignTime.Hours(STRATEGIC_ORDER_DURATION))
@@ -299,7 +302,8 @@ namespace BanditMilitias.Intelligence.AI
 
         private static Settlement? FindExpansionTarget(MobileParty me, Settlement home)
         {
-            var allTargets = StaticDataCache.Instance.AllVillages.Concat(StaticDataCache.Instance.AllTowns);
+            var allTargets = BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance.AllVillages
+                .Concat(BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance.AllTowns);
             var candidates = allTargets.Where(s => s != home &&
                 s.GatePosition.DistanceSquared(home.GatePosition) > 10f * 10f).ToList();
 
@@ -338,7 +342,7 @@ namespace BanditMilitias.Intelligence.AI
                 {
                     if (p.MapEvent != null && p.MapEvent.WinningSide == BattleSideEnum.None)
                     {
-                        var comp = p.PartyComponent as MilitiaPartyComponent;
+                        var comp = p.GetMilitiaComponent();
                         if (comp != null)
                         {
                             float searchBoost = (comp.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? 20f : 0f) + (comp.Renown / 5f);
@@ -356,7 +360,7 @@ namespace BanditMilitias.Intelligence.AI
                 if (p.Army != null) continue;
                 if (p.MapFaction == null || me.MapFaction == null) continue;
 
-                bool isMilitia = p.PartyComponent is MilitiaPartyComponent;
+                bool isMilitia = p.IsMilitia();
 
                 if (!p.MapFaction.IsAtWarWith(me.MapFaction) && !isMilitia) continue;
 
@@ -370,7 +374,7 @@ namespace BanditMilitias.Intelligence.AI
 
                     var warlord = WarlordSystem.Instance.GetWarlordForParty(me);
                     int availableGold = (int)(warlord?.Gold
-                        ?? (me.PartyComponent as MilitiaPartyComponent)?.Gold
+                        ?? me.GetMilitiaComponent()?.Gold
                         ?? 0);
                     bool hasMinimumPowerForDesperation = myStr >= System.Math.Max(40f, theirStr * 1.15f)
                         && (me.MemberRoster?.TotalManCount ?? 0) >= 18;
@@ -390,7 +394,7 @@ namespace BanditMilitias.Intelligence.AI
                 if (!p.IsCaravan && !p.IsVillager) continue;
 
                 if (!DecisionRules.IsAdvantageousEngagement(myStr, theirStr,
-                    (p.PartyComponent as MilitiaPartyComponent)?.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? 1.05f : 1.25f)) continue;
+                    p.GetMilitiaComponent()?.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? 1.05f : 1.25f)) continue;
 
                 float valueBias = p.IsCaravan ? 40f : 15f;
                 float score = valueBias + (myStr - theirStr);
@@ -490,12 +494,20 @@ namespace BanditMilitias.Intelligence.AI
             {
                 case AIDecisionType.Raid:
                     {
+                        float scanDist = 100f;
+                        var hostileVillages = BanditMilitias.Systems.Grid.SpatialGridSystem.Instance.QueryNearbySettlements(
+                            CompatibilityLayer.GetPartyPosition(party),
+                            scanDist,
+                            BanditMilitias.Infrastructure.SettlementType.Village);
+
                         Settlement? raidTarget = cached.TargetSettlement
-                            ?? FindBestVillageToRaid(
-                                party,
-                                component.GetHomeSettlement() != null
+                            ?? hostileVillages
+                                .Where(s => s.MapFaction.IsAtWarWith(party.MapFaction))
+                                .OrderBy(s => s.GatePosition.DistanceSquared(component.GetHomeSettlement() != null
                                     ? CompatibilityLayer.GetSettlementPosition(component.GetHomeSettlement()!)
-                                    : CompatibilityLayer.GetPartyPosition(party));
+                                    : CompatibilityLayer.GetPartyPosition(party)))
+                                .FirstOrDefault();
+
                         if (raidTarget != null)
                         {
                             SetMoveRaid(party, raidTarget);
@@ -561,7 +573,7 @@ namespace BanditMilitias.Intelligence.AI
 
         public static void AssignCommand(MobileParty party, StrategicCommand command)
         {
-            var component = party.PartyComponent as MilitiaPartyComponent;
+            var component = party.GetMilitiaComponent();
             if (component == null) return;
 
             component.CurrentOrder = command;
@@ -574,7 +586,7 @@ namespace BanditMilitias.Intelligence.AI
         private static void OnCommandCompletion(CommandCompletionEvent evt)
         {
 
-            if (evt.Party?.PartyComponent is MilitiaPartyComponent component)
+            if (evt.Party.GetMilitiaComponent() is MilitiaPartyComponent component)
             {
                 if (evt.Status == CommandCompletionStatus.Success ||
                     evt.Status == CommandCompletionStatus.Failure ||
@@ -628,7 +640,7 @@ namespace BanditMilitias.Intelligence.AI
 
         private static bool IsPartyIdle(MobileParty party)
         {
-            var component = party.PartyComponent as MilitiaPartyComponent;
+            var component = party.GetMilitiaComponent();
             return component != null && component.CurrentOrder == null;
         }
 

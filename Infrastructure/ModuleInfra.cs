@@ -2,6 +2,7 @@ using BanditMilitias.Core.Components;
 using BanditMilitias.Debug;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Fear;
+using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Systems.Spawning;
 using System;
@@ -14,7 +15,7 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Infrastructure
 {
-    // ── ModuleAccess ─────────────────────────────────────────
+
 
     public static class ModuleAccess
     {
@@ -42,7 +43,6 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    // ── ReleaseGate ─────────────────────────────────────────
 
     public static class ReleaseGate
     {
@@ -79,7 +79,6 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    // ── ModuleValidator ─────────────────────────────────────────
 
     public static class ModuleValidator
     {
@@ -145,7 +144,7 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    // ── MbEventExtensions ─────────────────────────────────────────
+
     public static class MbEventExtensions
     {
         public static void RemoveListenerSafe(object ev, object owner, Delegate listener)
@@ -202,7 +201,8 @@ namespace BanditMilitias.Infrastructure
             }
             catch
             {
-                // Swallow exceptions: on older APIs removal may not be supported.
+
+
             }
         }
 
@@ -222,12 +222,7 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    // ── TelemetryBridge ─────────────────────────────────────────
-    /// <summary>
-    /// Oyun eventi log'larını CSV formatında diske yazar.
-    /// FileLogger'dan farklı olarak yapılandırılmış veri kaydeder.
-    /// EnableFileLogging=true ve TestingMode=true iken aktif.
-    /// </summary>
+
     public static class TelemetryBridge
     {
         private static string? _path;
@@ -254,10 +249,7 @@ namespace BanditMilitias.Infrastructure
             catch { _path = null; }
         }
 
-        /// <summary>
-        /// Bir olayı logla: "RaidResult", "WarlordDeath", "DuelOutcome" vb.
-        /// data = "key=value;key=value" formatında.
-        /// </summary>
+
         public static void Log(string eventType, string data)
         {
             if (_path == null) return;
@@ -280,7 +272,8 @@ namespace BanditMilitias.Infrastructure
 
         public static void LogBattle(string battleId, float x, float y, float str1, float str2, int cas1, int cas2, int winner, string battleType = "")
         {
-            // Placeholder for telemetry
+
+
         }
 
         public static void Flush()

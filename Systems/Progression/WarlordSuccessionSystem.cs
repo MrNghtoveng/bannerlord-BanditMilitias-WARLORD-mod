@@ -15,29 +15,31 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Progression
 {
-    /// <summary>
-    /// Halef Sistemi — Warlord ölünce birliklerin %55'i yeni bir halef warlord etrafında toplanır.
-    /// Tier 3+ warlord ölümlerinde devreye girer.
-    /// Halef, önceki liderin prestijinin %60'ını miras alır.
-    /// </summary>
-    [AutoRegister]
+
+
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 330, IsCritical = false)]
     public class WarlordSuccessionSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordSuccessionSystem";
         public override bool IsEnabled => Settings.Instance?.EnableWarlords ?? true;
-        public override int Priority => 90; // WarlordSystem'den sonra çalışsın
+        public override int Priority => 90;
+
 
         private static readonly Lazy<WarlordSuccessionSystem> _instance =
             new Lazy<WarlordSuccessionSystem>(() => new WarlordSuccessionSystem());
         public static WarlordSuccessionSystem Instance => _instance.Value;
 
         private Dictionary<string, string> _successionHistory = new();
-        // predecessor id → successor id
 
-        private const float SUCCESSION_TROOP_RATIO = 0.65f; // Birlik devir oranı (tüm tier)
-        private const float PRESTIGE_INHERITANCE_RATIO = 0.60f; // Prestij miras oranı
-        private const int MIN_TIER_FOR_SUCCESSION = 1; // Tüm warlord sınıfları için aktif
-        private const int MIN_TROOPS_FOR_SUCCESSION = 20; // Düşürülmüş minimum (Tier 1 için)
+
+        private const float SUCCESSION_TROOP_RATIO = 0.65f;
+
+        private const float PRESTIGE_INHERITANCE_RATIO = 0.60f;
+
+        private const int MIN_TIER_FOR_SUCCESSION = 1;
+
+        private const int MIN_TROOPS_FOR_SUCCESSION = 20;
+
 
         private bool _initialized = false;
 
@@ -46,14 +48,14 @@ namespace BanditMilitias.Systems.Progression
         public override void Initialize()
         {
             if (_initialized) return;
-            EventBus.Instance.Subscribe<WarlordFallenEvent>(OnWarlordFallen);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordFallenEvent>(OnWarlordFallen);
             _initialized = true;
-            DebugLogger.Info("Succession", "WarlordSuccessionSystem başlatıldı.");
+            DebugLogger.Info("Succession", "WarlordSuccessionSystem initialized.");
         }
 
         public override void Cleanup()
         {
-            EventBus.Instance.Unsubscribe<WarlordFallenEvent>(OnWarlordFallen);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordFallenEvent>(OnWarlordFallen);
             _initialized = false;
         }
 
@@ -67,11 +69,11 @@ namespace BanditMilitias.Systems.Progression
             if (evt?.Warlord == null) return;
             var fallen = evt.Warlord;
 
-            // Sadece yüksek tier warlordlar için halef oluştur
+
             int tier = (int)WarlordCareerSystem.Instance.GetOrCreate(fallen.StringId).Tier;
             if (tier < MIN_TIER_FOR_SUCCESSION) return;
 
-            // Toplam asker sayısını kontrol et
+
             int totalTroops = CountWarlordTroops(fallen.StringId);
             if (totalTroops < MIN_TROOPS_FOR_SUCCESSION) return;
 
@@ -82,7 +84,8 @@ namespace BanditMilitias.Systems.Progression
         {
             try
             {
-                // En büyük milisya partisini bul — halefin çekirdeği olacak
+
+
                 var warlordParties = CompatibilityLayer.GetSafeMobileParties()
                     .Where(p => p.PartyComponent is MilitiaPartyComponent comp
                              && comp.WarlordId == fallen.StringId
@@ -96,7 +99,7 @@ namespace BanditMilitias.Systems.Progression
                 var coreComp = coreParty.PartyComponent as MilitiaPartyComponent;
                 if (coreComp == null) return;
 
-                // Yeni warlord oluştur
+
                 Settlement? homeSettlement = coreComp.GetHomeSettlement()
                     ?? FindNearestHideout(CompatibilityLayer.GetPartyPosition(coreParty));
 
@@ -105,59 +108,62 @@ namespace BanditMilitias.Systems.Progression
                 var successor = WarlordSystem.Instance.CreateWarlord(homeSettlement);
                 if (successor == null) return;
 
-                // Halef özellikleri ayarla
+
                 SetupSuccessor(successor, fallen, totalTroops);
 
-                // Birlikleri halefe devret
+
                 TransferTroops(fallen.StringId, successor.StringId, warlordParties);
 
-                // Miras kaydı
+
                 _successionHistory[fallen.StringId] = successor.StringId;
 
-                // Oyuncu bildirimi
+
                 NotifyPlayer(fallen, successor);
 
                 DebugLogger.Info("Succession",
-                    $"[HALEF] {fallen.Name} öldü → {successor.Name} liderliği devraldı. " +
-                    $"Devredilen asker: {(int)(totalTroops * SUCCESSION_TROOP_RATIO)}");
+                    $"[SUCCESSOR] {fallen.Name} died → {successor.Name} took over leadership. " +
+                    $"Transferred troops: {(int)(totalTroops * SUCCESSION_TROOP_RATIO)}");
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning("Succession", $"Halef oluşturma hatası: {ex.Message}");
+                DebugLogger.Warning("Succession", $"Successor creation error: {ex.Message}");
             }
         }
 
         private void SetupSuccessor(Warlord successor, Warlord fallen, int totalTroops)
         {
-            // İsim — önceki liderin anısını taşır
+
+
             successor.Name = GenerateSuccessorName(fallen);
             int fallenTier = (int)WarlordCareerSystem.Instance.GetOrCreate(fallen.StringId).Tier;
-            successor.Title = fallenTier >= 4 ? "Halef Kaptan" : "Yeni Kaptan";
+            successor.Title = fallenTier >= 4 ? "Successor Captain" : "New Captain";
 
-            // Prestij mirası
+
             successor.Gold = fallen.Gold * PRESTIGE_INHERITANCE_RATIO;
 
-            // Tier bir alt seviyeden başlar (ama minimum 2)
+
             int fTier = (int)WarlordCareerSystem.Instance.GetOrCreate(fallen.StringId).Tier;
             var successorRecord = WarlordCareerSystem.Instance.GetOrCreate(successor.StringId);
             successorRecord.Tier = (CareerTier)Math.Max(2, fTier - 1);
 
-            // Kişilik — fallenin kişiliğini kısmen miras alabilir
-            successor.Personality = fallen.Personality;
-            successor.Backstory = fallen.Backstory; // Aynı hikayenin devamı
 
-            // Öğrenilmiş taktikleri miras al
+            successor.Personality = fallen.Personality;
+            successor.Backstory = fallen.Backstory;
+
+
             var tactics = coreParty_InheritedTactics(fallen);
             if (tactics != null && tactics.Count > 0)
             {
-                // Taktik mirası WarlordCareerSystem üzerinden
-                DebugLogger.Info("Succession", $"Taktik mirası: {tactics.Count} taktik devredildi.");
+
+
+                DebugLogger.Info("Succession", $"Tactics inheritance: {tactics.Count} tactics transferred.");
             }
         }
 
         private Dictionary<string, float> coreParty_InheritedTactics(Warlord fallen)
         {
-            // Ölen warlord'un en büyük milisyasının inherited tactics'ini al
+
+
             var coreParty = CompatibilityLayer.GetSafeMobileParties()
                 .Where(p => p.PartyComponent is MilitiaPartyComponent comp
                          && comp.WarlordId == fallen.StringId)
@@ -178,23 +184,23 @@ namespace BanditMilitias.Systems.Progression
             {
                 if (party.PartyComponent is not MilitiaPartyComponent comp) continue;
 
-                // Yalnızca SUCCESSION_TROOP_RATIO oranı kalır, geri kalanı dağılır
+
                 if (MBRandom.RandomFloat < SUCCESSION_TROOP_RATIO)
                 {
                     comp.WarlordId = successorId;
                     transferred += party.MemberRoster.TotalManCount;
                 }
-                // Diğerleri mevcut konumda kalır ama warlord bağlantısı kesilir
-                // (PartyCleanupSystem bunları zamanla temizler)
+
+
             }
 
             DebugLogger.Info("Succession",
-                $"Birlik devri: {transferred} asker {successorId}'ya aktarıldı.");
+                $"Troop transfer: {transferred} troops transferred to {successorId}.");
         }
 
         private static string GenerateSuccessorName(Warlord fallen)
         {
-            string[] suffixes = { "İkinci", "Halef", "Varis", "Devam", "Jr." };
+            string[] suffixes = { "the Second", "Successor", "Heir", "II", "Jr." };
             string suffix = suffixes[MBRandom.RandomInt(suffixes.Length)];
             return $"{fallen.Name.Split(' ')[0]} {suffix}";
         }
@@ -217,10 +223,13 @@ namespace BanditMilitias.Systems.Progression
 
         private static void NotifyPlayer(Warlord fallen, Warlord successor)
         {
-            InformationManager.DisplayMessage(new InformationMessage(
-                $"[Siyaset] {fallen.FullName} düştü — " +
-                $"{successor.Name} liderliği devraldı ve askerleri toparlıyor.",
-                new Color(0.7f, 0.5f, 0.9f)));
+            if (Settings.Instance?.TestingMode == true)
+            {
+                InformationManager.DisplayMessage(new InformationMessage(
+                    $"[Politics] {fallen.FullName} fell — " +
+                    $"{successor.Name} took over leadership and is rallying the troops.",
+                    new Color(0.7f, 0.5f, 0.9f)));
+            }
         }
 
         public bool HasSuccessor(string warlordId)
@@ -232,8 +241,10 @@ namespace BanditMilitias.Systems.Progression
         public override string GetDiagnostics()
         {
             return $"WarlordSuccession:\n" +
-                   $"  Kayıtlı halef geçmişi: {_successionHistory.Count}\n" +
-                   $"  Min tier: {MIN_TIER_FOR_SUCCESSION}, Min asker: {MIN_TROOPS_FOR_SUCCESSION}";
+                   $"  Recorded succession history: {_successionHistory.Count}\n" +
+                   $"  Min tier: {MIN_TIER_FOR_SUCCESSION}, Min troops: {MIN_TROOPS_FOR_SUCCESSION}";
         }
     }
 }
+
+

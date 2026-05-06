@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Debug;
+using BanditMilitias.Debug;
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
@@ -11,7 +11,7 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Infrastructure
 {
-    // ── PIDController ─────────────────────────────────────────
+
 
     public class PIDController
     {
@@ -51,7 +51,7 @@ namespace BanditMilitias.Infrastructure
 
             float P = _kp * error;
 
-            // BUG-K: Anti-Windup - Only integrate if output is not saturated or error is moving back
+
             bool saturated = Output >= _outputMax || Output <= _outputMin;
             bool reducingError = (Output > 0 && error < 0) || (Output < 0 && error > 0);
 
@@ -90,7 +90,6 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    // ── CircularBuffer ─────────────────────────────────────────
 
     public class CircularBuffer<T> : IEnumerable<T>
     {
@@ -167,7 +166,6 @@ namespace BanditMilitias.Infrastructure
         IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
     }
 
-    // ── LRUCache ─────────────────────────────────────────
 
     public class LRUCache<K, V> where K : notnull
     {
@@ -270,7 +268,6 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    // ── ObjectPool ─────────────────────────────────────────
 
     public class ObjectPool<T> where T : class
     {
@@ -308,10 +305,7 @@ namespace BanditMilitias.Infrastructure
         }
     }
 
-    /// <summary>
-    /// TroopRoster nesneleri için thread-safe object pool.
-    /// GC pressure'ı azaltır ve performansı artırır.
-    /// </summary>
+
     public static class TroopRosterPool
     {
         private static readonly ConcurrentBag<TroopRoster> _pool = new();
@@ -327,9 +321,7 @@ namespace BanditMilitias.Infrastructure
         public static int Returned => _returned;
         public static int PoolSize => _pool.Count;
 
-        /// <summary>
-        /// Havuzdan bir TroopRoster al veya yeni oluştur
-        /// </summary>
+
         public static TroopRoster Rent()
         {
             _ = Interlocked.Increment(ref _rented);
@@ -337,12 +329,13 @@ namespace BanditMilitias.Infrastructure
             if (_pool.TryTake(out var roster))
             {
                 _pooledRosterIds.TryRemove(RuntimeHelpers.GetHashCode(roster), out _);
-                // Reset ve reuse - tüm askerleri temizle
+
+
                 roster.Clear();
                 return roster;
             }
 
-            // Pool boş - yeni oluştur
+
             _ = Interlocked.Increment(ref _created);
 
             if (_created % WARN_THRESHOLD == 0 && Settings.Instance?.TestingMode == true)
@@ -354,16 +347,15 @@ namespace BanditMilitias.Infrastructure
             return TroopRoster.CreateDummyTroopRoster();
         }
 
-        /// <summary>
-        /// TroopRoster'ı havuza geri ver
-        /// </summary>
+
         public static void Return(TroopRoster roster)
         {
             if (roster == null) return;
 
             if (_pool.Count >= MAX_POOL_SIZE)
             {
-                // Havuz dolu - GC'ye bırak
+
+
                 return;
             }
 
@@ -372,11 +364,12 @@ namespace BanditMilitias.Infrastructure
                 int rosterId = RuntimeHelpers.GetHashCode(roster);
                 if (!_pooledRosterIds.TryAdd(rosterId, 0))
                 {
-                    // Aynı roster zaten havuzda; çift iade sessizce yutulur.
+
+
                     return;
                 }
 
-                // Temizle ve havuza ekle
+
                 roster.Clear();
                 _pool.Add(roster);
                 _ = Interlocked.Increment(ref _returned);
@@ -384,13 +377,12 @@ namespace BanditMilitias.Infrastructure
             catch
             {
                 _pooledRosterIds.TryRemove(RuntimeHelpers.GetHashCode(roster), out _);
-                // Hata durumunda havuza ekleme
+
+
             }
         }
 
-        /// <summary>
-        /// Havuzu temizle (save/load veya mod unload sırasında)
-        /// </summary>
+
         public static void Clear()
         {
             while (_pool.TryTake(out _)) { }
@@ -400,16 +392,13 @@ namespace BanditMilitias.Infrastructure
             _ = Interlocked.Exchange(ref _returned, 0);
         }
 
-        /// <summary>
-        /// Pool istatistiklerini döndür
-        /// </summary>
+
         public static string GetDiagnostics()
         {
             return $"TroopRosterPool[Created: {_created}, Rented: {_rented}, Returned: {_returned}, Pool: {_pool.Count}]";
         }
     }
 
-    // ── MathUtils ─────────────────────────────────────────
 
     public static class MathUtils
     {
@@ -417,6 +406,22 @@ namespace BanditMilitias.Infrastructure
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static float Clamp(float value, float min, float max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static double Clamp(double value, double min, double max)
+        {
+            if (value < min) return min;
+            if (value > max) return max;
+            return value;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int Clamp(int value, int min, int max)
         {
             if (value < min) return min;
             if (value > max) return max;

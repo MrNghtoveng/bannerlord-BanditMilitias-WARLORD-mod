@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Components;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Core.Neural;
@@ -12,7 +12,8 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Territory
 {
-    // ── Yardımcı tipler ───────────────────────────────────────────────
+
+
     public enum HotspotType
     {
         Unknown = 0,
@@ -52,7 +53,8 @@ namespace BanditMilitias.Systems.Territory
             $"Territory Opportunity at {Position} (Type: {Type}, Score: {ActivityScore:F1})";
     }
 
-    // ── Ana sistem ────────────────────────────────────────────────────
+
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 390, IsCritical = false)]
     public class TerritorySystem : MilitiaModuleBase
     {
         public static readonly TerritorySystem Instance = new TerritorySystem();
@@ -79,12 +81,12 @@ namespace BanditMilitias.Systems.Territory
             $"BattleSites: {_battleSites.Count}, " +
             $"Hotspots: {_activityHotspots.Count}";
 
-        // ── Lifecycle ─────────────────────────────────────────────────
+
         public override void Initialize()
         {
             if (!IsEnabled) return;
-            EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-            EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
 
             if (Settings.Instance?.TestingMode == true && Settings.Instance?.ShowTestMessages == true)
                 InformationManager.DisplayMessage(
@@ -93,8 +95,8 @@ namespace BanditMilitias.Systems.Territory
 
         public override void Cleanup()
         {
-            EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-            EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
             _territoryMap.Clear();
             _battleSites.Clear();
             _activityHotspots.Clear();
@@ -115,12 +117,12 @@ namespace BanditMilitias.Systems.Territory
             DetectStrategicOpportunities();
         }
 
-        // ── SyncData ─────────────────────────────────────────────────
+
         public override void SyncData(IDataStore ds)
         {
             _ = ds.SyncData("_battleSites", ref _battleSites);
 
-            // Territory map
+
             if (ds.IsSaving)
             {
                 var ids = new List<string>();
@@ -161,7 +163,7 @@ namespace BanditMilitias.Systems.Territory
                 }
             }
 
-            // Hotspots
+
             if (ds.IsSaving)
             {
                 var keys = new List<string>();
@@ -214,7 +216,7 @@ namespace BanditMilitias.Systems.Territory
             }
         }
 
-        // ── Kontrol güncellemesi ──────────────────────────────────────
+
         private void UpdateTerritoryControl()
         {
             var stale = _territoryMap.Keys.Where(h => h == null || !h.IsActive).ToList();
@@ -262,7 +264,7 @@ namespace BanditMilitias.Systems.Territory
             }
         }
 
-        // ── Fırsat tespiti ────────────────────────────────────────────
+
         private void DetectStrategicOpportunities()
         {
             if (MobileParty.MainParty != null)
@@ -287,7 +289,7 @@ namespace BanditMilitias.Systems.Territory
                         {
                             NearbyHideout = nearest,
                             Distance = (float)Math.Sqrt(minDistSq),
-                            NearbyMilitias = _territoryMap[nearest].MilitiaCount
+                            NearbyMilitias = _territoryMap[nearest].Occupants
                         });
                 }
             }
@@ -309,7 +311,7 @@ namespace BanditMilitias.Systems.Territory
             }
         }
 
-        // ── Hotspot / BattleSite ──────────────────────────────────────
+
         public void RegisterBattleSite(Vec2 position, int casualties, bool militiaWon)
         {
             if (!IsEnabled) return;
@@ -368,7 +370,7 @@ namespace BanditMilitias.Systems.Territory
             foreach (var k in remove) _ = _activityHotspots.Remove(k);
         }
 
-        // ── Public API ────────────────────────────────────────────────
+
         public List<MobileParty> GetPartiesInRadius(Vec2 center, float radius)
         {
             var result = new List<MobileParty>();
@@ -454,7 +456,7 @@ namespace BanditMilitias.Systems.Territory
             info.LastUpdate = CampaignTime.Now;
         }
 
-        // ── Event handlers ────────────────────────────────────────────
+
         private void OnMilitiaKilled(MilitiaKilledEvent e)
         {
             if (e.Victim != null)
@@ -470,3 +472,5 @@ namespace BanditMilitias.Systems.Territory
         }
     }
 }
+
+

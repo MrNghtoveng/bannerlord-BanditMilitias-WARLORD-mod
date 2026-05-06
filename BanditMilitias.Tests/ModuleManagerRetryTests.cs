@@ -149,26 +149,27 @@ namespace BanditMilitias.Tests
         }
 
         [TestMethod]
-        public void SubModule_RegisterModules_UsesFactoryWrappedRegisterSafe()
+        public void SubModule_RegisterModules_UsesAutomatedDiscovery()
         {
-            string src = TestSourceHelper.ReadProjectFile("SubModule.cs");
+            string src = TestSourceHelper.ReadProjectFile("Boot/ModuleRegistrar.cs");
 
-            StringAssert.Contains(src,
-                "void RegisterSafe(Func<BanditMilitias.Core.Components.IMilitiaModule?> moduleFactory, string moduleLabel, bool critical = false)",
-                "RegisterModules must wrap singleton resolution in a factory so getter exceptions do not crash game start.");
+            StringAssert.Contains(src, "assembly.GetTypes()",
+                "ModuleRegistrar must use assembly scanning for automated discovery.");
 
-            StringAssert.Contains(src,
-                "RegisterSafe(() => Systems.AI.AdaptiveAIDoctrineSystem.Instance, nameof(Systems.AI.AdaptiveAIDoctrineSystem));",
-                "AdaptiveAIDoctrineSystem registration must be factory-wrapped to catch early singleton resolution failures.");
+            StringAssert.Contains(src, "typeof(IMilitiaModule).IsAssignableFrom(t)",
+                "ModuleRegistrar must scan for types implementing IMilitiaModule.");
+
+            StringAssert.Contains(src, "t.GetCustomAttribute<AutoRegisterAttribute>()",
+                "ModuleRegistrar must filter by AutoRegisterAttribute.");
         }
 
         [TestMethod]
-        public void SubModule_RegisterModules_LogsModuleResolutionFailures()
+        public void SubModule_RegisterModules_LogsModuleRegistrationFailures()
         {
-            string src = TestSourceHelper.ReadProjectFile("SubModule.cs");
+            string src = TestSourceHelper.ReadProjectFile("Boot/ModuleRegistrar.cs");
 
-            StringAssert.Contains(src, "Module resolution failed for",
-                "RegisterModules must log module resolution failures explicitly so startup crashes can be diagnosed.");
+            StringAssert.Contains(src, "Module registration failed for",
+                "RegisterModules must log module registration failures explicitly so startup crashes can be diagnosed.");
         }
     }
 }

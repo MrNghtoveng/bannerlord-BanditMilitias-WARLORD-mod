@@ -21,7 +21,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             public MobileParty? TargetParty;
             public Vec2? MovePoint;
 
-            // Geriye uyumluluk — kod tabanındaki Type referansları çalışmaya devam eder
+
             public AIDecisionType Type
             {
                 get => Decision;
@@ -34,15 +34,13 @@ namespace BanditMilitias.Intelligence.AI.Components
         private const float GUARDIAN_LEASH_SQ = 225f;
         private const float CMD_EXPIRE_HOURS = CustomMilitiaAI.STRATEGIC_ORDER_DURATION;
 
-        // FIX-DUAL-BRAIN: Kaçış sabitleri CustomMilitiaAI'dan buraya taşındı.
-        // TryRetreatFromOverwhelmingThreat artık Katman 0 olarak bu sınıfın içinde çalışır.
+
         private const float THREAT_SCAN_RADIUS = 16f;
         private const float THREAT_OVERPOWER_RATIO = 1.6f;
 
         private const float ML_CONFIDENCE_GATE = 0.15f;
         private const float ML_BONUS_WEIGHT = 20f;
 
-        // ── Ana karar fonksiyonu ──────────────────────────────────
 
         public DecisionResult GetBestDecision(
             MobileParty party,
@@ -56,10 +54,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             string? targetId = null;
             float? score = null;
 
-            // ══ Katman 0: Hayatta kalma içgüdüsü ════════════════════════
-            // FIX-DUAL-BRAIN: TryRetreatFromOverwhelmingThreat buraya taşındı.
-            // Avantajı: Swarm'ın Retreat taktiği de bu katmandan geçer; eski kod
-            // erken return ile SwarmCoordinator'ı bypass ediyordu.
+
             if (TrySurvivalRetreat(party, component, sensors, doctrineSystem, out var retreatResult))
             {
                 result = retreatResult;
@@ -68,7 +63,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 return result;
             }
 
-            // ══ Katman 1: SwarmCoordinator (her şeyi override eder) ══════
+
             if (SwarmCoordinator.Instance.TryGetOrder(party, out var swarmOrder))
             {
                 if (ShouldApplySwarmOverride(swarmOrder, party, component, sensors))
@@ -87,7 +82,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 source = "SwarmBypass";
             }
 
-            // ══ Katman 2: Warlord komutu ═════════════════════════════════
+
             if (component.CurrentOrder != null)
             {
                 double age = (CampaignTime.Now - component.OrderTimestamp).ToHours;
@@ -109,7 +104,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 3: Guardian tasması ═══════════════════════════════
+
             if (component.Role == MilitiaPartyComponent.MilitiaRole.Guardian)
             {
                 var home = component.GetHomeSettlement();
@@ -141,7 +136,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 3.2: Forced Recruit Gate ═══════════════════════════
+
             if (party.MemberRoster != null && party.MemberRoster.TotalManCount < 15 && party.PartyTradeGold >= 1500)
             {
                 var home = component.GetHomeSettlement();
@@ -156,7 +151,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 3.5: İç Tehdit (Cannibalization) ═══════════════════
+
             int totalMobileParties = Campaign.Current.MobileParties.Count;
             if (totalMobileParties > 1200 && component.Role >= MilitiaPartyComponent.MilitiaRole.Captain)
             {
@@ -181,7 +176,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 4: Düşman tespiti (puan + ML bonus) ═══════════════
+
             var enemies = sensors.GetNearbyEnemies();
             if (enemies.Count > 0)
             {
@@ -214,7 +209,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 5: Raider baskını (puan + ML bonus) ═══════════════
+
             if (component.Role == MilitiaPartyComponent.MilitiaRole.Raider)
             {
                 var villages = sensors.GetNearbyVillages();
@@ -242,7 +237,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                 }
             }
 
-            // ══ Katman 7: State-Aware Fallback Matrix ════════════════════
+
             float strength = CompatibilityLayer.GetTotalStrength(party);
             bool isWeak = strength < 40f || party.MemberRoster?.TotalManCount < 10;
             bool isOverdue = component.NextThinkTime < CampaignTime.Now;
@@ -329,7 +324,7 @@ namespace BanditMilitias.Intelligence.AI.Components
                     var dev = BanditMilitias.Systems.Dev.DevDataCollector.Instance;
                     if (dev?.IsEnabled == true)
                     {
-                        var comp2 = party.PartyComponent as MilitiaPartyComponent;
+                        var comp2 = party.GetMilitiaComponent();
                         dev.RecordAIDecision(
                             party,
                             result.Decision.ToString(),
@@ -343,7 +338,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             }
         }
 
-        // ── Katman 0: Hayatta kalma içgüdüsü ─────────────────────────────
+
         private static bool TrySurvivalRetreat(
             MobileParty party,
             MilitiaPartyComponent component,
@@ -415,7 +410,6 @@ namespace BanditMilitias.Intelligence.AI.Components
             return true;
         }
 
-        // ── Komut çevirisi ────────────────────────────────────────
 
         private static DecisionResult? TranslateCommand(
             StrategicCommand cmd,
@@ -525,7 +519,8 @@ namespace BanditMilitias.Intelligence.AI.Components
             {
                 if (ally == null || ally == party || !ally.IsActive) continue;
                 if (ally.MapEvent != null || ally.SiegeEvent != null) continue;
-                if (ally.PartyComponent is not MilitiaPartyComponent allyComp) continue;
+                var allyComp = ally.GetMilitiaComponent();
+                if (allyComp == null) continue;
                 if (allyComp.Role < MilitiaPartyComponent.MilitiaRole.Captain) continue;
 
                 if (!string.IsNullOrEmpty(myWarlordId) && allyComp.WarlordId != myWarlordId) continue;

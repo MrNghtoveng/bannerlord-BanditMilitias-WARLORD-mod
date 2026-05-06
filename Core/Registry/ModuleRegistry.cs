@@ -348,6 +348,29 @@ namespace BanditMilitias.Core.Registry
             }
         }
 
+        public void ResetForSessionEnd()
+        {
+            lock (_syncRoot)
+            {
+                _instances.Clear();
+
+                foreach (ModuleEntry entry in _entries.Values)
+                {
+                    entry.SubscribeCount = 0;
+                    entry.UnsubscribeCount = 0;
+                    entry.LastActivityUtc = null;
+                    entry.LastActivity = null;
+                    entry.LastHealthyUtc = null;
+                    entry.DiagnosticIssue = null;
+                }
+            }
+        }
+
+        public void ResetForModuleUnload()
+        {
+            Reset();
+        }
+
         public AuditResult Audit(AuditOptions? options = null)
         {
             AuditOptions auditOptions = options ?? new AuditOptions();
@@ -850,7 +873,7 @@ namespace BanditMilitias.Core.Registry
         {
             try
             {
-                return CompatibilityLayer.IsGameFullyInitialized();
+                return ModActivationManager.IsGameFullyInitialized();
             }
             catch
             {
@@ -869,7 +892,8 @@ namespace BanditMilitias.Core.Registry
             }
             catch
             {
-                // Standalone test ortamında veya DLL eksikliğinde diagnostiği atla.
+
+
                 return;
             }
 

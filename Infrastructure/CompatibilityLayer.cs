@@ -17,9 +17,8 @@ namespace BanditMilitias.Infrastructure
 
     public static class CompatibilityLayer
     {
-        /// <summary>
-        /// Tüm Lazy alanları zorla başlatır. Kontrat bütünlüğü testleri için kullanılır.
-        /// </summary>
+
+
         public static void ForceInitializeAll()
         {
             var fields = typeof(CompatibilityLayer).GetFields(BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
@@ -145,14 +144,13 @@ namespace BanditMilitias.Infrastructure
         private static readonly Lazy<PropertyInfo?> _partySizeLimitProp = new Lazy<PropertyInfo?>(() =>
         {
             var type = typeof(PartyBase);
-            // v1.3.15+: LimitedPartySize (int), v1.2.x: PartySizeLimit (int)
-            return type.GetProperty("LimitedPartySize", BindingFlags.Public | BindingFlags.Instance) ?? 
+
+
+            return type.GetProperty("LimitedPartySize", BindingFlags.Public | BindingFlags.Instance) ??
                    type.GetProperty("PartySizeLimit", BindingFlags.Public | BindingFlags.Instance);
         }, true);
 
-        /// <summary>
-        /// Bannerlord 1.3.15+ (LimitedPartySize) ve eski sürümler (PartySizeLimit) için güvenli limit alma.
-        /// </summary>
+
         public static int GetPartyMemberSizeLimit(PartyBase party)
         {
             if (party == null) return 0;
@@ -171,7 +169,7 @@ namespace BanditMilitias.Infrastructure
                 LogCompatibilityWarning("GetPartyMemberSizeLimit", ex);
             }
 
-            // Fallback: Default limit if reflection fails
+
             return 50;
         }
 
@@ -180,15 +178,10 @@ namespace BanditMilitias.Infrastructure
             try
             {
                 var type = typeof(MobileParty);
-                
-                // v1.3.15: Position2D property removed. 
-                // Priorities:
-                // 1) GetPosition2D property/method (Vec2)
-                // 2) VisualPosition2DWithoutError property (Vec2)
-                // 3) Position2D property (legacy)
 
-                PropertyInfo? prop = type.GetProperty("GetPosition2D") ?? 
-                                     type.GetProperty("VisualPosition2DWithoutError") ?? 
+
+                PropertyInfo? prop = type.GetProperty("GetPosition2D") ??
+                                     type.GetProperty("VisualPosition2DWithoutError") ??
                                      type.GetProperty("Position2D");
 
                 if (prop != null && prop.PropertyType == typeof(Vec2))
@@ -199,7 +192,7 @@ namespace BanditMilitias.Infrastructure
                     return lambda.Compile();
                 }
 
-                // If not properties, try GetPosition2D() method
+
                 var method = type.GetMethod("GetPosition2D", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
                 if (method != null && method.ReturnType == typeof(Vec2))
                 {
@@ -295,11 +288,12 @@ namespace BanditMilitias.Infrastructure
         {
             try
             {
-                // Priority 1: New v1.3.15 Properties
-                var prop = typeof(MobileParty).GetProperty("GetPosition2D") ?? 
+
+
+                var prop = typeof(MobileParty).GetProperty("GetPosition2D") ??
                            typeof(MobileParty).GetProperty("VisualPosition2DWithoutError") ??
                            typeof(MobileParty).GetProperty("Position2D");
-                
+
                 if (prop != null)
                 {
                     object? val = prop.GetValue(party);
@@ -311,7 +305,7 @@ namespace BanditMilitias.Infrastructure
                     }
                 }
 
-                // Priority 2: Method fallback
+
                 var method = typeof(MobileParty).GetMethod("GetPosition2D", BindingFlags.Public | BindingFlags.Instance, null, Type.EmptyTypes, null);
                 if (method != null && method.ReturnType == typeof(Vec2))
                 {
@@ -332,9 +326,8 @@ namespace BanditMilitias.Infrastructure
                     var val = prop.GetValue(party);
                     if (val is Vec2 v2direct) return v2direct;
                     if (val is Vec3 v3) return new Vec2(v3.X, v3.Y);
-                    
-                    // v1.3.15: Position usually returns CampaignVec2.
-                    // Use existing ToVec2 helper which handles property extraction.
+
+
                     if (val != null)
                     {
                         var converted = ToVec2(val);
@@ -634,7 +627,12 @@ namespace BanditMilitias.Infrastructure
         {
             if (party == null) return 1.5f;
             try { return System.Math.Max(0.1f, party.Speed); }
-            catch { return 1.5f; }
+            catch (Exception ex)
+            {
+                if (Settings.Instance?.TestingMode == true)
+                    TaleWorlds.Library.Debug.Print($"[CompatibilityLayer] GetPartySpeed failed for {party.StringId}: {ex.Message}");
+                return 1.5f;
+            }
         }
 
         private static readonly Lazy<MethodInfo?> _setMoveGoToPointLazy = new Lazy<MethodInfo?>(() =>
@@ -816,20 +814,37 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
+        private static readonly Lazy<(MethodInfo? Method, bool UseAi)> _setMoveRaidLazy = new Lazy<(MethodInfo?, bool)>(() =>
+        {
+            var method = typeof(MobileParty).GetMethods().FirstOrDefault(m => m.Name == "SetMoveRaid");
+            if (method != null) return (method, false);
+
+            var aiType = typeof(MobileParty).GetProperty("Ai")?.PropertyType;
+            if (aiType != null)
+            {
+                method = aiType.GetMethods().FirstOrDefault(m => m.Name == "SetMoveRaid");
+                if (method != null) return (method, true);
+            }
+            return (null, false);
+        }, true);
+
         public static void SetMoveRaidSettlement(MobileParty party, Settlement target)
         {
             if (party == null || target == null) return;
             try
             {
-
-                var method = typeof(MobileParty).GetMethod("SetMoveRaid");
+                var (method, useAi) = _setMoveRaidLazy.Value;
                 if (method != null)
                 {
-                    _ = method.Invoke(party, new object[] { target });
+                    object targetObj = useAi ? party.Ai : party;
+                    if (targetObj != null)
+                    {
+                        _ = method.Invoke(targetObj, new object[] { target });
+                        return;
+                    }
                 }
                 else
                 {
-
                     SetMoveGoToSettlement(party, target);
                 }
             }
@@ -839,33 +854,29 @@ namespace BanditMilitias.Infrastructure
                 SetMoveGoToSettlement(party, target);
             }
         }
+        private static readonly Lazy<(MethodInfo? Method, bool UseAi)> _setMovePatrolSettlementLazy =
+            new Lazy<(MethodInfo?, bool)>(() =>
+        {
+            var methods = typeof(MobileParty).GetMethods().Where(m => m.Name == "SetMovePatrolAroundSettlement").ToArray();
+            if (methods.Length > 0) return (methods[0], false);
+
+            var aiProp = typeof(MobileParty).GetProperty("Ai");
+            var aiType = aiProp?.PropertyType;
+            if (aiType != null)
+            {
+                var aiMethods = aiType.GetMethods().Where(m => m.Name == "SetMovePatrolAroundSettlement").ToArray();
+                if (aiMethods.Length > 0) return (aiMethods[0], true);
+            }
+            return (null, false);
+        }, true);
 
         public static void SetMovePatrolAroundSettlement(MobileParty party, Settlement target)
         {
             if (party == null || target == null) return;
             try
             {
-                MethodInfo? selectedMethod = null;
-                object? targetInstance = null;
-
-                var methodsParty = typeof(MobileParty).GetMethods().Where(m => m.Name == "SetMovePatrolAroundSettlement");
-                if (methodsParty.Any())
-                {
-                    selectedMethod = methodsParty.First();
-                    targetInstance = party;
-                }
-                else
-                {
-
-                    var aiProp = typeof(MobileParty).GetProperty("Ai");
-                    var aiType = aiProp?.PropertyType;
-                    var methodsAi = aiType?.GetMethods().Where(m => m.Name == "SetMovePatrolAroundSettlement") ?? Enumerable.Empty<MethodInfo>();
-                    if (methodsAi.Any() && party.Ai != null)
-                    {
-                        selectedMethod = methodsAi.First();
-                        targetInstance = party.Ai;
-                    }
-                }
+                var (selectedMethod, useAi) = _setMovePatrolSettlementLazy.Value;
+                object? targetInstance = useAi ? (object?)party.Ai : party;
 
                 if (selectedMethod != null && targetInstance != null)
                 {
@@ -901,20 +912,23 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
+        private static readonly Lazy<MethodInfo?> _setMoveDefendLazy = new Lazy<MethodInfo?>(() =>
+        {
+            return typeof(MobileParty).GetMethod("SetMoveDefendSettlement");
+        }, true);
+
         public static void SetMoveDefendSettlement(MobileParty party, Settlement target)
         {
             if (party == null || target == null) return;
             try
             {
-
-                var method = typeof(MobileParty).GetMethod("SetMoveDefendSettlement");
+                var method = _setMoveDefendLazy.Value;
                 if (method != null)
                 {
                     _ = method.Invoke(party, new object[] { target });
                 }
                 else
                 {
-
                     SetMoveGoToSettlement(party, target);
                 }
             }
@@ -925,31 +939,30 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
+        private static readonly Lazy<MethodInfo?> _setMovePatrolPointLazy = new Lazy<MethodInfo?>(() =>
+        {
+            var methods = typeof(MobileParty).GetMethods().Where(m => m.Name == "SetMovePatrolAroundPoint").ToList();
+            if (!methods.Any()) return null;
+
+            return methods.FirstOrDefault(x =>
+            {
+                var p = x.GetParameters();
+                return p.Length == 1 && p[0].ParameterType.Name == "Vec2";
+            }) ?? methods.FirstOrDefault(x =>
+            {
+                var p = x.GetParameters();
+                return p.Length >= 1 && p[0].ParameterType.Name == "CampaignVec2";
+            });
+        }, true);
+
         public static void SetMovePatrolAroundPoint(MobileParty party, Vec2 target)
         {
             if (party == null || !target.IsValid) return;
             try
             {
-
-                var methods = typeof(MobileParty).GetMethods().Where(m => m.Name == "SetMovePatrolAroundPoint").ToList();
-                if (methods.Any())
+                var m = _setMovePatrolPointLazy.Value;
+                if (m != null)
                 {
-                    var m = methods.FirstOrDefault(x =>
-                    {
-                        var p = x.GetParameters();
-                        return p.Length == 1 && p[0].ParameterType.Name == "Vec2";
-                    }) ?? methods.FirstOrDefault(x =>
-                    {
-                        var p = x.GetParameters();
-                        return p.Length >= 1 && p[0].ParameterType.Name == "CampaignVec2";
-                    });
-
-                    if (m == null)
-                    {
-                        SetMoveGoToPoint(party, target);
-                        return;
-                    }
-
                     var parameters = m.GetParameters();
                     if (parameters.Length == 1 && parameters[0].ParameterType == typeof(Vec2))
                     {
@@ -1045,107 +1058,44 @@ namespace BanditMilitias.Infrastructure
         private static CampaignTime? _cachedStartTime = null;
         private static bool _campaignStartTimeNotSupported = false;
         private static System.Reflection.PropertyInfo? _campaignStartTimeProp = null;
-        private static CampaignTime? _activationDelayStartTime = null;
-        private static bool _activationDelayStartLogged = false;
-        private static bool _gameplayActivationSwitchClosed = false;
-        private static bool _gameplayActivationSwitchLogged = false;
-        // FIX #7: IsGameFullyInitialized sonucunu cache'le - her günlük tik'te O(N)×3 taramayı önle
-        private static bool _isGameFullyInitializedCache = false;
+
+        public static string GetGameVersion()
+        {
+            try
+            {
+                var version = TaleWorlds.Library.ApplicationVersion.FromParametersFile();
+                return version.ToString();
+            }
+            catch
+            {
+                return "Unknown";
+            }
+        }
 
         public static void Reset()
         {
             _cachedStartTime = null;
             _campaignStartTimeNotSupported = false;
             _campaignStartTimeProp = null;
-            _activationDelayStartTime = null;
-            _activationDelayStartLogged = false;
-            _gameplayActivationSwitchClosed = false;
-            _gameplayActivationSwitchLogged = false;
-            _isGameFullyInitializedCache = false;
             _isACGDetected = null;
-        }
+            ModActivationManager.Reset();
 
-        [Obsolete("Use Reset instead")]
-        public static void ResetCampaignStartTimeCache()
-        {
-            Reset();
-        }
-
-        private static bool IsCampaignMapActive()
-        {
-            var stateManager = TaleWorlds.Core.Game.Current?.GameStateManager;
-            return stateManager?.ActiveState is TaleWorlds.CampaignSystem.GameState.MapState;
-        }
-
-        [Obsolete("Use Reset instead")]
-        public static void ResetActivationDelayState()
-        {
-            Reset();
-        }
-
-        public static bool TryStartActivationDelayClock()
-        {
-            if (_activationDelayStartTime.HasValue) return true;
-            if (Campaign.Current == null) return false;
-            if (!IsCampaignMapActive()) return false;
-
-            _activationDelayStartTime = CampaignTime.Now;
-
-            if (!_activationDelayStartLogged)
+            // [v1.3.15] Oyun sürümünü her zaman logla — uyumluluk sorunlarını erken tespit için
+            try
             {
-                _activationDelayStartLogged = true;
-                try
-                {
-                    FileLogger.Log(
-                        $"ActivationDelayClock started at campaign day {CampaignTime.Now.ToDays:F2} " +
-                        $"(mode={(SubModule.IsSandboxMode ? "Sandbox" : "Campaign")}).");
-                }
-                catch
-                {
-                }
+                string gameVer = GetGameVersion();
+                FileLogger.Log($"[CompatibilityLayer] Reset. Game Version: {gameVer} | Target: 1.3.15");
             }
+            catch { /* Logger hazır olmayabilir */ }
 
-            return true;
+            if (Settings.Instance?.TestingMode == true)
+            {
+                FileLogger.Log($"[CompatibilityLayer] Game Version detected: {GetGameVersion()}");
+            }
         }
 
-        public static CampaignTime GetActivationDelayStartTime()
-        {
-            _ = TryStartActivationDelayClock();
-            return _activationDelayStartTime ?? CampaignTime.Zero;
-        }
 
-        private static CampaignTime ResolveActivationDelayAnchor()
-        {
-            if (_activationDelayStartTime.HasValue)
-                return _activationDelayStartTime.Value;
 
-            CampaignTime campaignStart = GetCampaignStartTime();
-            if (campaignStart != CampaignTime.Zero)
-                return campaignStart;
-
-            _ = TryStartActivationDelayClock();
-            return _activationDelayStartTime ?? CampaignTime.Zero;
-        }
-
-        public static float GetActivationDelayElapsedDays()
-        {
-            if (Campaign.Current == null) return 0f;
-
-            CampaignTime anchor = ResolveActivationDelayAnchor();
-            if (anchor == CampaignTime.Zero) return 0f;
-
-            float elapsedDays = (float)(CampaignTime.Now - anchor).ToDays;
-            if (elapsedDays >= 0f) return elapsedDays;
-
-            // Stale reflection/cache durumunda negatif süreyi kendimiz iyileştir.
-            _activationDelayStartTime = CampaignTime.Now;
-            return 0f;
-        }
-
-        /// <summary>
-        /// Mevcut tüm milis partilerinin bir sonraki düşünme zamanını günceller.
-        /// "Zombi AI" sorununu çözmek için aktivasyon anında çağrılır.
-        /// </summary>
         public static void UpdateAllPartiesNextThinkTime(CampaignTime time)
         {
             try
@@ -1158,7 +1108,8 @@ namespace BanditMilitias.Infrastructure
                 {
                     if (party != null && party.IsActive && party.PartyComponent is BanditMilitias.Components.MilitiaPartyComponent comp)
                     {
-                        // Sadece Zero (0) olanları veya çok eski olanları güncelle
+
+
                         if (comp.NextThinkTime == CampaignTime.Zero || comp.NextThinkTime < time)
                         {
                             comp.NextThinkTime = time;
@@ -1178,61 +1129,6 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        public static bool HasActivationDelayElapsed(int requiredDays)
-        {
-            if (requiredDays <= 0) return true;
-            return GetActivationDelayElapsedDays() >= requiredDays;
-        }
-
-        public static bool TryCloseGameplayActivationSwitch()
-        {
-            if (_gameplayActivationSwitchClosed) return true;
-
-            int requiredDays = System.Math.Max(0, Settings.Instance?.ActivationDelay ?? 2);
-            float elapsedDays = GetActivationDelayElapsedDays();
-            if (elapsedDays < requiredDays) return false;
-
-            _gameplayActivationSwitchClosed = true;
-
-            if (!_gameplayActivationSwitchLogged)
-            {
-                _gameplayActivationSwitchLogged = true;
-                try
-                {
-                    FileLogger.Log(
-                        $"GameplayActivationSwitch CLOSED after {elapsedDays:F2} in-game days. " +
-                        $"Anchor day {ResolveActivationDelayAnchor().ToDays:F2}, current day {CampaignTime.Now.ToDays:F2}.");
-                }
-                catch { }
-            }
-
-            return true;
-        }
-
-        public static bool IsGameplayActivationSwitchClosed()
-        {
-            // FIX #12: TestingMode'un gecikmeyi tamamen atlaması Sandbox açılışını dondurabiliyordu.
-            // Artık TestingMode sadece süreyi kısaltabilir veya ek izlemelere bakar,
-            // ama döngü her zaman TryCloseGameplayActivationSwitch'ten geçmeli.
-            if (Settings.Instance?.TestingMode == true && _gameplayActivationSwitchClosed)
-                return true;
-
-            return _gameplayActivationSwitchClosed || TryCloseGameplayActivationSwitch();
-        }
-
-        public static bool IsGameplayActivationDelayed()
-        {
-            return !IsGameplayActivationSwitchClosed();
-        }
-
-        /// <summary>
-        /// DİKKAT: TestSim gibi harici araçlar tarafından gecikmeyi anında sonlandırmak için kullanılır.
-        /// </summary>
-        public static void ForceEnergizeActivationSwitch()
-        {
-            _gameplayActivationSwitchClosed = true;
-            FileLogger.Log("GameplayActivationSwitch FORCE CLOSED by external tool. System energized.");
-        }
 
         public static CampaignTime GetCampaignStartTime()
         {
@@ -1301,47 +1197,7 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        /// <summary>
-        /// Oyunun tamamen initialize olup olmadığını kontrol eder.
-        /// Settlement.All ve CharacterObject.All dolu olmalıdır.
-        /// </summary>
-        public static bool IsGameFullyInitialized()
-        {
-            // FIX #7: Bir kez true döndükten sonra tekrar tarama yapma
-            if (_isGameFullyInitializedCache) return true;
 
-            try
-            {
-                // Campaign kontrolü - AGENT_FIX: Önce assembly yüklü mü bak (Type.GetType ile)
-                // Bu, standalone unit testlerde FileNotFoundException'ı engeller.
-                var campaignType = Type.GetType("TaleWorlds.CampaignSystem.Campaign, TaleWorlds.CampaignSystem");
-                if (campaignType == null) return false;
-
-                if (Campaign.Current == null)
-                    return false;
-
-                // AGENT_FIX: Eğer oyun henüz harita aşamasına geçmemişse koleksiyonlara dokunma.
-                // Bu, Sandbox ve Campaign yükleme ekranındaki donmayı engelleyen en kritik 'savunma hattı'dır.
-                if (TaleWorlds.Core.Game.Current?.GameStateManager?.ActiveState == null ||
-                    !(TaleWorlds.Core.Game.Current.GameStateManager.ActiveState is TaleWorlds.CampaignSystem.GameState.MapState))
-                    return false;
-
-                // AGENT_TOTAL_SILENCE_FIX: Eskiden burada Settlement.All vb. üzerinden 
-                // ağır looplar vardı. Bu looplar oyun açılırken donmaya (hang) neden oluyordu.
-                // Artık sadece MapState kontrolü ile yetiniyoruz.
-
-                _isGameFullyInitializedCache = true;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogCompatibilityWarning("IsGameFullyInitialized", ex);
-                return false;
-            }
-        }
-
-        // FIX #7: Property sonucu dışarıdan okunabilsin (test için)
-        public static bool IsGameFullyInitializedCached => _isGameFullyInitializedCache;
 
         private static readonly Lazy<MethodInfo?> _agentCrashGuardWarningMethod = new(() =>
         {
@@ -1407,6 +1263,28 @@ namespace BanditMilitias.Infrastructure
             catch { }
         }
 
+        public static bool IsModActive(string modId)
+        {
+            if (string.IsNullOrWhiteSpace(modId)) return false;
+            try
+            {
+                var modules = TaleWorlds.ModuleManager.ModuleHelper.GetModules();
+                if (modules == null) return false;
+                foreach (var mod in modules)
+                {
+                    if (mod != null && (mod.Id == modId || mod.Name == modId))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         private static bool? _isACGDetected = null;
         public static bool IsAgentCrashGuardLoaded()
         {
@@ -1414,7 +1292,8 @@ namespace BanditMilitias.Infrastructure
 
             try
             {
-                // Method 1: Check by assembly type (fastest and most reliable for loaded mods)
+
+
                 var type = Type.GetType("AgentCrashGuard.DiagnosticLogger, AgentCrashGuard");
                 if (type != null)
                 {
@@ -1422,7 +1301,7 @@ namespace BanditMilitias.Infrastructure
                     return true;
                 }
 
-                // Method 2: Check via TaleWorlds ModuleManager (fallback)
+
                 var modules = TaleWorlds.ModuleManager.ModuleHelper.GetModules();
                 if (modules != null)
                 {

@@ -6,13 +6,13 @@ using TaleWorlds.MountAndBlade;
 
 namespace BanditMilitias.Intelligence.Tactical
 {
-    // Primitive Tasks for HTN Planner
+
 
     public class SetArrangementTask : PrimitiveTask
     {
         private ArrangementOrder _order;
-        
-        public SetArrangementTask(ArrangementOrder order) : base("SetArrangement") 
+
+        public SetArrangementTask(ArrangementOrder order) : base("SetArrangement")
         {
             _order = order;
         }
@@ -49,9 +49,7 @@ namespace BanditMilitias.Intelligence.Tactical
         {
             if (targetFormation == null || targetFormation.CountOfUnits < 20) return;
 
-            // In Bannerlord, splitting is usually done via mission logic, 
-            // but we can simulate it by detached groups if needed.
-            // For HTN simplicity, we mark a state flag and the MissionBehavior will handle it.
+
         }
 
         public override HTNStatus DefaultTick(Formation targetFormation, WorldState state, float dt)
@@ -74,7 +72,8 @@ namespace BanditMilitias.Intelligence.Tactical
         {
             if (targetFormation == null) return;
             targetFormation.SetArrangementOrder(ArrangementOrder.ArrangementOrderShieldWall);
-            // targetFormation.SetFormingOrder(FormingOrder.FormingOrderRankCount(5)); // Deeper ranks
+
+
         }
 
         public override HTNStatus DefaultTick(Formation targetFormation, WorldState state, float dt)
@@ -94,8 +93,8 @@ namespace BanditMilitias.Intelligence.Tactical
 
         public override void Start(Formation targetFormation)
         {
-            // The coordinator handles the actual movement of 3 groups.
-            // This task tells the specific formation to 'Hold/Bait'.
+
+
             targetFormation.SetMovementOrder(MovementOrder.MovementOrderStop);
         }
 
@@ -103,7 +102,8 @@ namespace BanditMilitias.Intelligence.Tactical
         {
             if (state.GetFloat("ClosestEnemyDistance") < 15f)
             {
-                // Trigger the trap - successful transition to melee
+
+
                 return HTNStatus.Success;
             }
             return HTNStatus.Executing;
@@ -117,7 +117,8 @@ namespace BanditMilitias.Intelligence.Tactical
 
         public override bool CheckPreconditions(WorldState state)
         {
-            // Only perform mock retreat if enemy is somewhat close but not yet engaged
+
+
             float dist = state.GetFloat("ClosestEnemyDistance");
             return dist < 60f && dist > 15f;
         }
@@ -126,8 +127,8 @@ namespace BanditMilitias.Intelligence.Tactical
         {
             _timer = 0;
             if (targetFormation == null) return;
-            
-            // Move back 20 meters to lure
+
+
             Vec2 back = targetFormation.Direction * -20f;
             WorldPosition pos = new WorldPosition(Mission.Current.Scene, UIntPtr.Zero, new Vec3(targetFormation.CurrentPosition + back, 10f, -1f), false);
             targetFormation.SetMovementOrder(MovementOrder.MovementOrderMove(pos));
@@ -153,7 +154,8 @@ namespace BanditMilitias.Intelligence.Tactical
 
         public override bool CheckPreconditions(WorldState state)
         {
-            // Only move if enemy is still somewhat far (Ambush prep)
+
+
             return state.GetFloat("ClosestEnemyDistance") > 50f;
         }
 
@@ -164,13 +166,14 @@ namespace BanditMilitias.Intelligence.Tactical
 
             if (targetFormation == null || Mission.Current == null) return;
 
-            // Simplified: Just move backwards from standard forward vector
+
             Vec2 currentPos = targetFormation.CurrentPosition;
-            Vec2 bestPos = currentPos + new Vec2(0, -30f); // Move back 30 meters arbitrarily for Ambush if no terrain found easily
+            Vec2 bestPos = currentPos + new Vec2(0, -30f);
+
 
             _targetPos = new WorldPosition(Mission.Current.Scene, UIntPtr.Zero, new Vec3(bestPos, 10f, -1f), false);
             _posCalculated = true;
-            
+
             targetFormation.SetMovementOrder(MovementOrder.MovementOrderMove(_targetPos));
         }
 
@@ -180,24 +183,29 @@ namespace BanditMilitias.Intelligence.Tactical
 
             _timeout += dt;
 
-            // If the enemy gets too close while we are getting into position, abort to fight
+
             if (state.GetFloat("ClosestEnemyDistance") < 40f)
             {
-                return HTNStatus.Failure; // Planning failed because enemy is too close
+                return HTNStatus.Failure;
+
             }
 
             float distToTarget = targetFormation.CurrentPosition.Distance(_targetPos.AsVec2);
 
-            // Reached destination or timed out waiting
+
             if (distToTarget < 5f || _timeout > 30f)
             {
-                // We arrived, face the enemy
-                Vec2 enemyDir = state.GetFloat("ClosestEnemyDistance") < 9999f ? 
-                     new Vec2(1, 0) : // Fallback
-                     new Vec2(1, 0); // In complete logic, we'd pull enemy avg position from state.
+
+
+                Vec2 enemyDir = state.GetFloat("ClosestEnemyDistance") < 9999f ?
+                     new Vec2(1, 0) :
+
+                     new Vec2(1, 0);
+
 
                 targetFormation.SetMovementOrder(MovementOrder.MovementOrderStop);
-                // Return success immediately
+
+
                 return HTNStatus.Success;
             }
 
@@ -229,12 +237,14 @@ namespace BanditMilitias.Intelligence.Tactical
 
         public override HTNStatus DefaultTick(Formation targetFormation, WorldState state, float dt)
         {
-            // We wait holding the line.
+
+
             float currentDist = state.GetFloat("ClosestEnemyDistance");
-            
+
             if (currentDist <= _triggerDistance)
             {
-                // Enemy walked into the trap. Success! Hand control back to AI later.
+
+
                 return HTNStatus.Success;
             }
 

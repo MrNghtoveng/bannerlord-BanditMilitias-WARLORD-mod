@@ -1,7 +1,7 @@
 using BanditMilitias.Components;
 using BanditMilitias.Core.Components;
-
 using BanditMilitias.Debug;
+using BanditMilitias.Lifecycle;
 using BanditMilitias.Systems.Diagnostics;
 using System;
 using System.Collections.Generic;
@@ -11,6 +11,7 @@ using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Library;
+using ModuleDependencyAttribute = BanditMilitias.Core.Components.ModuleDependencyAttribute;
 
 namespace BanditMilitias.Infrastructure
 {
@@ -30,11 +31,13 @@ namespace BanditMilitias.Infrastructure
         private readonly HashSet<string> _failedModules = new HashSet<string>(ModuleNameComparer);
         private readonly Dictionary<string, DateTime> _lastErrorTime = new Dictionary<string, DateTime>(ModuleNameComparer);
         private readonly Dictionary<string, ModuleFailureRecord> _failureRecords = new Dictionary<string, ModuleFailureRecord>(ModuleNameComparer);
+        private readonly Dictionary<string, int> _moduleTickFailureStreaks = new Dictionary<string, int>(ModuleNameComparer);
         private IMilitiaModule[] _sortedModuleSnapshot = Array.Empty<IMilitiaModule>();
         private bool _modulesDirty = true;
         private bool _isInitialized = false;
         private bool _campaignEventsRegistered = false;
         private bool _sessionBootstrapComplete = false;
+        private readonly HashSet<Type> _sessionStartedModules = new HashSet<Type>();
         private readonly object _initLock = new object();
 
         private readonly HashSet<MobileParty> _registeredMilitias = new HashSet<MobileParty>();
@@ -49,11 +52,13 @@ namespace BanditMilitias.Infrastructure
         private readonly List<Settlement> _villageCache = new List<Settlement>();
         private readonly List<Settlement> _townCache = new List<Settlement>();
 
-        public int CachedTotalParties { get; set; } // ✅ FIX: Performance cache for GameModels
-        private readonly List<Settlement> _castleCache = new List<Settlement>();
+        public int CachedTotalParties { get; set; }
 
+        private readonly List<Settlement> _castleCache = new List<Settlement>();
         private readonly Dictionary<long, List<Settlement>> _spatialIndex = new Dictionary<long, List<Settlement>>();
         private const float SPATIAL_GRID_SIZE = 50f;
+
+        private readonly ModuleTickScheduler _tickScheduler = new ModuleTickScheduler();
 
         private DateTime _lastCacheRebuild = DateTime.MinValue;
         private const double CACHE_REBUILD_INTERVAL_HOURS = 1.0;
@@ -65,15 +70,16 @@ namespace BanditMilitias.Infrastructure
 
         private readonly Dictionary<string, float> _moduleLastTickMs = new Dictionary<string, float>(ModuleNameComparer);
         private readonly Dictionary<string, float> _moduleAvgTickMs = new Dictionary<string, float>(ModuleNameComparer);
-        
-        // OPTIMIZATION 2: String allocation caching
+
+
         private readonly Dictionary<IMilitiaModule, string> _moduleNameCache = new();
         private readonly Dictionary<(IMilitiaModule, string), string> _scopeNameCache = new();
 
         private readonly object _perfLock = new object();
         private const float PerfEmaAlpha = 0.2f;
+        private const int MaxConsecutiveTickFailures = 3;
 
-        // OPT-BM-1: Tek Stopwatch instance — her tick'te yeniden kullanılır
+
         private readonly System.Diagnostics.Stopwatch _reusableStopwatch = new System.Diagnostics.Stopwatch();
 
         private ModuleManager()
@@ -137,12 +143,8 @@ namespace BanditMilitias.Infrastructure
             lock (_initLock)
             {
                 DebugLogger.Info("ModuleManager", "Session end detected. Cleaning up all modules.");
-                
-                IMilitiaModule[] modulesToCleanup;
-                lock (_initLock)
-                {
-                    modulesToCleanup = _modules.ToArray();
-                }
+
+                var modulesToCleanup = GetSortedModuleSnapshot();
 
                 foreach (var module in modulesToCleanup)
                 {
@@ -167,19 +169,33 @@ namespace BanditMilitias.Infrastructure
                 _townCache.Clear();
                 _castleCache.Clear();
                 _spatialIndex.Clear();
+                _tickScheduler.ResetForSessionEnd();
 
                 _isInitialized = false;
                 _sessionBootstrapComplete = false;
                 _campaignEventsRegistered = false;
-                
+                _sessionStartedModules.Clear();
+                _moduleTickFailureStreaks.Clear();
+
                 lock (_perfLock)
                 {
                     _moduleLastTickMs.Clear();
                     _moduleAvgTickMs.Clear();
                 }
-                
+
                 DebugLogger.Info("ModuleManager", "Session cleanup complete.");
             }
+        }
+
+        public void ResetForSessionEnd()
+        {
+            OnSessionEnd();
+        }
+
+        public void ResetForModuleUnload()
+        {
+            CleanupAll();
+            _tickScheduler.ResetForSessionEnd();
         }
 
         private static string CompactError(string? message)
@@ -284,7 +300,10 @@ namespace BanditMilitias.Infrastructure
                 }
 
                 foreach (var name in toRetry)
+                {
                     _ = _failedModules.Remove(name);
+                    _ = _moduleTickFailureStreaks.Remove(name);
+                }
 
                 if (toRetry.Count > 0)
                 {
@@ -301,6 +320,39 @@ namespace BanditMilitias.Infrastructure
             lock (_initLock)
             {
                 return _failedModules.Contains(moduleName);
+            }
+        }
+
+        private void ClearTickFailureStreak(string moduleName)
+        {
+            if (string.IsNullOrWhiteSpace(moduleName))
+            {
+                return;
+            }
+
+            lock (_initLock)
+            {
+                _ = _moduleTickFailureStreaks.Remove(moduleName);
+            }
+        }
+
+        private int IncrementTickFailureStreak(string moduleName)
+        {
+            if (string.IsNullOrWhiteSpace(moduleName))
+            {
+                moduleName = "UnknownModule";
+            }
+
+            lock (_initLock)
+            {
+                int streak = 1;
+                if (_moduleTickFailureStreaks.TryGetValue(moduleName, out int current))
+                {
+                    streak = current + 1;
+                }
+
+                _moduleTickFailureStreaks[moduleName] = streak;
+                return streak;
             }
         }
 
@@ -404,7 +456,7 @@ namespace BanditMilitias.Infrastructure
                 _moduleTypesByName[moduleName] = moduleType;
                 _modulesDirty = true;
 
-                // Kayıt defterine işle
+
                 BanditMilitias.Core.Registry.ModuleRegistry.Instance.Confirm(module);
 
                 if (Settings.Instance?.TestingMode == true)
@@ -439,6 +491,7 @@ namespace BanditMilitias.Infrastructure
                 {
                     _campaignEventsRegistered = false;
                     _sessionBootstrapComplete = false;
+                    _sessionStartedModules.Clear();
 
                     var enabledModules = GetSortedModuleSnapshot();
 
@@ -499,7 +552,10 @@ namespace BanditMilitias.Infrastructure
                     return;
                 }
 
-                RegisterModuleCampaignEventsCore();
+                if (!RegisterModuleCampaignEventsCore())
+                {
+                    throw new InvalidOperationException("One or more modules failed during RegisterCampaignEvents.");
+                }
                 _campaignEventsRegistered = true;
             }
         }
@@ -520,18 +576,25 @@ namespace BanditMilitias.Infrastructure
 
                 if (!_campaignEventsRegistered)
                 {
-                    RegisterModuleCampaignEventsCore();
+                    if (!RegisterModuleCampaignEventsCore())
+                    {
+                        throw new InvalidOperationException("One or more modules failed during RegisterCampaignEvents.");
+                    }
                     _campaignEventsRegistered = true;
                 }
 
-                RunModuleSessionStartCore();
+                if (!RunModuleSessionStartCore())
+                {
+                    throw new InvalidOperationException("One or more modules failed during OnSessionStart.");
+                }
                 _sessionBootstrapComplete = true;
             }
         }
 
-        private void RegisterModuleCampaignEventsCore()
+        private bool RegisterModuleCampaignEventsCore()
         {
             var moduleSnapshot = GetSortedModuleSnapshot();
+            bool allSucceeded = true;
 
             foreach (var module in moduleSnapshot)
             {
@@ -543,35 +606,48 @@ namespace BanditMilitias.Infrastructure
                 }
                 catch (Exception ex)
                 {
+                    allSucceeded = false;
                     DebugLogger.Error("ModuleManager",
                         $"[RegisterCampaignEvents] {ResolveModuleName(module)}: {ex.Message}");
                     BanditMilitias.Core.Registry.ModuleRegistry.Instance.MarkFailed(module, ex.Message);
                 }
             }
+
+            return allSucceeded;
         }
 
-        private void RunModuleSessionStartCore()
+        private bool RunModuleSessionStartCore()
         {
             var moduleSnapshot = GetSortedModuleSnapshot();
+            bool allSucceeded = true;
 
             foreach (var module in moduleSnapshot)
             {
                 if (!module.IsEnabled) continue;
+                Type moduleType = module.GetType();
+                if (_sessionStartedModules.Contains(moduleType)) continue;
                 try
                 {
                     module.OnSessionStart();
+                    _ = _sessionStartedModules.Add(moduleType);
+                    BanditMilitias.Core.Registry.ModuleRegistry.Instance.MarkHealthy(module, "OnSessionStart");
                 }
                 catch (Exception ex)
                 {
+                    allSucceeded = false;
                     DebugLogger.Error("ModuleManager",
                         $"[OnSessionStart] {ResolveModuleName(module)}: {ex.Message}");
+                    BanditMilitias.Core.Registry.ModuleRegistry.Instance.MarkFailed(module, ex.Message);
                 }
             }
+
+            return allSucceeded;
         }
 
         public void RegisterMilitia(MobileParty party)
         {
             if (party == null) return;
+            var cleanup = GetModule<BanditMilitias.Systems.Cleanup.PartyCleanupSystem>();
 
             lock (_registryLock)
             {
@@ -579,17 +655,15 @@ namespace BanditMilitias.Infrastructure
                 {
                     _snapshotDirty = true;
                     _registryOperations++;
+                    try
+                    {
+                        cleanup?.RegisterNewParty(party);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning("ModuleManager", $"Cleanup registration failed for {party.StringId}: {ex.Message}");
+                    }
                 }
-            }
-
-            try
-            {
-                var cleanup = GetModule<BanditMilitias.Systems.Cleanup.PartyCleanupSystem>();
-                cleanup?.RegisterNewParty(party);
-            }
-            catch (Exception ex)
-            {
-                DebugLogger.Warning("ModuleManager", $"Cleanup registration failed for {party.StringId}: {ex.Message}");
             }
         }
 
@@ -616,17 +690,21 @@ namespace BanditMilitias.Infrastructure
                     return _militiaSnapshot;
                 }
 
-                if (_snapshotDirty)
+                lock (_registryLock)
                 {
-                    _cacheMisses++;
-                    RebuildMilitiaSnapshot();
-                }
+                    if (_snapshotDirty)
+                    {
+                        _cacheMisses++;
+                        RebuildMilitiaSnapshotUnsafe();
+                    }
 
-                else
-                {
-                    _cacheHits++;
+                    else
+                    {
+                        _cacheHits++;
+                    }
+
+                    return _militiaSnapshot;
                 }
-                return _militiaSnapshot;
             }
         }
 
@@ -637,17 +715,20 @@ namespace BanditMilitias.Infrastructure
                 return _militiaSnapshot.Length;
             }
 
-            if (_snapshotDirty)
+            lock (_registryLock)
             {
-                _cacheMisses++;
-                RebuildMilitiaSnapshot();
-            }
-            else
-            {
-                _cacheHits++;
-            }
+                if (_snapshotDirty)
+                {
+                    _cacheMisses++;
+                    RebuildMilitiaSnapshotUnsafe();
+                }
+                else
+                {
+                    _cacheHits++;
+                }
 
-            return _militiaSnapshot.Length;
+                return _militiaSnapshot.Length;
+            }
         }
 
         public void ValidateRegistry()
@@ -672,13 +753,17 @@ namespace BanditMilitias.Infrastructure
         {
             lock (_registryLock)
             {
-
-                if (!_snapshotDirty) return;
-
-                _militiaSnapshot = _registeredMilitias.ToArray();
-                _snapshotDirty = false;
-                _snapshotRebuilds++;
+                RebuildMilitiaSnapshotUnsafe();
             }
+        }
+
+        private void RebuildMilitiaSnapshotUnsafe()
+        {
+            if (!_snapshotDirty) return;
+
+            _militiaSnapshot = _registeredMilitias.ToArray();
+            _snapshotDirty = false;
+            _snapshotRebuilds++;
         }
 
         public void PopulateSnapshot(List<MobileParty> targetList)
@@ -699,12 +784,16 @@ namespace BanditMilitias.Infrastructure
             {
                 var timer = System.Diagnostics.Stopwatch.StartNew();
 
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    RevealAllHideouts();
+                }
+
                 _ = PruneRegisteredMilitiasSafely();
                 _hideoutCache.Clear();
                 _villageCache.Clear();
                 _townCache.Clear();
                 _castleCache.Clear();
-                _spatialIndex.Clear();
 
                 try
                 {
@@ -712,7 +801,7 @@ namespace BanditMilitias.Infrastructure
                     {
                         if (party == null) continue;
 
-                        if (party.PartyComponent is MilitiaPartyComponent)
+                        if (party.IsMilitia())
                         {
                             _ = _registeredMilitias.Add(party);
                         }
@@ -744,12 +833,12 @@ namespace BanditMilitias.Infrastructure
                             _castleCache.Add(settlement);
                             IndexSettlement(settlement);
                         }
-                        else if (settlement.IsHideout)
+                        else if (settlement.IsHideout || settlement.SettlementComponent is Hideout)
                         {
                             _hideoutCache.Add(settlement);
                             IndexSettlement(settlement);
 
-                            // TestingMode'da tüm sığınakları haritada görünür yap
+
                             if (Settings.Instance?.TestingMode == true)
                             {
                                 settlement.IsVisible = true;
@@ -766,6 +855,7 @@ namespace BanditMilitias.Infrastructure
                     DebugLogger.Warning("ModuleManager", $"Settlement scan failed during cache rebuild: {ex.Message}");
                 }
 
+                Systems.Grid.SpatialGridSystem.Instance.RebuildSettlementGrid(_hideoutCache, _villageCache, _townCache, _castleCache);
                 _snapshotDirty = true;
                 _lastCacheRebuild = DateTime.Now;
 
@@ -813,12 +903,13 @@ namespace BanditMilitias.Infrastructure
                             _castleCache.Add(settlement);
                             IndexSettlement(settlement);
                         }
-                        else if (settlement.IsHideout)
+                        else if (settlement.IsHideout || settlement.SettlementComponent is Hideout)
                         {
                             _hideoutCache.Add(settlement);
                             IndexSettlement(settlement);
                         }
                     }
+                    Systems.Grid.SpatialGridSystem.Instance.RebuildSettlementGrid(_hideoutCache, _villageCache, _townCache, _castleCache);
                     _lastCacheRebuild = DateTime.Now;
                 }
                 catch (Exception ex)
@@ -849,7 +940,6 @@ namespace BanditMilitias.Infrastructure
             }
 
             long cellKey = GetSpatialCell(pos);
-
             if (!_spatialIndex.TryGetValue(cellKey, out var cell))
             {
                 cell = new List<Settlement>();
@@ -858,7 +948,6 @@ namespace BanditMilitias.Infrastructure
 
             cell.Add(settlement);
         }
-
 
         private int PruneRegisteredMilitiasSafely()
         {
@@ -924,7 +1013,7 @@ namespace BanditMilitias.Infrastructure
                 return results;
             }
 
-            // OPT-BM-2: Lock altında sadece snapshot al, mesafe hesabını lock dışında yap
+
             List<Settlement> candidates;
             lock (_registryLock)
             {
@@ -963,7 +1052,7 @@ namespace BanditMilitias.Infrastructure
                 }
             }
 
-            // Mesafe hesabı lock dışında — lock contention azaltıldı
+
             foreach (var settlement in candidates)
             {
                 Vec2 settPos = CompatibilityLayer.GetSettlementPosition(settlement);
@@ -977,7 +1066,7 @@ namespace BanditMilitias.Infrastructure
             return results;
         }
 
-        // GÜV-BM-1: public → internal — MCM üzerinden TestingMode açılarak cheat olarak kullanılmasını engelle
+
         internal void RevealAllHideouts()
         {
             if (Settings.Instance?.TestingMode != true)
@@ -1031,6 +1120,8 @@ namespace BanditMilitias.Infrastructure
                 return;
             }
 
+            ModActivationManager.InvalidateGameInitializationCache();
+
             if ((DateTime.Now - _lastCacheRebuild).TotalHours > CACHE_REBUILD_INTERVAL_HOURS)
             {
 
@@ -1069,12 +1160,12 @@ namespace BanditMilitias.Infrastructure
                 return;
             }
 
-            ProcessModuleTicks(m => m.OnTick(dt), "Application");
+            ProcessModuleTicks(m => m.OnTick(dt), "Application", dt);
         }
 
-        private void ProcessModuleTicks(Action<IMilitiaModule> tickAction, string tickType)
+        private void ProcessModuleTicks(Action<IMilitiaModule> tickAction, string tickType, float dt = 0f)
         {
-            if (!CompatibilityLayer.IsGameplayActivationSwitchClosed())
+            if (!ModActivationManager.IsGameplayActivationSwitchClosed())
                 return;
 
             IMilitiaModule[] moduleSnapshot = GetSortedModuleSnapshot();
@@ -1082,7 +1173,7 @@ namespace BanditMilitias.Infrastructure
             {
                 if (!module.IsEnabled) continue;
 
-                // OPTIMIZATION 2: Cache module and scope names
+
                 if (!_moduleNameCache.TryGetValue(module, out string? moduleName))
                 {
                     moduleName = ResolveModuleName(module);
@@ -1096,8 +1187,13 @@ namespace BanditMilitias.Infrastructure
                 }
 
                 if (!module.IsCritical && IsModuleFailed(moduleName)) continue;
+                if (tickType == "Application" &&
+                    !_tickScheduler.ShouldRun(module, moduleName, dt, ModLifecycleManager.Instance.CurrentState))
+                {
+                    continue;
+                }
 
-                // OPT-BM-1: Stopwatch'ı her tick'te new() yapmak yerine, Restart() ile yeniden kullan
+
                 bool trackPerf = Settings.Instance?.TestingMode == true;
                 if (trackPerf) _reusableStopwatch.Restart();
 
@@ -1106,13 +1202,17 @@ namespace BanditMilitias.Infrastructure
                 {
                     tickAction(module);
 
-                    // OPTIMIZATION 3: Her tick MarkHealthy ÇAĞIRMA (Lock contention önleme)
-                    // Sadece saatlik/günlük tick'lerde veya hata kurtarma sonrası ilk tick'te yapılabilir.
+
                     if (tickType != "Application")
                     {
                         BanditMilitias.Core.Registry.ModuleRegistry.Instance.MarkHealthy(module, $"{tickType}Tick");
                     }
-                    
+
+                    if (!module.IsCritical)
+                    {
+                        ClearTickFailureStreak(moduleName);
+                    }
+
                     DiagnosticsSystem.IncrementMetric($"Tick.{tickType}.Success");
                 }
                 catch (Exception ex)
@@ -1127,7 +1227,16 @@ namespace BanditMilitias.Infrastructure
 
                     if (!module.IsCritical)
                     {
-                        RecordModuleFailure(moduleName, $"{tickType}Tick", ex, notifyUser: true);
+                        int failureStreak = IncrementTickFailureStreak(moduleName);
+                        if (failureStreak >= MaxConsecutiveTickFailures)
+                        {
+                            RecordModuleFailure(moduleName, $"{tickType}Tick", ex, notifyUser: true);
+                        }
+                        else
+                        {
+                            DebugLogger.Warning("ModuleManager",
+                                $"{moduleName} {tickType} tick failed ({failureStreak}/{MaxConsecutiveTickFailures}) before disable threshold: {ex.Message}");
+                        }
                     }
                 }
                 finally
@@ -1191,14 +1300,107 @@ namespace BanditMilitias.Infrastructure
             {
                 if (_modulesDirty)
                 {
-                    _sortedModuleSnapshot = _modules
-                        .OrderByDescending(m => m.Priority)
-                        .ToArray();
+                    _sortedModuleSnapshot = BuildDependencySortedSnapshot();
                     _modulesDirty = false;
                 }
 
                 return _sortedModuleSnapshot;
             }
+        }
+
+        private IMilitiaModule[] BuildDependencySortedSnapshot()
+        {
+            var modules = _modules
+                .OrderByDescending(m => m.Priority)
+                .ThenBy(m => ResolveModuleName(m), ModuleNameComparer)
+                .ToArray();
+
+            if (modules.Length <= 1)
+            {
+                return modules;
+            }
+
+            var moduleByType = new Dictionary<Type, IMilitiaModule>();
+            var indegree = new Dictionary<IMilitiaModule, int>();
+            var edges = new Dictionary<IMilitiaModule, List<IMilitiaModule>>();
+
+            foreach (var module in modules)
+            {
+                moduleByType[module.GetType()] = module;
+                indegree[module] = 0;
+                edges[module] = new List<IMilitiaModule>();
+            }
+
+            foreach (var module in modules)
+            {
+                var dependencyAttr = (ModuleDependencyAttribute?)Attribute.GetCustomAttribute(
+                    module.GetType(),
+                    typeof(ModuleDependencyAttribute),
+                    inherit: false);
+
+                if (dependencyAttr?.Dependencies == null || dependencyAttr.Dependencies.Length == 0)
+                {
+                    continue;
+                }
+
+                foreach (var dependencyType in dependencyAttr.Dependencies)
+                {
+                    if (dependencyType == null)
+                    {
+                        continue;
+                    }
+
+                    IMilitiaModule? dependencyModule = null;
+                    if (!moduleByType.TryGetValue(dependencyType, out dependencyModule))
+                    {
+                        dependencyModule = modules.FirstOrDefault(m => dependencyType.IsAssignableFrom(m.GetType()));
+                    }
+
+                    if (dependencyModule == null || ReferenceEquals(dependencyModule, module))
+                    {
+                        continue;
+                    }
+
+                    edges[dependencyModule].Add(module);
+                    indegree[module] = indegree[module] + 1;
+                }
+            }
+
+            var ready = new List<IMilitiaModule>(
+                indegree.Where(kvp => kvp.Value == 0).Select(kvp => kvp.Key));
+            var ordered = new List<IMilitiaModule>(modules.Length);
+
+            while (ready.Count > 0)
+            {
+                ready.Sort((a, b) =>
+                {
+                    int byPriority = b.Priority.CompareTo(a.Priority);
+                    return byPriority != 0
+                        ? byPriority
+                        : ModuleNameComparer.Compare(ResolveModuleName(a), ResolveModuleName(b));
+                });
+
+                var current = ready[0];
+                ready.RemoveAt(0);
+                ordered.Add(current);
+
+                foreach (var next in edges[current])
+                {
+                    indegree[next] = indegree[next] - 1;
+                    if (indegree[next] == 0)
+                    {
+                        ready.Add(next);
+                    }
+                }
+            }
+
+            if (ordered.Count == modules.Length)
+            {
+                return ordered.ToArray();
+            }
+
+            FileLogger.LogWarning("[ModuleManager] Dependency cycle detected during module sort. Falling back to priority order.");
+            return modules;
         }
 
         public bool SyncData(IDataStore dataStore)
@@ -1275,11 +1477,11 @@ namespace BanditMilitias.Infrastructure
                 _failedModules.Clear();
                 _lastErrorTime.Clear();
                 _failureRecords.Clear();
+                _moduleTickFailureStreaks.Clear();
                 _sortedModuleSnapshot = Array.Empty<IMilitiaModule>();
                 _modulesDirty = true;
 
-                // HATA-BM-1 FIX: Cross-campaign veri kirliliğini önlemek için
-                // tick cache'lerini de temizle — eski modül referanslarını serbest bırak
+
                 _moduleNameCache.Clear();
                 _scopeNameCache.Clear();
 
@@ -1305,6 +1507,7 @@ namespace BanditMilitias.Infrastructure
                 _isInitialized = false;
                 _campaignEventsRegistered = false;
                 _sessionBootstrapComplete = false;
+                _sessionStartedModules.Clear();
                 _cacheHits = 0;
                 _cacheMisses = 0;
                 _snapshotRebuilds = 0;
@@ -1331,7 +1534,8 @@ namespace BanditMilitias.Infrastructure
                 {
                     if (type.IsAssignableFrom(m.GetType()))
                     {
-                        // HATA-BM-2 FIX: Bulunan sonucu cache'e yaz — sonraki çağrılarda O(1)
+
+
                         _modulesByType[type] = m;
                         return m;
                     }

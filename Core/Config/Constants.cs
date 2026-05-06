@@ -5,7 +5,6 @@ using TaleWorlds.CampaignSystem;
 
 namespace BanditMilitias.Core.Config
 {
-    // ── AIConstants ──────────────────────────────────────────
 
 
     public static class AIConstants
@@ -43,11 +42,10 @@ namespace BanditMilitias.Core.Config
         public const int MAX_REPAIR_ATTEMPTS = 5;
         public const float GRACE_PERIOD_HOURS = 12f;
     }
-    // ── Constants ──────────────────────────────────────────
+
 
     public static class Constants
     {
-        // Spawning
         public const float SPAWN_CHANCE_MIN = 0.55f;
         public const float SPAWN_CHANCE_MAX = 0.75f;
         public const int SPAWN_TROOP_MIN = 8;
@@ -58,51 +56,50 @@ namespace BanditMilitias.Core.Config
         public const float FAILURE_COOLDOWN_H = 6f;
         public const int ACTIVATION_DELAY_DAYS = 2;
 
-        // Warlord economy
+
         public const int WARLORD_INCOME_BASE = 150;
         public const float WARLORD_INCOME_PER_MILITIA = 170f;
         public const float WARLORD_WEALTH_TAX = 0.005f;
         public const int WARLORD_POCKET_MONEY = 7_000;
         public const int WARLORD_BANKRUPTCY_THRESHOLD = 0;
 
-        // Career progression tiers
-        public const int TIER_ESKIYA = 0;
-        public const int TIER_REBEL = 1;
-        public const int TIER_WARLORD = 2;
-        public const int TIER_MINOR_LORD = 3;
-        public const int TIER_RECOGNIZED = 4;
-        public const int TIER_FATIH = 5;
 
-        // Bounty
+        public const int TIER_OUTLAW = 0;
+        public const int TIER_REBEL = 1;
+        public const int TIER_FAMOUS = 2;
+        public const int TIER_WARLORD = 3;
+        public const int TIER_RECOGNIZED = 4;
+        public const int TIER_CONQUEROR = 5;
+
+
         public const int BOUNTY_THRESHOLD_NOTICE = 1_500;
         public const int BOUNTY_THRESHOLD_HUNT = 4_500;
         public const int BOUNTY_THRESHOLD_ARMY = 12_000;
         public const int BOUNTY_DAILY_DECAY = 50;
 
-        // Fear / Territory
+
         public const float FEAR_RAID_GAIN = 15f;
         public const float FEAR_DECAY_DAILY = 0.5f;
         public const float FEAR_MILITIA_KILLED_GAIN = -8f;
         public const float TERRITORY_RADIUS = 1_200f;
 
-        // AI
+
         public const float AI_THREAT_RATIO_ENGAGE = 0.7f;
         public const float AI_THREAT_RATIO_FLEE = 1.6f;
         public const float AI_Q_LEARNING_RATE = 0.15f;
         public const float AI_Q_DISCOUNT = 0.9f;
 
-        // Propaganda
+
         public const int PROPAGANDA_COST_DAILY = 150;
         public const float PROPAGANDA_LOYALTY_DELTA = 0.5f;
 
-        // BUG-08 FIX: Tek kaynak olan BanditMilitiasSaveDefiner.SAVE_VERSION'a
-        // yönlendir. İki ayrı tanım senkronizasyon hatası riskiydi.
+
         public const int SAVE_VERSION = Infrastructure.BanditMilitiasSaveDefiner.SAVE_VERSION;
         public const string SAVE_KEY_COOLDOWNS = "_bm_cooldowns";
         public const string SAVE_KEY_FAIL_CD = "_bm_fail_cooldowns";
         public const string SAVE_KEY_VERSION = "_bm_version";
     }
-    // ── Globals ──────────────────────────────────────────
+
 
     public static class Globals
     {
@@ -197,7 +194,7 @@ namespace BanditMilitias.Core.Config
         {
             _initAttempts++;
 
-            // KRİTİK FIX: CharacterObject.All null/empty kontrolü
+
             if (CharacterObject.All == null || !CharacterObject.All.Any())
             {
                 if (Settings.Instance?.TestingMode == true)
@@ -205,7 +202,7 @@ namespace BanditMilitias.Core.Config
                     DebugLogger.Warning("Globals", $"Init attempt {_initAttempts}/{MAX_INIT_ATTEMPTS}: CharacterObject.All henüz hazır değil!");
                 }
 
-                // Max deneme aşıldıysa fallback moduna geç
+
                 if (_initAttempts >= MAX_INIT_ATTEMPTS)
                 {
                     TryFallbackInitialization();
@@ -223,7 +220,8 @@ namespace BanditMilitias.Core.Config
             {
                 if (character != null && character.Occupation == Occupation.Bandit && !character.IsHero && !character.IsTemplate)
                 {
-                    // Formasyon sınıfı geçerli mi kontrol et
+
+
                     if ((int)character.DefaultFormationClass >= 0 && (int)character.DefaultFormationClass <= 7)
                     {
                         allBanditCandidates.Add(character);
@@ -250,7 +248,7 @@ namespace BanditMilitias.Core.Config
                 cultureList.Add(character);
             }
 
-            // Fallback: Looter ara
+
             if (infantry.Count == 0)
             {
                 foreach (var character in CharacterObject.All)
@@ -298,7 +296,8 @@ namespace BanditMilitias.Core.Config
 
         private static void TryFallbackInitialization()
         {
-            // Son çare: Hardcoded looter ID'leri dene
+
+
             string[] fallbackIds = new[] { "looter", "bandit", "mountain_bandit", "forest_bandit", "sea_raider" };
             var infantry = new List<CharacterObject>();
 
@@ -325,10 +324,5 @@ namespace BanditMilitias.Core.Config
         }
     }
 
-
-    // ── AIConstants ─────────────────────────────────
-
-
-    // ── Globals ─────────────────────────────────
 
 }

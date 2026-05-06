@@ -1,10 +1,12 @@
 using BanditMilitias.Behaviors;
 using BanditMilitias.Components;
 using BanditMilitias.Core.Components;
-using BanditMilitias.Core.Config; // DynamicDifficulty için
+using BanditMilitias.Core.Config;
+
 using BanditMilitias.Core.Events;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
+using TaleWorlds.CampaignSystem.Party.PartyComponents;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -24,6 +26,10 @@ using BanditMilitias.Core.Neural;
 
 namespace BanditMilitias.Systems.Spawning
 {
+    [Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Systems.Scheduling.AISchedulerSystem),
+        typeof(BanditMilitias.Systems.Cleanup.PartyCleanupSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 50, IsCritical = true)]
     public class MilitiaSpawningSystem : MilitiaModuleBase, ISpawningSystem
     {
         public const float BaseDailySpawnChanceMin = 0.55f;
@@ -45,11 +51,13 @@ namespace BanditMilitias.Systems.Spawning
         public static MilitiaSpawningSystem? Instance { get; private set; }
         private int _cachedTotalParties;
         private int _tickCount;
-        
-        // OPTIMIZATION 6: Kingdom list caching
+        private int _pendingSpawnCount;
+        private bool _missingSettingsWarningShown;
+
+
         private List<Kingdom> _activeKingdomsCache = new();
 
-        // OPTIMIZASYON: Tier bufferları (Tahsis önleme)
+
         private static readonly List<CharacterObject> _tier1_2Buffer = new(32);
         private static readonly List<CharacterObject> _tier3Buffer = new(16);
         private static readonly List<CharacterObject> _tier4Buffer = new(16);
@@ -67,19 +75,31 @@ namespace BanditMilitias.Systems.Spawning
         public override void Initialize()
         {
             Instance = this;
+            _missingSettingsWarningShown = false;
+            _pendingSpawnCount = 0;
             UpdateKingdomCache();
         }
 
         public override void Cleanup()
         {
             Instance = null;
+            _pendingSpawnCount = 0;
+            _missingSettingsWarningShown = false;
         }
 
         public override void OnHourlyTick()
         {
+            _pendingSpawnCount = 0;
+
+            if (Settings.Instance == null)
+            {
+                WarnMissingSettingsOnce();
+                return;
+            }
+
             if (!IsEnabled) return;
 
-            if (CompatibilityLayer.IsGameplayActivationDelayed())
+            if (ModActivationManager.IsGameplayActivationDelayed())
                 return;
 
             if (ModuleManager.Instance.HideoutCache.Count == 0)
@@ -117,37 +137,74 @@ namespace BanditMilitias.Systems.Spawning
             UpdateKingdomCache();
         }
 
+        private void WarnMissingSettingsOnce()
+        {
+            if (_missingSettingsWarningShown)
+            {
+                return;
+            }
+
+            _missingSettingsWarningShown = true;
+            const string message =
+                "[BanditMilitias] Settings/MCM could not be loaded. Militia spawning is disabled until the dependency is available.";
+            DebugLogger.Error("SpawningSystem", "Settings.Instance null! Is MCM installed?");
+            FileLogger.LogWarning(message);
+            InformationManager.DisplayMessage(new InformationMessage(message, Colors.Yellow));
+        }
+
+        private static void LogSpawnCancelled(Settlement? hideout, string reason, bool testingOnly = true)
+        {
+            if (testingOnly && Settings.Instance?.TestingMode != true)
+            {
+                return;
+            }
+
+            string hideoutName = hideout?.Name?.ToString() ?? "unknown";
+            DebugLogger.Info("SpawningSystem", $"SPAWN CANCELLED [{hideoutName}]: {reason}");
+        }
+
         private void UpdateKingdomCache()
         {
             if (Campaign.Current == null) return;
             _activeKingdomsCache = Kingdom.All.Where(k => k != null && !k.IsEliminated).ToList();
         }
 
-        /// <summary>
-        /// Tek bir sığınak için spawn şansını ve şartlarını değerlendirir.
-        /// AISchedulerSystem tarafından parça parça çağrılır.
-        /// </summary>
         public void ProcessSpawnEvaluation(Settlement hideout)
         {
-            if (hideout == null || !hideout.IsHideout) return;
-
-            // KRİTİK: Settings kontrolü
-            if (Settings.Instance == null)
+            if (hideout == null)
             {
-                StructuredLogger.Error("SpawningSystem", "Settings.Instance null! MCM yüklü mü?");
+                LogSpawnCancelled(null, "Hideout reference was null.");
                 return;
             }
 
-            // Watchdog heartbeat
+            if (hideout == null || !hideout.IsHideout)
+            {
+                LogSpawnCancelled(hideout, "Settlement is null or no longer a hideout.");
+                return;
+            }
+
+
+            if (Settings.Instance == null)
+            {
+                WarnMissingSettingsOnce();
+                return;
+            }
+
+
             BanditMilitias.Systems.Diagnostics.SystemWatchdog.Instance.ReportHeartbeat("SpawningSystem");
 
-            if (!IsEnabled) return;
+            if (!IsEnabled)
+            {
+                LogSpawnCancelled(hideout, "Spawning system disabled.");
+                return;
+            }
 
-            // Mevcut durum kontrolü
+
             int currentCount = ModuleManager.Instance.GetMilitiaCount();
+            currentCount += _pendingSpawnCount;
             int maxParties = Settings.Instance.MaxTotalMilitias;
 
-            // Dinamik zorluk: Optimal sayı kontrolü
+
             int optimalCount = Core.Config.DynamicDifficulty.CalculateOptimalMilitiaCount();
             if (optimalCount <= 0) optimalCount = maxParties;
             int dynamicCap = CalculateDynamicMilitiaCap(currentCount, optimalCount, maxParties);
@@ -156,67 +213,61 @@ namespace BanditMilitias.Systems.Spawning
             {
                 if (Settings.Instance?.TestingMode == true && _tickCount % 24 == 0)
                     DebugLogger.Warning("SpawningSystem", $"Militia cap reached ({currentCount}/{dynamicCap}). Spawning suspended.");
-                return; // Yeterli militia var
-            }
-            /*
-            // YENİ: Performans Koruması (Global Party Count Guard) - REPLACED BY ORGANIC CONSOLIDATION
-            if (totalMobileParties > 2000 && MBRandom.RandomFloat > 0.5f)
-            {
-                if (Settings.Instance?.TestingMode == true)
-                    DebugLogger.Info("SpawningSystem", $"High party count reached ({totalMobileParties}). Spawning throttled (50% chance).");
+                LogSpawnCancelled(hideout, $"Dynamic cap reached ({currentCount}/{dynamicCap}).");
                 return;
-            }
-            */
 
-            // YENİ: Önce oyunun tamamen initialize olup olmadığını kontrol et
-            if (!CompatibilityLayer.IsGameFullyInitialized() || CompatibilityLayer.IsGameplayActivationDelayed())
+            }
+
+
+            if (!ModActivationManager.IsGameFullyInitialized() || ModActivationManager.IsGameplayActivationDelayed())
             {
-                StructuredLogger.Warning("SpawningSystem",
+                DebugLogger.Warning("SpawningSystem",
                     "Game not fully initialized or activation is delayed. Skipping spawn cycle.");
+                LogSpawnCancelled(hideout, "Game not fully initialized or activation still delayed.");
                 return;
             }
 
-            // YENİ: Globals.BasicInfantry boşsa retry mekanizması
+
             if (Globals.BasicInfantry.Count == 0)
             {
-                StructuredLogger.Warning("SpawningSystem",
+                DebugLogger.Warning("SpawningSystem",
                     "Globals.BasicInfantry empty. Attempting re-initialization...");
 
                 Globals.Initialize(force: true);
 
                 if (Globals.BasicInfantry.Count == 0)
                 {
-                    StructuredLogger.Error("SpawningSystem",
+                    DebugLogger.Error("SpawningSystem",
                         "Globals initialization failed after retry! Cannot spawn militias.");
 
                     if (Settings.Instance?.TestingMode == true)
                     {
                         InformationManager.DisplayMessage(new InformationMessage(
-                            "[BanditMilitias] KRİTİK: Globals initialize edilemedi!",
+                            "[BanditMilitias] CRITICAL: Globals could not be initialized!",
                             Colors.Red));
                     }
+                    LogSpawnCancelled(hideout, "Globals.BasicInfantry still empty after retry.");
                     return;
                 }
                 else
                 {
-                    StructuredLogger.Info("SpawningSystem",
+                    DebugLogger.Info("SpawningSystem",
                         $"Globals re-initialization successful! {Globals.BasicInfantry.Count} troops available.");
                 }
             }
 
-            // Günlük spawn şansı kontrolü (Hourly tick'te çağrıldığı için %24 bölüyoruz)
+
             float dailyChance = ResolveBaseDailySpawnChance();
 
-            // ── KULUÇKA DOPİNGİ (Incubation Boost) ──
-            // Eğer dünyadaki toplam milis sayısı 15'in altındaysa, spawn hızını 3 katına çıkar (Hızlı Başlangıç).
+
             if (currentCount < 15)
             {
                 dailyChance *= 3.0f;
             }
 
-            // Eğer bu sığınağın hiç aktif milis partisi yoksa, o sığınağa özel %50 spawn şansı bonusu ver.
+
             int existingMilitiasForHideout = ModuleManager.Instance.ActiveMilitias
-                .Count(m => m != null && m.IsActive && m.PartyComponent is MilitiaPartyComponent cmp && cmp.HomeSettlement == hideout);
+                .Count(m => m != null && m.IsActive && m.PartyComponent is BanditMilitias.Components.MilitiaPartyComponent cmp && cmp.HomeSettlement == hideout);
 
             if (existingMilitiasForHideout == 0)
             {
@@ -229,9 +280,14 @@ namespace BanditMilitias.Systems.Spawning
             if (MBRandom.RandomFloat > hourlyChance) return;
 
             var behavior = Campaign.Current?.GetCampaignBehavior<MilitiaBehavior>();
-            if (behavior != null && behavior.IsHideoutOnCooldown(hideout)) return;
+            if (behavior != null && behavior.IsHideoutOnCooldown(hideout))
+            {
+                LogSpawnCancelled(hideout, "Hideout on cooldown.");
+                return;
+            }
 
-            float finalSpawnChance = 1.0f; // Base chance already handled by hourlyChance check
+            float finalSpawnChance = 1.0f;
+
 
             if (existingMilitiasForHideout >= 1)
             {
@@ -264,40 +320,37 @@ namespace BanditMilitias.Systems.Spawning
 
             finalSpawnChance = MathF.Min(finalSpawnChance, 0.92f);
 
-            // Tek kontrol: finalSpawnChance 1.0'dan küçükse random check yap, değilse direkt spawn
+
             if (finalSpawnChance < 1.0f && MBRandom.RandomFloat >= finalSpawnChance)
                 return;
 
             var spawnedParty = SpawnMilitia(hideout);
             if (spawnedParty != null)
             {
+                _pendingSpawnCount++;
                 behavior?.SetHideoutCooldown(hideout);
-                StructuredLogger.Info("SpawningSystem",
+                DebugLogger.Info("SpawningSystem",
                     $"Militia spawned at {hideout.Name}. Size: {spawnedParty.MemberRoster.TotalManCount}. Current total: {ModuleManager.Instance.GetMilitiaCount()}");
             }
         }
 
-        /// <summary>
-        /// HİBRİT AI: Dünya durumu ve oyuncu kapasitesini birleştirerek spawn boyutunu hesaplar.
-        /// </summary>
         public int CalculateDynamicSpawnSize(Settlement hideout)
         {
             if (hideout == null) return 12;
 
-            // 1. DÜNYA DURUMU (ANA MOTOR)
+
             float baseSize = 8f;
-            
-            // Refah (Prosperity) Çarpanı
-            // Settlement.All.Where(IsTown) yerine ModuleManager.TownCache
+
+
             var nearestTown = Infrastructure.ModuleManager.Instance.TownCache
                 .FirstOrDefault(s => s.GatePosition.DistanceSquared(hideout.GatePosition) < 1600f);
             if (nearestTown != null)
             {
                 float prosperity = nearestTown.Town?.Prosperity ?? 4000f;
-                baseSize += (prosperity / 1000f) * 2f; // Her 1000 refah için +2 asker
+                baseSize += (prosperity / 1000f) * 2f;
             }
 
-            // Küresel Savaş (Chaos) Çarpanı
+
             int activeWars = 0;
             var kingdoms = _activeKingdomsCache;
             if (kingdoms == null || kingdoms.Count == 0)
@@ -314,32 +367,32 @@ namespace BanditMilitias.Systems.Spawning
                         activeWars++;
                 }
             }
-            baseSize += activeWars * 1.5f; // Her aktif savaş için +1.5 asker
+            baseSize += activeWars * 1.5f;
 
-            // Warlord Etkisi
+
             var warlord = WarlordSystem.Instance.GetWarlordForHideout(hideout);
             if (warlord != null)
             {
                 var tier = WarlordCareerSystem.Instance.GetTier(warlord.StringId);
-                baseSize += (int)tier * 10f; // Her kariyer basamağı için +10 asker
+                baseSize += (int)tier * 10f;
             }
 
-            // Sığınak Yoğunluğu
+
             int nearbyHideouts = ModuleManager.Instance.HideoutCache.Count(h => h != hideout && h.GatePosition.DistanceSquared(hideout.GatePosition) < 2500f);
             baseSize += nearbyHideouts * 4f;
 
-            // 2. OYUNCU KAPASİTESİ (ADAPTİF FİLTRE)
-            float playerStrength = MobileParty.MainParty != null 
-                ? Infrastructure.CompatibilityLayer.GetTotalStrength(MobileParty.MainParty) 
+
+            float playerStrength = MobileParty.MainParty != null
+                ? Infrastructure.CompatibilityLayer.GetTotalStrength(MobileParty.MainParty)
                 : 50f;
             int playerRenown = (int)(Hero.MainHero?.Clan?.Renown ?? 0f);
 
-            // Filtreleme: Eğer dünya çok kaotik ama oyuncu güçsüzse, devasa sayıları biraz baskıla
+
             float maxAllowedForPlayer = 20f + (playerStrength / 5f) + (playerRenown / 50f);
-            
+
             float finalSize = Math.Min(baseSize, maxAllowedForPlayer);
 
-            // Rastgelelik ekle (+-%20)
+
             finalSize *= MBRandom.RandomFloatRanged(0.8f, 1.2f);
 
             return (int)MathF.Clamp(finalSize, Constants.SPAWN_TROOP_HARD_MIN, Constants.SPAWN_TROOP_MAX);
@@ -355,7 +408,8 @@ namespace BanditMilitias.Systems.Spawning
 
         public MobileParty? SpawnMilitia(Settlement hideout, bool force = false)
         {
-            // KRİTİK FIX: Comprehensive pre-flight checks
+
+
             if (hideout == null)
             {
                 DebugLogger.Warning("SpawningSystem", "SpawnMilitia called with null hideout");
@@ -367,7 +421,7 @@ namespace BanditMilitias.Systems.Spawning
                 return null;
             }
 
-            // FIX: Defensive Globals initialization with retry logic
+
             if (Globals.BasicInfantry.Count == 0)
             {
                 DebugLogger.Info("SpawningSystem", "Globals not initialized, attempting initialization...");
@@ -388,8 +442,8 @@ namespace BanditMilitias.Systems.Spawning
                         if (Settings.Instance?.TestingMode == true)
                         {
                             InformationManager.DisplayMessage(new InformationMessage(
-                                "[BanditMilitias] KRİTİK: Globals initialize edilemedi! Mod başlamamış olabilir.",
-                                Colors.Red));
+                            "[BanditMilitias] CRITICAL: Globals could not be initialized! The mod might not have started correctly.",
+                            Colors.Red));
                         }
                         return null;
                     }
@@ -400,7 +454,7 @@ namespace BanditMilitias.Systems.Spawning
             if (!force && Settings.Instance != null && currentCount >= Settings.Instance.MaxTotalMilitias)
                 return null;
 
-            // FIX: Defensive Clan resolution with explicit null checks
+
             Clan? banditClan = ResolveBanditClan(hideout);
 
             if (banditClan == null)
@@ -418,7 +472,7 @@ namespace BanditMilitias.Systems.Spawning
 
             if (!hideout.IsHideout)
             {
-                DebugLogger.TestLog($"[Spawn] {hideout.Name} bir hideout değil! Spawn iptal.", Colors.Yellow);
+                DebugLogger.TestLog($"[Spawn] {hideout.Name} is not a hideout! Spawn aborted.", Colors.Yellow);
                 return null;
             }
 
@@ -426,7 +480,7 @@ namespace BanditMilitias.Systems.Spawning
 
             if (float.IsNaN(gatePos.X) || float.IsNaN(gatePos.Y))
             {
-                DebugLogger.Log($"[Spawn] {hideout.Name} GatePosition NaN - NavMesh kurtarması denenecek.");
+                DebugLogger.Log($"[Spawn] {hideout.Name} GatePosition NaN - NavMesh recovery attempt.");
                 var settPos = CompatibilityLayer.GetSettlementPosition(hideout);
                 if (settPos.IsValid && !float.IsNaN(settPos.X) && !float.IsNaN(settPos.Y))
                     gatePos = CompatibilityLayer.CreateCampaignVec2(settPos);
@@ -455,20 +509,20 @@ namespace BanditMilitias.Systems.Spawning
             if (gatePos.X < MIN_MAP_COORD || gatePos.Y < MIN_MAP_COORD ||
                 gatePos.X > MAX_MAP_COORD || gatePos.Y > MAX_MAP_COORD)
             {
-                DebugLogger.Log($"[Spawn] {hideout.Name} GatePosition harita dışı: ({gatePos.X:F1}, {gatePos.Y:F1}) - atlanıyor.");
+                DebugLogger.Log($"[Spawn] {hideout.Name} GatePosition out of bounds: ({gatePos.X:F1}, {gatePos.Y:F1}) - skipping.");
                 return null;
             }
 
             if (Campaign.Current == null)
             {
-                DebugLogger.TestLog("[Spawn] Campaign.Current null! Spawn iptal.", Colors.Red);
+                DebugLogger.TestLog("[Spawn] Campaign.Current null! Spawn aborted.", Colors.Red);
                 return null;
             }
 
             var mapScene = Campaign.Current?.MapSceneWrapper;
             if (mapScene == null)
             {
-                DebugLogger.TestLog("[Spawn] MapSceneWrapper null! Spawn iptal.", Colors.Red);
+                DebugLogger.TestLog("[Spawn] MapSceneWrapper null! Spawn aborted.", Colors.Red);
                 MarkSpawnFailure(hideout, "MapSceneWrapper null", 12f);
                 return null;
             }
@@ -486,8 +540,8 @@ namespace BanditMilitias.Systems.Spawning
                         testPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, 40f);
                         if (float.IsNaN(testPos.X) || float.IsNaN(testPos.Y))
                         {
-                            string msg = $"[BanditMilitias] SPAWN İPTAL: '{hideout.Name}' sığınağının koordinatları " +
-                                         "haritada geçersiz (NavMesh NaN). Sonraki tick'te yeniden denenecek.";
+                            string msg = $"[BanditMilitias] SPAWN CANCELLED: Hideout '{hideout.Name}' " +
+                                         "coordinates invalid (NavMesh NaN). Retrying in next tick.";
                             DebugLogger.Log(msg);
                             if (Settings.Instance?.TestingMode == true && MBRandom.RandomFloat < 0.1f)
                                 InformationManager.DisplayMessage(new InformationMessage(msg, Colors.Yellow));
@@ -522,17 +576,17 @@ namespace BanditMilitias.Systems.Spawning
                     hideout.Party.SetVisualAsDirty();
 
                 if (Settings.Instance?.TestingMode == true)
-                    DebugLogger.TestLog($"[Spawn] {hideout.Name} yeniden aktive edildi.", Colors.Green);
+                    DebugLogger.TestLog($"[Spawn] {hideout.Name} reactivated.", Colors.Green);
             }
 
             Vec2 finalSpawnPos = Vec2.Invalid;
             bool validPosFound = false;
             bool spawnIsOnLand = true;
-            int maxAttempts = 15;
+            int maxAttempts = 25;
 
             for (int attempt = 0; attempt < maxAttempts; attempt++)
             {
-                float searchRadius = 5f + (attempt * 3f);
+                float searchRadius = 5f + (attempt * 5f);
                 var potentialPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, searchRadius);
                 if (potentialPos == null) continue;
                 var vec2Pos = CompatibilityLayer.ToVec2(potentialPos);
@@ -565,8 +619,8 @@ namespace BanditMilitias.Systems.Spawning
 
             if (!validPosFound)
             {
-                string msg = $"[BanditMilitias] SPAWN İPTAL: '{hideout.Name}' çevresinde geçerli bir " +
-                             $"spawn alanı bulunamadı ({maxAttempts} deneme). Sonraki tick'te yeniden denenecek.";
+                string msg = $"[BanditMilitias] SPAWN CANCELLED: No valid " +
+                             $"spawn area found near '{hideout.Name}' ({maxAttempts} attempts). Retrying in next tick.";
                 if (Settings.Instance?.TestingMode == true)
                 {
                     DebugLogger.Log(msg);
@@ -577,26 +631,27 @@ namespace BanditMilitias.Systems.Spawning
             }
 
 
-            // OPTIMIZASYON: ObjectPool kullan
             var roster = CreateTroopRosterFromPool();
             var prisonerRoster = CreateTroopRosterFromPool();
             MobileParty? party = null;
             try
             {
-                // HİBRİT AI: Dinamik troop sayısını hesapla
+
+
                 int troopCount = CalculateDynamicSpawnSize(hideout);
 
-                // ── TİER SCALING: Kademeli Asker Kalitesi Eğrisi (Dünya Gelişimine Duyarlı) ─────────────────
-                float elapsedDays = BanditMilitias.Infrastructure.CompatibilityLayer.GetActivationDelayElapsedDays();
+
+                float elapsedDays = ModActivationManager.GetActivationDelayElapsedDays();
                 if (elapsedDays < 0f) elapsedDays = 0f;
 
                 var allTroops = Globals.BasicInfantry;
 
-                // OPTIMIZASYON: Tek geçişte tier gruplarına ayır (Tahsis önleme)
+
                 _tier1_2Buffer.Clear();
                 _tier3Buffer.Clear();
                 _tier4Buffer.Clear();
-                _tier5_6Buffer.Add(null!); _tier5_6Buffer.Clear(); // Bufferları temizle
+                _tier5_6Buffer.Clear();
+
 
                 foreach (var c in allTroops)
                 {
@@ -612,7 +667,7 @@ namespace BanditMilitias.Systems.Spawning
                     foreach (var c in allTroops) _tier1_2Buffer.Add(c);
                 }
 
-                // Tier 5-6: Day 100'de %3, her 50 günde +%3, Day 300'de %15 sabit
+
                 float elite56Chance = 0f;
                 if (elapsedDays >= 100f)
                 {
@@ -620,7 +675,7 @@ namespace BanditMilitias.Systems.Spawning
                     elite56Chance = 0.03f + steps * 0.03f;
                 }
 
-                // Tier 4: Day 100'de %25, Day 300'de %38
+
                 float elite4Chance = 0f;
                 if (elapsedDays >= 100f)
                 {
@@ -628,7 +683,7 @@ namespace BanditMilitias.Systems.Spawning
                     elite4Chance = 0.25f + t4p * 0.13f;
                 }
 
-                // Tier 3: Day 10'da %40, Day 300'de %32'ye geriler
+
                 float tier3Chance = 0f;
                 if (elapsedDays >= 10f)
                 {
@@ -661,7 +716,7 @@ namespace BanditMilitias.Systems.Spawning
                     _ = roster.AddToCounts(selectedTroop, batchSize);
                     remainingToSpawn -= batchSize;
                 }
-                // ── TİER SCALING SONU ─────────────────────────────────────────────
+
 
                 if (roster.TotalManCount <= 0)
                 {
@@ -670,11 +725,17 @@ namespace BanditMilitias.Systems.Spawning
                     return null;
                 }
 
-                var component = new MilitiaPartyComponent(hideout);
+                BanditMilitias.Components.MilitiaPartyComponent? militiaComponent = null;
                 string partyId = "Bandit_Militia_" + Guid.NewGuid().ToString("N").Substring(0, 8);
 
+                militiaComponent = new BanditMilitias.Components.MilitiaPartyComponent(hideout);
                 party = BanditMilitias.Infrastructure.CompatibilityLayer
-                    .CreatePartySafe(partyId, component, banditClan, true);
+                    .CreatePartySafe(partyId, militiaComponent, banditClan, true);
+
+                if (party != null)
+                {
+                    MilitiaBehavior.Instance?.RegisterMilitia(party, militiaComponent);
+                }
 
                 if (party == null)
                 {
@@ -691,14 +752,14 @@ namespace BanditMilitias.Systems.Spawning
                     prisonerRoster,
                     campaignVec2Pos);
 
-                // FIX: Robust validation (Expected by Stage5_SpawnMilitia_ValidatesPartyAfterCreation)
+
                 if (party.ActualClan == null || party.MapFaction == null)
                 {
                     BanditMilitias.Infrastructure.CompatibilityLayer.DestroyParty(party);
                     return null;
                 }
 
-                // KRİTİK: AI'yı serbest bırak (InitializeMobilePartyAtPosition genelde kilitler)
+
                 if (party.Ai != null)
                 {
                     party.Ai.SetDoNotMakeNewDecisions(false);
@@ -714,9 +775,6 @@ namespace BanditMilitias.Systems.Spawning
                     return null;
                 }
 
-                // BAŞARILI: Roster'ları havuza geri verme - artık parti kullanıyor
-                // Not: Roster'lar parti tarafından kullanıldığı için havuza geri vermiyoruz
-                // Parti yok edildiğinde GC tarafından temizlenecekler
 
                 Vec2 actualPos = BanditMilitias.Infrastructure.CompatibilityLayer.GetPartyPosition(party);
 
@@ -731,7 +789,7 @@ namespace BanditMilitias.Systems.Spawning
                     const float MAX_ALLOWED_DISTANCE_SQ = 160000f;
                     if (actualPos.DistanceSquared(finalSpawnPos) > MAX_ALLOWED_DISTANCE_SQ)
                     {
-                        DebugLogger.Log($"[Spawn] {hideout.Name} parti çok uzağa yerleşti - iptal.");
+                        DebugLogger.Log($"[Spawn] {hideout.Name} party placed too far - aborted.");
                         BanditMilitias.Infrastructure.CompatibilityLayer.DestroyParty(party);
                         return null;
                     }
@@ -743,22 +801,21 @@ namespace BanditMilitias.Systems.Spawning
                     party.IsVisible = true;
                 }
 
-                // NEW: WarlordEconomySystem Integration (Walkthrough Rule: Captain 1000, Group 300)
                 var warlordForHideout = WarlordSystem.Instance.GetWarlordForHideout(hideout);
-                var currentTier = warlordForHideout != null 
-                    ? WarlordCareerSystem.Instance.GetTier(warlordForHideout.StringId) 
-                    : CareerTier.Eskiya;
+                var currentTier = warlordForHideout != null
+                    ? WarlordCareerSystem.Instance.GetTier(warlordForHideout.StringId)
+                    : CareerTier.Outlaw;
 
                 bool hideoutHasActiveMilitia = ModuleManager.Instance.ActiveMilitias
-                    .Any(m => m != null && m.IsActive && m.PartyComponent is MilitiaPartyComponent cmp && cmp.HomeSettlement == hideout);
+                    .Any(m => m != null && m.IsActive && m.PartyComponent is BanditMilitias.Components.MilitiaPartyComponent cmp && cmp.HomeSettlement == hideout);
 
-                if (!hideoutHasActiveMilitia)
+                if (!hideoutHasActiveMilitia && militiaComponent != null)
                 {
-                    component.Role = MilitiaPartyComponent.MilitiaRole.Captain;
+                    militiaComponent.Role = BanditMilitias.Components.MilitiaPartyComponent.MilitiaRole.Captain;
                 }
 
-                // 6. Rapor Revize: Başlangıç Kaynakları (Her doğan milis için 1000 Altın + Silah + Kalkan)
-                party.PartyTradeGold = 1000; 
+
+                party.PartyTradeGold = 1000;
 
                 ModuleManager.Instance.RegisterMilitia(party);
 
@@ -770,19 +827,19 @@ namespace BanditMilitias.Systems.Spawning
                 }
 
                 int totalManCount = party.MemberRoster.TotalManCount;
-                
-                // LOJİSTİK PAKET: Büyük partilere ekstra ikmal
-                int totalGrain = Math.Max(8, totalManCount / 3);  
+
+
+                int totalGrain = Math.Max(8, totalManCount / 3);
                 int totalMeat = Math.Max(2, totalManCount / 8);
-                int totalButter = totalManCount > 40 ? (totalManCount / 12) : 0; 
+                int totalButter = totalManCount > 40 ? (totalManCount / 12) : 0;
 
                 _ = party.ItemRoster.AddToCounts(DefaultItems.Grain, totalGrain);
                 _ = party.ItemRoster.AddToCounts(DefaultItems.Meat, totalMeat);
-                
-                // Başlangıç Silah ve Kalkan Paketi
+
+
                 var sword = MBObjectManager.Instance.GetObject<ItemObject>("iron_spatha") ?? MBObjectManager.Instance.GetObject<ItemObject>("scimitar");
                 var shield = MBObjectManager.Instance.GetObject<ItemObject>("bound_wicker_shield") ?? MBObjectManager.Instance.GetObject<ItemObject>("sturdy_wicker_shield");
-                
+
                 if (sword != null) _ = party.ItemRoster.AddToCounts(sword, Math.Max(1, totalManCount / 2));
                 if (shield != null) _ = party.ItemRoster.AddToCounts(shield, Math.Max(1, totalManCount / 2));
 
@@ -791,11 +848,11 @@ namespace BanditMilitias.Systems.Spawning
                     var butterObj = MBObjectManager.Instance.GetObject<ItemObject>("butter");
                     if (butterObj != null) _ = party.ItemRoster.AddToCounts(butterObj, totalButter);
                 }
-                
+
                 AddRandomLoot(party);
 
-                // Captain Starting Equipment
-                if (component.Role == MilitiaPartyComponent.MilitiaRole.Captain)
+
+                if (militiaComponent != null && militiaComponent.Role == BanditMilitias.Components.MilitiaPartyComponent.MilitiaRole.Captain)
                 {
                     AddCaptainEquipment(party);
                 }
@@ -811,18 +868,16 @@ namespace BanditMilitias.Systems.Spawning
                         _ = party.ItemRoster.AddToCounts(horse, Math.Max(1, totalManCount / 3));
                     }
 
-                    var spawnEvt = EventBus.Instance.Get<BanditMilitias.Core.Events.MilitiaSpawnedEvent>();
+                    var spawnEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<BanditMilitias.Core.Events.MilitiaSpawnedEvent>();
                     if (spawnEvt != null)
                     {
                         spawnEvt.Party = party;
                         spawnEvt.HomeHideout = hideout;
-                        
-                        // CRITICAL: Pooled event'leri NeuralEventRouter (Deferred) üzerinden değil, 
-                        // direkt EventBus üzerinden senkron yayınlamalıyız. 
-                        // Aksi halde Return() çağrıldığında veri sıfırlanır ama deferred handler boş veri okur.
-                        EventBus.Instance.Publish(spawnEvt);
-                        
-                        EventBus.Instance.Return(spawnEvt);
+
+                        // Use try/finally so Return is guaranteed even if Publish throws.
+                        // Without this, the event object leaks out of the pool permanently.
+                        try { BanditMilitias.Core.Events.EventBus.Instance.Publish(spawnEvt); }
+                        finally { BanditMilitias.Core.Events.EventBus.Instance.Return(spawnEvt); }
                     }
                 }
 
@@ -830,7 +885,7 @@ namespace BanditMilitias.Systems.Spawning
                 {
                     int totalTroopsAfterSpawn = party.MemberRoster?.TotalManCount ?? 0;
                     DebugLogger.TestLog(
-                        $"{party.Name} › {hideout.Name} | Asker: {totalTroopsAfterSpawn} | Rol: {component.Role}",
+                        $"{party.Name} › {hideout.Name} | Troops: {totalTroopsAfterSpawn} | Role: {militiaComponent?.Role}",
                         Colors.Green);
                 }
 
@@ -864,14 +919,15 @@ namespace BanditMilitias.Systems.Spawning
 
         private static Clan? ResolveBanditClan(Settlement hideout)
         {
-            // Önce hideout'un kendi klanını dene
+
+
             Clan? banditClan = hideout.OwnerClan;
             if (banditClan != null && banditClan.IsBanditFaction)
             {
                 return banditClan;
             }
 
-            // ClanCache'den al
+
             if (!ClanCache.IsInitialized)
             {
                 ClanCache.Initialize();
@@ -883,7 +939,7 @@ namespace BanditMilitias.Systems.Spawning
                 return banditClan;
             }
 
-            // Son çare: Doğrudan Clan.All'dan ara
+
             if (Clan.All != null)
             {
                 Clan? fallbackBanditClan = null;
@@ -952,17 +1008,17 @@ namespace BanditMilitias.Systems.Spawning
         private static float CalculatePopulationAdjustedSpawnChance(float baseChance, int currentCount, int optimalCount, int dynamicCap)
         {
             if (currentCount >= dynamicCap)
-                return baseChance * 0.05f; // Çok fazla varsa iyice kıs
+                return baseChance * 0.05f;
 
-            // KRİTİK EKSİKLİK (0-5 Arası): Devasa boost (10x)
+
             if (currentCount < 5)
                 return baseChance * 10.0f;
 
-            // ÇOK DÜŞÜK (%25 altı): Büyük boost (4x)
+
             if (currentCount < optimalCount * 0.25f)
                 return baseChance * 4.0f;
 
-            // DÜŞÜK (%80 altı): Standart boost (1.5x)
+
             if (currentCount < optimalCount * 0.8f)
                 return baseChance * 1.5f;
 
@@ -1007,13 +1063,13 @@ namespace BanditMilitias.Systems.Spawning
         {
             if (party?.ItemRoster == null) return;
 
-            // Armor (Gambeson/Leather)
-            var armor = Game.Current.ObjectManager.GetObject<ItemObject>("leather_armor") 
+
+            var armor = Game.Current.ObjectManager.GetObject<ItemObject>("leather_armor")
                      ?? Game.Current.ObjectManager.GetObject<ItemObject>("gambeson");
             if (armor != null) _ = party.ItemRoster.AddToCounts(armor, 1);
 
-            // Weapon (Sword/Axe)
-            var weapon = Game.Current.ObjectManager.GetObject<ItemObject>("iron_spatha") 
+
+            var weapon = Game.Current.ObjectManager.GetObject<ItemObject>("iron_spatha")
                       ?? Game.Current.ObjectManager.GetObject<ItemObject>("hand_axe");
             if (weapon != null) _ = party.ItemRoster.AddToCounts(weapon, 1);
         }
@@ -1021,16 +1077,16 @@ namespace BanditMilitias.Systems.Spawning
         [CommandLineFunctionality.CommandLineArgumentFunction("force_reinit", "bandit")]
         public static string SpawnSwarm(System.Collections.Generic.List<string> args)
         {
-            if (MobileParty.MainParty == null) return "Main Party bulunamadý.";
+            if (MobileParty.MainParty == null) return "Main Party not found.";
 
             int count = 5;
             if (args.Count > 0) _ = int.TryParse(args[0], out count);
 
             var system = ModuleManager.Instance.GetModule<MilitiaSpawningSystem>();
-            if (system == null) return "Hata: SpawningSystem aktif deðil.";
+            if (system == null) return "Error: SpawningSystem not active.";
 
             var hideout = ModuleManager.Instance.HideoutCache.FirstOrDefault(s => s.IsActive);
-            if (hideout == null) return "Aktif hideout bulunamadý.";
+            if (hideout == null) return "Active hideout not found.";
 
             int spawned = 0;
             for (int i = 0; i < count; i++)
@@ -1039,7 +1095,7 @@ namespace BanditMilitias.Systems.Spawning
                 if (p != null) spawned++;
             }
 
-            return $"{spawned} parti spawn edildi.";
+            return $"{spawned} parties spawned.";
         }
 
         [CommandLineFunctionality.CommandLineArgumentFunction("spawn_swarm", "bandit")]
@@ -1050,7 +1106,7 @@ namespace BanditMilitias.Systems.Spawning
         public static string SpawnAll(List<string> args)
         {
             var instance = ModuleManager.Instance.GetModule<MilitiaSpawningSystem>();
-            if (instance == null) return "SpawningSystem modülü bulunamadý!";
+            if (instance == null) return "SpawningSystem module not found!";
 
             int spawned = 0;
             var hideouts = ModuleManager.Instance.HideoutCache;
@@ -1061,21 +1117,21 @@ namespace BanditMilitias.Systems.Spawning
                 if (party != null) spawned++;
             }
 
-            return $"Tamamlandý! {hideouts.Count} hideout'tan {spawned} parti spawn edildi.";
+            return $"Completed! {spawned} parties spawned from {hideouts.Count} hideouts.";
         }
 
         [CommandLineFunctionality.CommandLineArgumentFunction("debug_hideout", "bandit")]
         public static string DebugHideout(List<string> args)
         {
             if (args.Count == 0)
-                return "Kullaným: bandit_militias.debug_hideout <hideout_adý>";
+                return "Usage: bandit_militias.debug_hideout <hideout_name>";
 
             string hideoutName = string.Join(" ", args);
             var hideout = Infrastructure.ModuleManager.Instance.HideoutCache.FirstOrDefault(s =>
                 s.Name.ToString().IndexOf(hideoutName, StringComparison.OrdinalIgnoreCase) >= 0);
 
             if (hideout == null)
-                return $"'{hideoutName}' bulunamadý!";
+                return $"'{hideoutName}' not found!";
 
             var sb = new System.Text.StringBuilder();
             _ = sb.AppendLine("============================================");
@@ -1094,13 +1150,13 @@ namespace BanditMilitias.Systems.Spawning
             _ = sb.AppendLine($"  IsInfinity : X={float.IsInfinity(gatePos.X)}, Y={float.IsInfinity(gatePos.Y)}");
             _ = sb.AppendLine($"  Is (0,0)   : {gatePos.X == 0f && gatePos.Y == 0f}");
             _ = sb.AppendLine("¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦");
-            _ = sb.AppendLine("Blacklist: DEVRE DISI");
+            _ = sb.AppendLine("Blacklist: DISABLED");
             _ = sb.AppendLine("¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦¦");
 
             try
             {
                 var mapScene = Campaign.Current.MapSceneWrapper;
-                _ = sb.AppendLine("NavMesh Testleri:");
+                _ = sb.AppendLine("NavMesh Tests:");
 
                 for (int radius = 1; radius <= 10; radius += 3)
                 {
@@ -1113,43 +1169,29 @@ namespace BanditMilitias.Systems.Spawning
                         var faceIndex = mapScene.GetFaceIndex(testPos);
                         _ = sb.AppendLine(faceIndex.IsValid()
                             ? $"    Terrain: {mapScene.GetFaceTerrainType(faceIndex)}"
-                            : "    Terrain: Geçersiz FaceIndex");
+                            : "    Terrain: Invalid FaceIndex");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _ = sb.AppendLine($"NavMesh HATA: {ex.Message}");
+                _ = sb.AppendLine($"NavMesh ERROR: {ex.Message}");
             }
 
             _ = sb.AppendLine("============================================");
 
             string result = sb.ToString();
             try { BanditMilitias.Infrastructure.FileLogger.Log($"DEBUG HIDEOUT: {hideout.Name}\n{result}"); }
-            catch (Exception ex) { DebugLogger.Log($"[Spawn] Log yazýlamadý: {ex.Message}"); }
+            catch (Exception ex) { DebugLogger.Log($"[Spawn] Could not write log: {ex.Message}"); }
 
             return result;
         }
 
-        #region Helper Methods
-
-        /// <summary>
-        /// Activation Delay kontrolü - oyun başladıktan X gün sonra aktif ol
-        #endregion
-
-
-
-        /// <summary>
-        /// ObjectPool kullanarak TroopRoster oluştur
-        /// </summary>
         private TroopRoster CreateTroopRosterFromPool()
         {
             return TroopRosterPool.Rent();
         }
 
-        /// <summary>
-        /// TroopRoster'ı havuza geri ver
-        /// </summary>
         private void ReturnTroopRosterToPool(TroopRoster roster)
         {
             if (roster != null)
@@ -1160,10 +1202,11 @@ namespace BanditMilitias.Systems.Spawning
 
     }
 
-    // ── Inline: SpawnDecisionRules ────────────────────────────────
     public static class SpawnDecisionRules
     {
         public static bool ShouldResetDailySpawnCounter(float elapsedDaysSinceLastSpawn)
             => elapsedDaysSinceLastSpawn >= 1.0f;
     }
 }
+
+

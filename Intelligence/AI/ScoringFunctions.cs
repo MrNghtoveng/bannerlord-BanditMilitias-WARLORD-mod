@@ -20,10 +20,10 @@ namespace BanditMilitias.Intelligence.AI
         private static readonly Dictionary<MobileParty, (float strength, float timestamp)> _strengthCache = new();
         private const float CACHE_DURATION = 1f;
 
-        // OPTIMIZASYON: Yüksek frekanslı AI kararları için [ThreadStatic] bufferlar
+
         [ThreadStatic] private static List<MobileParty>? _nearbyBuffer;
-        
-        // Temizlik işlemleri için statik bufferlar (düşük frekans ama güvenli)
+
+
         private static readonly List<MobileParty> _strengthKeysBuffer = new(128);
         private static readonly List<AttackScoreKey> _attackKeysBuffer = new(128);
 
@@ -90,7 +90,8 @@ namespace BanditMilitias.Intelligence.AI
 
         private static float CalculateMoraleScore(MobileParty party)
         {
-            // MilitiaMoraleSystem'den gerçek moral puanı al; vanilla party.Morale fallback
+
+
             try
             {
                 if (party.PartyComponent is BanditMilitias.Components.MilitiaPartyComponent)
@@ -340,7 +341,7 @@ namespace BanditMilitias.Intelligence.AI
             int nearbyEnemies = 0;
             float totalEnemyStrength = 0f;
 
-            // OPTIMIZASYON: Buffer kullan, her seferinde new List() yapma
+
             _nearbyBuffer ??= new List<MobileParty>(64);
             _nearbyBuffer.Clear();
             MilitiaSmartCache.Instance.GetNearbyParties(targetPos, 15f, _nearbyBuffer);
@@ -400,7 +401,7 @@ namespace BanditMilitias.Intelligence.AI
 
             Vec2 homePos = new(homeHideout.GatePosition.X, homeHideout.GatePosition.Y);
 
-            // OPTIMIZASYON: Buffer kullan
+
             _nearbyBuffer ??= new List<MobileParty>(64);
             _nearbyBuffer.Clear();
             MilitiaSmartCache.Instance.GetNearbyParties(homePos, 30f, _nearbyBuffer);

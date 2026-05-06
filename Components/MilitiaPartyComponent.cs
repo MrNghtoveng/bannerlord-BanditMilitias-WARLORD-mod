@@ -4,25 +4,41 @@ using TaleWorlds.CampaignSystem.Party.PartyComponents;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.Localization;
-using TaleWorlds.SaveSystem;
+using BanditMilitias.Systems.WarlordLegitimacy;
+using BanditMilitias.Infrastructure;
 
 namespace BanditMilitias.Components
 {
+    /// <summary>
+    /// Runtime-only component for militia parties. 
+    /// This class is no longer saved directly to prevent save-game corruption when the mod is removed.
+    /// Persistent data is managed by MilitiaBehavior via MilitiaData.
+    /// </summary>
     public class MilitiaPartyComponent : PartyComponent
     {
-        [SaveableField(1)]
         private Settlement? _homeSettlement;
-
-        [SaveableField(3)]
         private TextObject? _customName;
-
-        [SaveableField(5)]  // BULGU #4 FIX: Eksik SaveableField eklendi - _currentOrder artık kaydediliyor
         private BanditMilitias.Intelligence.Strategic.StrategicCommand? _currentOrder;
-
-        [SaveableField(6)]
         private CampaignTime _orderTimestamp = CampaignTime.Zero;
+        private Banner? _cachedBanner;
+        private MilitiaRole _role = MilitiaRole.Raider;
+        private WarlordState _currentState = WarlordState.Patrolling;
+        private int _gold = 0;
+        private string? _warlordId;
+        private int _daysAlive = 0;
+        private int _battlesWon = 0;
+        private int _battlesLost = 0;
+        private int _totalKills = 0;
+        private bool _hasBeenPromotedToWarlord = false;
+        private bool _isWatcher = false;
+        private System.Collections.Generic.Dictionary<string, float> _inheritedTactics = new();
+        private CampaignTime _lastBattleTime = CampaignTime.Zero;
+        private float _renown = 0f;
+        private float _equipmentQuality = 1.0f;
+        private CampaignTime _nextThinkTime = CampaignTime.Zero;
+        private LegitimacyLevel _bannerPrestigeLevel = LegitimacyLevel.Outlaw;
+        private Intelligence.Strategic.Warlord? _assignedWarlord;
 
-        [NonSerialized]
         public bool IsPriorityAIUpdate = false;
 
         public BanditMilitias.Intelligence.Strategic.BanditBrain Brain => BanditMilitias.Intelligence.Strategic.BanditBrain.Instance;
@@ -50,15 +66,10 @@ namespace BanditMilitias.Components
         }
 
         public override Hero? PartyOwner => null;
-
-        public override TextObject Name => _customName ?? new TextObject("Haydut Milisleri");
-
+        public override TextObject Name => _customName ?? new TextObject("Bandit Militias");
         public override Settlement? HomeSettlement => _homeSettlement;
 
-        public Settlement? GetHomeSettlement() => (_homeSettlement != null && _homeSettlement.IsActive)
-            ? _homeSettlement
-            : null;
-
+        public Settlement? GetHomeSettlement() => (_homeSettlement != null && _homeSettlement.IsActive) ? _homeSettlement : null;
         public Settlement? GetHomeSettlementRaw() => _homeSettlement;
 
         public void SetHomeSettlement(Settlement newHome)
@@ -66,9 +77,6 @@ namespace BanditMilitias.Components
             if (newHome == null) return;
             _homeSettlement = newHome;
         }
-
-        [SaveableField(2)]
-        private Banner? _cachedBanner;
 
         public enum MilitiaRole
         {
@@ -87,172 +95,53 @@ namespace BanditMilitias.Components
             ReturningToHideout = 4
         }
 
-        [SaveableField(4)]
-        private MilitiaRole _role = MilitiaRole.Raider;
-
-        [SaveableField(7)]
-        private WarlordState _currentState = WarlordState.Patrolling;
-
-        [SaveableField(8)]
-        private int _gold = 0;
-
-        public MilitiaRole Role
-        {
-            get => _role;
-            set => _role = value;
-        }
-
-        public WarlordState CurrentState
-        {
-            get => _currentState;
-            set => _currentState = value;
-        }
-
-        public int Gold
-        {
-            get => _gold;
-            set => _gold = value;
-        }
-
-        [SaveableField(9)]
-        private string? _warlordId;
-
-        public string? WarlordId
-        {
-            get => _warlordId;
-            set => _warlordId = value;
-        }
-
-        [NonSerialized]
-        private BanditMilitias.Intelligence.Strategic.Warlord? _assignedWarlord;
-
-        public BanditMilitias.Intelligence.Strategic.Warlord? AssignedWarlord
-        {
-            get => _assignedWarlord;
-            set => _assignedWarlord = value;
-        }
-
-        [SaveableField(10)]
-        private int _daysAlive = 0;
-
+        public MilitiaRole Role { get => _role; set => _role = value; }
+        public WarlordState CurrentState { get => _currentState; set => _currentState = value; }
+        public int Gold { get => _gold; set => _gold = value; }
+        public string? WarlordId { get => _warlordId; set => _warlordId = value; }
         public int DaysAlive { get => _daysAlive; set => _daysAlive = value; }
-
-        [SaveableField(11)]
-        private int _battlesWon = 0;
-
         public int BattlesWon { get => _battlesWon; set => _battlesWon = value; }
-
-        [SaveableField(12)]
-        private int _battlesLost = 0;
-
         public int BattlesLost { get => _battlesLost; set => _battlesLost = value; }
-
-        [SaveableField(13)]
-        private int _totalKills = 0;
-
         public int TotalKills { get => _totalKills; set => _totalKills = value; }
-
-        [SaveableField(14)]
-        private bool _hasBeenPromotedToWarlord = false;
-
         public bool HasBeenPromotedToWarlord { get => _hasBeenPromotedToWarlord; set => _hasBeenPromotedToWarlord = value; }
-
-        [SaveableField(21)]
-        private bool _isWatcher = false;
-
         public bool IsWatcher { get => _isWatcher; set => _isWatcher = value; }
-
-        [SaveableField(15)]
-        private System.Collections.Generic.Dictionary<string, float> _inheritedTactics = new();
-
-        // HATA-BM-5 FIX: Eski save dosyalarında bu field mevcut olmayabilir —
-        // Bannerlord deserializer field initializer'ı çağırmaz, null bırakır.
-        // Null-coalescing ile güvenli erişim sağlandı.
         public System.Collections.Generic.Dictionary<string, float> InheritedTactics { get => _inheritedTactics ??= new(); set => _inheritedTactics = value; }
-
-        [SaveableField(16)]
-        private CampaignTime _lastBattleTime = CampaignTime.Zero;
-
         public CampaignTime LastBattleTime { get => _lastBattleTime; set => _lastBattleTime = value; }
-
-        [SaveableField(19)]
-        private float _renown = 0f;
-
         public float Renown { get => _renown; set => _renown = value; }
-
-        [SaveableField(20)]
-        private float _equipmentQuality = 1.0f;
-
         public float EquipmentQuality { get => _equipmentQuality; set => _equipmentQuality = value; }
+        public CampaignTime NextThinkTime { get => _nextThinkTime; set => _nextThinkTime = value; }
+        public LegitimacyLevel BannerPrestigeLevel => _bannerPrestigeLevel;
+        public Intelligence.Strategic.Warlord? AssignedWarlord { get => _assignedWarlord; set => _assignedWarlord = value; }
 
-        // ── Bannerlord tarzı uyku modu ────────────────────────────
-        // Parti bir karar verdikten sonra bu zamana kadar AI hesabı atlanır.
-        // SaveableField 17: kayıt/yükleme arasında uyku korunur.
-        [SaveableField(17)]
-        private CampaignTime _nextThinkTime = CampaignTime.Zero;
-
-        [SaveableField(18)]
-        private BanditMilitias.Systems.Progression.LegitimacyLevel _bannerPrestigeLevel =
-            BanditMilitias.Systems.Progression.LegitimacyLevel.Outlaw;
-
-        public CampaignTime NextThinkTime
-        {
-            get => _nextThinkTime;
-            set => _nextThinkTime = value;
-        }
-
-        /// <summary>
-        /// Uyku modunu başlatır. <paramref name="hours"/> saatlik bekleme süresi sonuna kadar
-        /// AI kararı atlanır. Savaş veya IsPriorityAIUpdate bu uyku modunu iptal eder.
-        /// </summary>
         public void SleepFor(float hours)
         {
             float clampedHours = hours;
-            if (clampedHours < 0f) clampedHours = 0f;
             if (clampedHours > 24f) clampedHours = 24f;
-
-            if (clampedHours <= 0f)
-            {
-                WakeUp();
-                return;
-            }
-
+            if (clampedHours <= 0f) { WakeUp(); return; }
             _nextThinkTime = CampaignTime.HoursFromNow(clampedHours);
         }
 
-        /// <summary>Uyku modunu anında iptal eder — acil durum override'ı.</summary>
         public void WakeUp() => _nextThinkTime = CampaignTime.Now;
 
         public float GetSleepRemainingHours()
         {
-            if (_nextThinkTime == CampaignTime.Zero || Campaign.Current == null)
-                return 0f;
-
+            if (_nextThinkTime == CampaignTime.Zero || Campaign.Current == null) return 0f;
             float remaining = (float)(_nextThinkTime - CampaignTime.Now).ToHours;
-            return remaining > 0f ? remaining : 0f;
+            return Math.Max(0f, remaining);
         }
 
         public float GetSleepOverdueHours()
         {
-            if (_nextThinkTime == CampaignTime.Zero || Campaign.Current == null)
-                return 0f;
-
+            if (_nextThinkTime == CampaignTime.Zero || Campaign.Current == null) return 0f;
             float overdue = (float)(CampaignTime.Now - _nextThinkTime).ToHours;
-            return overdue > 0f ? overdue : 0f;
+            return Math.Max(0f, overdue);
         }
 
-        public void InvalidateBannerCache()
+        public void InvalidateBannerCache() => _cachedBanner = null;
+
+        public void SetBannerPrestigeLevel(LegitimacyLevel level)
         {
-            _cachedBanner = null;
-        }
-
-        public BanditMilitias.Systems.Progression.LegitimacyLevel BannerPrestigeLevel => _bannerPrestigeLevel;
-
-        public void SetBannerPrestigeLevel(BanditMilitias.Systems.Progression.LegitimacyLevel level)
-        {
-            if (_bannerPrestigeLevel == level)
-                return;
-
+            if (_bannerPrestigeLevel == level) return;
             _bannerPrestigeLevel = level;
             InvalidateBannerCache();
         }
@@ -261,7 +150,10 @@ namespace BanditMilitias.Components
         {
             try
             {
-                if (_bannerPrestigeLevel >= Systems.Progression.LegitimacyLevel.Warlord)
+                if (Settings.Instance?.EnableBanners == false)
+                    return _homeSettlement?.Banner ?? Banner.CreateRandomBanner();
+
+                if (_bannerPrestigeLevel >= LegitimacyLevel.Warlord)
                 {
                     _cachedBanner ??= Banner.CreateOneColoredBannerWithOneIcon(
                         new TaleWorlds.Library.Color(0.8f, 0.1f, 0.1f).ToUnsignedInteger(),
@@ -271,21 +163,68 @@ namespace BanditMilitias.Components
                 }
 
                 if (_cachedBanner != null) return _cachedBanner;
-
-                if (_homeSettlement?.Banner != null)
-                {
-                    return _homeSettlement.Banner;
-                }
+                if (_homeSettlement?.Banner != null) return _homeSettlement.Banner;
 
                 _cachedBanner = Banner.CreateRandomBanner();
                 return _cachedBanner;
             }
             catch (Exception)
             {
-                // _homeSettlement null/disposed durumunda güvenli fallback
-                _cachedBanner = Banner.CreateRandomBanner();
-                return _cachedBanner;
+                return _cachedBanner = Banner.CreateRandomBanner();
             }
+        }
+
+        /// <summary>
+        /// Populates this runtime component from persistent data.
+        /// </summary>
+        public void LoadFromData(MilitiaData data)
+        {
+            _role = (MilitiaRole)data.Role;
+            _currentState = (WarlordState)data.CurrentState;
+            _gold = data.Gold;
+            _warlordId = data.WarlordId;
+            _daysAlive = data.DaysAlive;
+            _battlesWon = data.BattlesWon;
+            _battlesLost = data.BattlesLost;
+            _totalKills = data.TotalKills;
+            _hasBeenPromotedToWarlord = data.HasBeenPromotedToWarlord;
+            _isWatcher = data.IsWatcher;
+            _renown = data.Renown;
+            _equipmentQuality = data.EquipmentQuality;
+            _nextThinkTime = CampaignTime.Hours((float)data.NextThinkTimeHours);
+            _bannerPrestigeLevel = (LegitimacyLevel)data.BannerPrestigeLevel;
+            _inheritedTactics = data.InheritedTactics ?? new();
+            
+            if (!string.IsNullOrEmpty(data.CustomName))
+                _customName = new TextObject(data.CustomName);
+        }
+
+        /// <summary>
+        /// Captures runtime state into persistent data.
+        /// </summary>
+        public MilitiaData SaveToData()
+        {
+            return new MilitiaData
+            {
+                HomeSettlementId = _homeSettlement?.StringId ?? "",
+                CustomName = _customName?.ToString(),
+                Role = (int)_role,
+                CurrentState = (int)_currentState,
+                Gold = _gold,
+                WarlordId = _warlordId,
+                DaysAlive = _daysAlive,
+                BattlesWon = _battlesWon,
+                BattlesLost = _battlesLost,
+                TotalKills = _totalKills,
+                HasBeenPromotedToWarlord = _hasBeenPromotedToWarlord,
+                IsWatcher = _isWatcher,
+                Renown = _renown,
+                EquipmentQuality = _equipmentQuality,
+                NextThinkTimeHours = _nextThinkTime.ToHours,
+                BannerPrestigeLevel = (int)_bannerPrestigeLevel,
+                InheritedTactics = _inheritedTactics
+            };
         }
     }
 }
+

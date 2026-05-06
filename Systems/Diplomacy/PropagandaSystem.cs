@@ -97,7 +97,7 @@ namespace BanditMilitias.Systems.Diplomacy
                 float penalty = BASE_LOYALTY_PENALTY_DAILY * record.Intensity;
                 town.Town.Loyalty = MathF.Max(0f, town.Town.Loyalty - penalty);
 
-                // FearSystem: propaganda başarılı olunca çevre köylere saygı/korku dalgası
+
                 try
                 {
                     if (town.BoundVillages != null)
@@ -105,17 +105,17 @@ namespace BanditMilitias.Systems.Diplomacy
                         foreach (var village in town.BoundVillages)
                         {
                             if (village?.Settlement == null) continue;
-                            Fear.FearSystem.Instance.ApplyPressureEvent(
+                            FearSystem.Instance.ApplyPressureEvent(
                                 village.Settlement,
                                 record.WarlordId,
                                 fearDelta: 0.005f * record.Intensity,
                                 respectDelta: 0.008f * record.Intensity,
-                                reason: "Propaganda dalgası");
+                                reason: "Propaganda wave");
                         }
                     }
                 }
-                catch (Exception ex) 
-                { 
+                catch (Exception ex)
+                {
                     DebugLogger.Warning("Propaganda", $"Failed to apply pressure event: {ex.Message}");
                 }
 
@@ -155,7 +155,7 @@ namespace BanditMilitias.Systems.Diplomacy
             if (epicenter == null) return null;
 
             var candidates = Infrastructure.ModuleManager.Instance.TownCache
-                .Where(s => s.IsTown && !_activeOperations.ContainsKey(s.StringId) && s.Town.Loyalty < 60f && !s.MapFaction.IsRebelClan)
+                .Where(s => s.IsTown && !_activeOperations.ContainsKey(s.StringId) && s.Town.Loyalty < 60f && !((s.MapFaction as Clan)?.IsRebelClan == true))
                 .OrderBy(s => CompatibilityLayer.GetSettlementPosition(s).DistanceSquared(CompatibilityLayer.GetSettlementPosition(epicenter)))
                 .ToList();
 

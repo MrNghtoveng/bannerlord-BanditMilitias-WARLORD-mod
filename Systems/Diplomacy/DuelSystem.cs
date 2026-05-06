@@ -7,6 +7,7 @@ using System;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Actions;
+using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.CampaignSystem.MapEvents;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.Core;
@@ -14,10 +15,7 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Diplomacy
 {
-    /// <summary>
-    /// Oyuncu bir milisyayÄ± yendiÄŸinde warlord varsa dÃ¼ello teklif edilir.
-    /// GerÃ§ek Ã¶dÃ¼l: Ã¼n, altÄ±n, warlord dÃ¼ÅŸÃ¼ÅŸÃ¼ veya fidye.
-    /// </summary>
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 230, IsCritical = false)]
     public class DuelSystem : Core.Components.MilitiaModuleBase
     {
         public override string ModuleName => "DuelSystem";
@@ -47,10 +45,9 @@ namespace BanditMilitias.Systems.Diplomacy
         private void OnMapEventEnded(MapEvent ev)
         {
             if (ev == null || !ev.IsPlayerMapEvent) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
             if (ev.WinningSide != ev.PlayerSide) return;
 
-            // Yenilen taraftaki milisya var mÄ±?
             var loserSide = ev.PlayerSide == BattleSideEnum.Attacker
                 ? ev.DefenderSide : ev.AttackerSide;
 
@@ -58,37 +55,38 @@ namespace BanditMilitias.Systems.Diplomacy
             {
                 if (party.Party?.MobileParty?.PartyComponent is not MilitiaPartyComponent) continue;
 
-                // EK-B FIX: GetByParty â†’ GetWarlordForParty (Intelligence.Strategic.WarlordSystem)
+
                 var w = WarlordSystem.Instance.GetWarlordForParty(party.Party.MobileParty);
                 if (w == null || !w.IsAlive) continue;
 
                 int tier = (int)WarlordCareerSystem.Instance.GetTier(w.StringId);
-                if (tier < 2) continue; // sadece Tier 2+ warlord iÃ§in dÃ¼ello
+                if (tier < 2) continue;
 
                 TryOfferDuel(w, party.Party.MobileParty, tier);
-                break; // tek dÃ¼ello yeterli
+                break;
+
             }
         }
 
-        // EK-B FIX: Warlord â†’ Warlord; tier parametre olarak geÃ§iliyor (Ã¶nbelleklendi)
         private static void TryOfferDuel(Warlord w, MobileParty militia, int tier)
         {
             if (Hero.MainHero == null) return;
 
             float playerScore = CalcScore(Hero.MainHero);
-            // BattlesWon â†’ Kills (Intelligence.Strategic.Warlord'da Kills var, BattlesWon yok)
+
+
             float warlordScore = tier * 40f + w.Kills * 5f + MBRandom.RandomFloat * 30f;
 
             bool playerWins = playerScore * (0.8f + MBRandom.RandomFloat * 0.4f)
                             >= warlordScore * (0.8f + MBRandom.RandomFloat * 0.4f);
 
-            // FullTitle â†’ FullName  (Intelligence.Strategic.Warlord'da FullName var)
+
             string bodyKey = playerWins
-                ? $"DÃ¼ello kazanÄ±ldÄ±! {w.FullName} devrildi."
-                : $"DÃ¼ello kaybedildi. {w.FullName} kaÃ§mayÄ± baÅŸardÄ±.";
+                ? $"Düello kazanıldı! {w.FullName} devrildi."
+                : $"Düello kaybedildi. {w.FullName} kaçmayı başardı.";
 
             InformationManager.ShowInquiry(new InquiryData(
-                playerWins ? "DÃ¼ello Zaferi!" : "DÃ¼ello Yenilgisi",
+                playerWins ? "Düello Zaferi!" : "Düello Yenilgisi",
                 bodyKey,
                 true, false,
                 "Tamam", null,
@@ -100,7 +98,8 @@ namespace BanditMilitias.Systems.Diplomacy
         {
             if (playerWins)
             {
-                // Ãœn + altÄ±n Ã¶dÃ¼lÃ¼
+
+
                 float renown = (tier + 1) * 5f;
                 int gold = (int)(w.Gold * 0.3f) + tier * 200;
                 try
@@ -108,36 +107,37 @@ namespace BanditMilitias.Systems.Diplomacy
                     Hero.MainHero.Clan.AddRenown(renown, false);
                     Hero.MainHero.ChangeHeroGold(gold);
                 }
-                catch (Exception ex) 
-                { 
+                catch (Exception ex)
+                {
                     Infrastructure.FileLogger.LogWarning($"Duel reward application failed: {ex.Message}");
                 }
 
-                // Warlord'u dÃ¼ÅŸÃ¼r
+
                 if (w.LinkedHero?.IsAlive == true)
                 {
                     try { KillCharacterAction.ApplyByMurder(w.LinkedHero, Hero.MainHero, true); }
-                    catch (Exception ex) 
-                    { 
+                    catch (Exception ex)
+                    {
                         Infrastructure.FileLogger.LogWarning($"Duel executioner action failed: {ex.Message}");
                     }
                 }
                 WarlordSystem.Instance.RemoveWarlord(w);
 
                 InformationManager.DisplayMessage(new InformationMessage(
-                    $"[DÃ¼ello] {w.FullName} yenildi! +{renown:F0} Ã¼n, +{gold} altÄ±n",
+                    $"[Düello] {w.FullName} yenildi! +{renown:F0} ün, +{gold} altın",
                     Colors.Green));
 
-                FileLogger.Log($"[Duel] Oyuncu kazandÄ± vs {w.Name}, Tier={tier}");
+                FileLogger.Log($"[Duel] Oyuncu kazandı vs {w.Name}, Tier={tier}");
             }
             else
             {
-                // Warlord kazanır, oyuncu esir düşer
-                w.Gold += 500f; 
+
+
+                w.Gold += 500f;
                 InformationManager.DisplayMessage(new InformationMessage(
                     $"[DÜELLO] {w.FullName} düelloyu kazandı ve seni esir aldı!", Colors.Red));
                 FileLogger.Log($"[Duel] Oyuncu kaybetti vs {w.Name}");
-                
+
                 if (militia != null && militia.Party != null)
                 {
                     try
@@ -168,7 +168,8 @@ namespace BanditMilitias.Systems.Diplomacy
         public static void StartDuel(MobileParty militiaParty)
         {
             if (militiaParty == null || militiaParty.LeaderHero == null) return;
-            // O(1) dictionary lookup
+
+
             var w = WarlordSystem.Instance.GetWarlordForHero(militiaParty.LeaderHero);
             if (w == null) return;
             int tier = (int)WarlordCareerSystem.Instance.GetTier(w.StringId);
@@ -176,3 +177,5 @@ namespace BanditMilitias.Systems.Diplomacy
         }
     }
 }
+
+

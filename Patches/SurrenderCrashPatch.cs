@@ -4,6 +4,7 @@ using System.Reflection;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Actions;
 using TaleWorlds.CampaignSystem.CampaignBehaviors;
+using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
@@ -13,9 +14,34 @@ namespace BanditMilitias.Patches.SurrenderFix
 {
 
     [HarmonyPatch(typeof(PlayerCaptivityCampaignBehavior), "CheckCaptivityChange")]
-    [HarmonyPriority(Priority.VeryHigh)]  // Diğer modlardan önce çalış, patch tek başına yeterli
+    [HarmonyPriority(Priority.VeryHigh)]
+
     internal static class SurrenderCrashPatch
     {
+        /// <summary>
+        /// Pre-flight guard: Harmony calls this before attempting to patch.
+        /// Returns false if the target method no longer exists in this API version,
+        /// causing Harmony to skip this patch gracefully — no exception, no Degraded mode.
+        /// </summary>
+        [HarmonyPrepare]
+        static bool Prepare()
+        {
+            var targetMethod = HarmonyLib.AccessTools.Method(
+                typeof(PlayerCaptivityCampaignBehavior), "CheckCaptivityChange");
+
+            if (targetMethod == null)
+            {
+                BanditMilitias.Infrastructure.FileLogger.LogWarning(
+                    "[SurrenderCrashPatch] Target method 'CheckCaptivityChange' not found in this " +
+                    "API version — patch skipped gracefully. Vanilla captivity behavior will be used.");
+                return false;
+            }
+
+            BanditMilitias.Infrastructure.FileLogger.Log(
+                "[SurrenderCrashPatch] Target method verified — patch will be applied.");
+            return true;
+        }
+
 
         private static FieldInfo? _isPrisonerField;
         private static FieldInfo? _partyBelongedToAsPrisonerField;
@@ -32,24 +58,17 @@ namespace BanditMilitias.Patches.SurrenderFix
             if (_reflectionValidated) return;
             _reflectionValidated = true;
 
-            try
-            {
-                _isPrisonerField = typeof(Hero).GetField("_isPrisoner", BindingFlags.NonPublic | BindingFlags.Instance);
-                _partyBelongedToAsPrisonerField = typeof(Hero).GetField("_partyBelongedToAsPrisoner", BindingFlags.NonPublic | BindingFlags.Instance);
-                _isPrisonerProperty = typeof(Hero).GetProperty("IsPrisoner", BindingFlags.Public | BindingFlags.Instance);
-                _partyBelongedToAsPrisonerProperty = typeof(Hero).GetProperty("PartyBelongedToAsPrisoner", BindingFlags.Public | BindingFlags.Instance);
-            }
-            catch (Exception ex)
-            {
-                Log.Warning("[SurrenderFix] Reflection initialization failed: " + ex.Message);
-            }
+            _isPrisonerField = typeof(Hero).GetField("_isPrisoner", BindingFlags.NonPublic | BindingFlags.Instance);
+            _partyBelongedToAsPrisonerField = typeof(Hero).GetField("_partyBelongedToAsPrisoner", BindingFlags.NonPublic | BindingFlags.Instance);
+            _isPrisonerProperty = typeof(Hero).GetProperty("IsPrisoner", BindingFlags.Public | BindingFlags.Instance);
+            _partyBelongedToAsPrisonerProperty = typeof(Hero).GetProperty("PartyBelongedToAsPrisoner", BindingFlags.Public | BindingFlags.Instance);
 
             bool hasFields = _isPrisonerField != null && _partyBelongedToAsPrisonerField != null;
             bool hasProperties = _isPrisonerProperty != null && _partyBelongedToAsPrisonerProperty != null;
 
             if (hasProperties)
             {
-                _apiVersion = "v1.2.10+ (Property-based)";
+                _apiVersion = "v1.3.x (Property-based)";
 
                 bool hasIsPrisonerSetter = _isPrisonerProperty!.GetSetMethod(true) != null;
                 bool hasPartySetter = _partyBelongedToAsPrisonerProperty!.GetSetMethod(true) != null;
@@ -77,7 +96,7 @@ namespace BanditMilitias.Patches.SurrenderFix
             }
             else if (hasFields)
             {
-                _apiVersion = "v1.2.9 or earlier (Field-based)";
+                _apiVersion = "v1.3.x / v1.2.9 or earlier (Field-based)";
                 _reflectionAvailable = true;
                 Log.Info($"[SurrenderFix] API Version: {_apiVersion} - Full reflection available (via private fields)");
             }
@@ -98,17 +117,17 @@ namespace BanditMilitias.Patches.SurrenderFix
         private const float INITIAL_CAPTIVITY_GRACE_HOURS = 6f;
         private const float MAX_CUSTOM_DT_HOURS = 1.0f;
         private const int MAX_CONSECUTIVE_FAILURES = 3;
-        // Oyuncu isteği üzerine bekleme süresi 1 saate düşürüldü
+
+
         private const float MIN_ESCAPE_ELIGIBILITY_HOURS = 1f;
 
         internal static void ResetState()
         {
-            // FIX: CampaignTime.Zero yerine Now kullan.
-            // Zero ile Now farkı 26000+ gün olabilir (uzun save'lerde).
-            // Bu hoursElapsed'ı astronomik yapıyor ve ilk tick'te
-            // MIN_EXECUTION_INTERVAL_HOURS kontrolünü bypass ediyordu.
+
+
             _lastExecutionTime = Campaign.Current != null ? CampaignTime.Now : CampaignTime.Zero;
-            _captivityStartTime = CampaignTime.Zero;  // esaret henüz başlamadı, Zero doğru
+            _captivityStartTime = CampaignTime.Zero;
+
             _captivityTracked = false;
             _consecutiveFailures = 0;
             Log.Info("[SurrenderFix] State reset for new game session");
@@ -124,10 +143,11 @@ namespace BanditMilitias.Patches.SurrenderFix
             }
 
             return $"SurrenderFix: API={_apiVersion}, ReflectionAccess={_reflectionAvailable}, " +
-                   $"Tracked={_captivityTracked}, ConsecutiveFailures={_consecutiveFailures}";
+                   $"Tracked={_captivityTracked}, ConsecutiveFailures={_consecutiveFailures}, " +
+                   $"Standalone BanditMilitias debugging mode";
         }
 
-        // Standalone BanditMilitias debugging mode: treat AgentCrashGuard as disabled.
+
         internal static bool HasAgentCrashGuardCaptivityPatch() => false;
 
         internal static bool HasAgentCrashGuardDestroyPartyPatch() => false;
@@ -157,107 +177,73 @@ namespace BanditMilitias.Patches.SurrenderFix
         [HarmonyPrefix]
         static bool Prefix(float dt)
         {
+            // Ensure reflection is initialized on first call
+            if (!_reflectionValidated)
+                Initialize();
+
+            if (Hero.MainHero == null)
+            {
+                Log.Warning("[SurrenderFix] Hero.MainHero is null - aborting");
+                return true;
+            }
+
+            if (Campaign.Current == null || !Campaign.Current.GameStarted)
+            {
+                Log.Warning("[SurrenderFix] Campaign not started - aborting");
+                return true;
+            }
+
+            if (!Hero.MainHero.IsPrisoner)
+            {
+                _captivityTracked = false;
+                _captivityStartTime = CampaignTime.Zero;
+
+
+                _lastExecutionTime = CampaignTime.Now;
+                return true;
+            }
+
+            if (!_captivityTracked)
+            {
+                _captivityTracked = true;
+                _captivityStartTime = CampaignTime.Now;
+                _lastExecutionTime = CampaignTime.Now;
+                Log.Info("[SurrenderFix] Captivity tracking initialized.");
+                return true;
+            }
+
+            float hoursElapsed = (float)(CampaignTime.Now - _lastExecutionTime).ToHours;
+            if (hoursElapsed < MIN_EXECUTION_INTERVAL_HOURS)
+                return false;
+
+            float effectiveHours = Math.Min(hoursElapsed, MAX_CUSTOM_DT_HOURS);
+
+            // Yeni klasör fix: exception handling around ProcessCaptivity
+            bool runVanilla;
             try
             {
-
-                if (Hero.MainHero == null)
-                {
-                    Log.Warning("[SurrenderFix] Hero.MainHero is null - aborting");
-                    return true;
-                }
-
-                if (Campaign.Current == null || !Campaign.Current.GameStarted)
-                {
-                    Log.Warning("[SurrenderFix] Campaign not started - aborting");
-                    return true;
-                }
-
-                if (!Hero.MainHero.IsPrisoner)
-                {
-                    _captivityTracked = false;
-                    _captivityStartTime = CampaignTime.Zero;
-                    // FIX: CampaignTime.Zero yerine Now kullan.
-                    // Zero → Now farkı 26000+ gün olabilir (uzun save'lerde).
-                    // Bu hoursElapsed'ı astronomik yapıyor ve ilk tick'te
-                    // MIN_EXECUTION_INTERVAL_HOURS kontrolünü bypass ediyordu.
-                    _lastExecutionTime = CampaignTime.Now;
-                    return true;
-                }
-
-                if (!_captivityTracked)
-                {
-                    _captivityTracked = true;
-                    _captivityStartTime = CampaignTime.Now;
-                    _lastExecutionTime = CampaignTime.Now;
-                    Log.Info("[SurrenderFix] Captivity tracking initialized.");
-                    return true;
-                }
-
-                float hoursElapsed = (float)(CampaignTime.Now - _lastExecutionTime).ToHours;
-                if (hoursElapsed < MIN_EXECUTION_INTERVAL_HOURS)
-                    return false;
-
-                float effectiveHours = Math.Min(hoursElapsed, MAX_CUSTOM_DT_HOURS);
-                bool runVanilla = ProcessCaptivity(effectiveHours);
+                runVanilla = ProcessCaptivity(effectiveHours);
                 _consecutiveFailures = 0;
-                _lastExecutionTime = CampaignTime.Now;
-                return runVanilla;
             }
             catch (Exception ex)
             {
                 _consecutiveFailures++;
-                Log.Error($"[SurrenderFix] Prefix exception (failure #{_consecutiveFailures}): {ex.Message}");
-                Log.Error($"[SurrenderFix] Stack trace: {ex.StackTrace}");
+                Log.Warning(string.Format("[SurrenderFix] ProcessCaptivity exception (failure #{0}): {1}", _consecutiveFailures, ex.Message));
 
                 if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
                 {
-                    EmergencyRelease();
                     _consecutiveFailures = 0;
-                }
-                else
-                {
-                    TryForceRelease();
+                    EmergencyRelease();
                 }
 
-                return false;
+                runVanilla = false;
             }
+
+            _lastExecutionTime = CampaignTime.Now;
+            return runVanilla;
         }
 
-        // HATA-BM-3 FIX: Postfix kaldırıldı — Harmony Postfix __exception parametresi ALMAZ,
-        // bu sadece Finalizer'a özgü. Eski Postfix ölü koddu ve Finalizer ile çift tetiklenme riski
-        // yaratıyordu. Tüm kurtarma mantığı aşağıdaki Finalizer'da güvenle işleniyor.
 
-        // FIX 3: Finalizer - vanilla'dan veya başka yamalardan gelen exception'ları
-        // yakalar, oyun crash'e gitmeden güvenli çıkış sağlar.
-        // AgentCrashGuard'ın Finalizer'ının yaptığı işi biz üstleniyoruz.
-        [HarmonyFinalizer]
-        static Exception? Finalizer(Exception? __exception)
-        {
-            if (__exception == null) return null;
-            if (HasAgentCrashGuardCaptivityPatch())
-            {
-                Log.Info("[SurrenderFix] AgentCrashGuard captivity finalizer detected; keeping BanditMilitias suppression as fallback");
-            }
-
-            // Kırmızı hata yerine kullanıcının paniklememesi için bilgi/uyarı mesajı olarak değiştirildi.
-            // Bu finalizer vanilla oyunun çökmesini başarıyla engelliyor.
-            Log.Warning($"[SurrenderFix] Vanilla oyundaki bir çökme başarıyla (Finalizer) engellendi. Oyuncu serbest bırakılıyor.");
-
-            try
-            {
-                if (Hero.MainHero?.IsPrisoner == true)
-                {
-                    SafeRelease("finalizer recovery");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[SurrenderFix] Finalizer recovery failed: {ex.Message}");
-            }
-
-            // null dön → exception yutulur, oyun crash yapmaz
-            return null;
-        }
 
         private static bool ProcessCaptivity(float dt)
         {
@@ -305,9 +291,7 @@ namespace BanditMilitias.Patches.SurrenderFix
                 return HandleMilitiaCaptivity(dt, validation);
             }
 
-            // AgentCrashGuard olmadığında vanilla CheckCaptivityChange güvenli olmayabilir.
-            // Lider veya faction null olan durumlarda vanilla crash yapar.
-            // Güvenli: sadece hem leader hem faction tamamen hazırsa vanilla'ya bırak.
+
             bool vanillaFullySafe = validation.Leader != null
                 && validation.MapFaction != null
                 && !validation.IsMilitia;
@@ -372,34 +356,25 @@ namespace BanditMilitias.Patches.SurrenderFix
         }
         private static bool HandleMilitiaCaptivity(float dt, CaptorInfo captor)
         {
-            try
+            float captivityAgeHours = GetCaptivityAgeHours();
+            if (captivityAgeHours < MIN_ESCAPE_ELIGIBILITY_HOURS)
             {
-                float captivityAgeHours = GetCaptivityAgeHours();
-                if (captivityAgeHours < MIN_ESCAPE_ELIGIBILITY_HOURS)
-                {
-                    Log.Info($"[SurrenderFix] Escape locked during initial captivity ({captivityAgeHours:F1}/{MIN_ESCAPE_ELIGIBILITY_HOURS:F0}h)");
-                    return false;
-                }
-
-                float escapeChancePerHour = ComputeEscapeChance(captor, captivityAgeHours);
-                float tickChance = 1f - TaleWorlds.Library.MathF.Pow(1f - escapeChancePerHour, dt);
-
-                Log.Info($"[SurrenderFix] Escape chance this tick: {tickChance * 100:F2}%");
-
-                if (MBRandom.RandomFloat < tickChance)
-                {
-                    Log.Info("[SurrenderFix] Militia escape succeeded!");
-                    ExecuteEscape(captor);
-                }
-
+                Log.Info($"[SurrenderFix] Escape locked during initial captivity ({captivityAgeHours:F1}/{MIN_ESCAPE_ELIGIBILITY_HOURS:F0}h)");
                 return false;
             }
-            catch (Exception ex)
+
+            float escapeChancePerHour = ComputeEscapeChance(captor, captivityAgeHours);
+            float tickChance = 1f - TaleWorlds.Library.MathF.Pow(1f - escapeChancePerHour, dt);
+
+            Log.Info($"[SurrenderFix] Escape chance this tick: {tickChance * 100:F2}%");
+
+            if (MBRandom.RandomFloat < tickChance)
             {
-                Log.Error($"[SurrenderFix] HandleMilitiaCaptivity: {ex.Message}");
-                SafeRelease("militia handler exception");
-                return false;
+                Log.Info("[SurrenderFix] Militia escape succeeded!");
+                ExecuteEscape(captor);
             }
+
+            return false;
         }
 
         private static float GetCaptivityAgeHours()
@@ -412,7 +387,8 @@ namespace BanditMilitias.Patches.SurrenderFix
 
         private static float ComputeEscapeChance(CaptorInfo captor, float captivityAgeHours)
         {
-            // Kullanıcı isteği üzerine baz şans artırıldı: %2.5 per hour (~%45 per day)
+
+
             float chance = 0.025f;
 
             int roguery = Hero.MainHero.GetSkillValue(DefaultSkills.Roguery);
@@ -472,18 +448,11 @@ namespace BanditMilitias.Patches.SurrenderFix
         private static void SafeRelease(string reason)
         {
             Log.Info($"[SurrenderFix] SafeRelease ({reason})");
-            try
+            
+            if (Hero.MainHero?.IsPrisoner == true)
             {
-                if (Hero.MainHero?.IsPrisoner == true)
-                {
-                    EndCaptivityAction.ApplyByEscape(Hero.MainHero, null);
-                    Log.Info("[SurrenderFix] SafeRelease succeeded");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[SurrenderFix] SafeRelease failed: {ex.Message}  escalating to ForceRelease");
-                TryForceRelease();
+                EndCaptivityAction.ApplyByEscape(Hero.MainHero, null);
+                Log.Info("[SurrenderFix] SafeRelease succeeded");
             }
         }
 
@@ -491,83 +460,62 @@ namespace BanditMilitias.Patches.SurrenderFix
         {
             Log.Warning($"[SurrenderFix] TryForceRelease - API Version: {_apiVersion}");
 
-            try
+            if (Hero.MainHero == null) return;
+
+            bool released = false;
+
+            if (_isPrisonerProperty != null)
             {
-                if (Hero.MainHero == null) return;
-
-                bool released = false;
-
-                if (_isPrisonerProperty != null)
+                var setter = _isPrisonerProperty.GetSetMethod(true);
+                if (setter != null)
                 {
-                    try
-                    {
-                        var setter = _isPrisonerProperty.GetSetMethod(true);
-                        if (setter != null)
-                        {
-                            _ = setter.Invoke(Hero.MainHero, new object[] { false });
-                            released = true;
-                            Log.Info("[SurrenderFix] Property setter used (v1.2.10+ path)");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warning($"[SurrenderFix] Property setter failed: {ex.Message}");
-                    }
-                }
-
-                if (!released && _isPrisonerField != null)
-                {
-                    try
-                    {
-                        _isPrisonerField.SetValue(Hero.MainHero, false);
-                        released = true;
-                        Log.Info("[SurrenderFix] Field setter used (v1.2.9- path)");
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warning($"[SurrenderFix] Field setter failed: {ex.Message}");
-                    }
-                }
-
-                bool partyCleared = false;
-                if (_partyBelongedToAsPrisonerProperty != null)
-                {
-                    var partySetter = _partyBelongedToAsPrisonerProperty.GetSetMethod(true);
-                    if (partySetter != null)
-                    {
-                        _ = partySetter.Invoke(Hero.MainHero, new object[] { null! });
-                        partyCleared = true;
-                    }
-                }
-
-                if (!partyCleared && _partyBelongedToAsPrisonerField != null)
-                {
-                    _partyBelongedToAsPrisonerField.SetValue(Hero.MainHero, null);
-                    partyCleared = true;
-                }
-
-                if (!released)
-                {
-                    Log.Warning("[SurrenderFix] No writable property/field worked - using public API fallback");
-                    EndCaptivityAction.ApplyByEscape(Hero.MainHero, null);
-                    Log.Info("[SurrenderFix] Public API fallback applied");
-                }
-                else
-                {
-                    Log.Info("[SurrenderFix] Reflection release applied successfully");
+                    _ = setter.Invoke(Hero.MainHero, new object[] { false });
+                    released = true;
+                    Log.Info("[SurrenderFix] Property setter used (v1.3.x / v1.2.10+ path)");
                 }
             }
-            catch (Exception ex)
+
+            if (!released && _isPrisonerField != null)
             {
-                Log.Error($"[SurrenderFix] TryForceRelease failed completely: {ex.Message}");
+                _isPrisonerField.SetValue(Hero.MainHero, false);
+                released = true;
+                Log.Info("[SurrenderFix] Field setter used (v1.2.9- path)");
+            }
+
+            bool partyCleared = false;
+            if (_partyBelongedToAsPrisonerProperty != null)
+            {
+                var partySetter = _partyBelongedToAsPrisonerProperty.GetSetMethod(true);
+                if (partySetter != null)
+                {
+                    _ = partySetter.Invoke(Hero.MainHero, new object[] { null! });
+                    partyCleared = true;
+                }
+            }
+
+            if (!partyCleared && _partyBelongedToAsPrisonerField != null)
+            {
+                _partyBelongedToAsPrisonerField.SetValue(Hero.MainHero, null);
+                partyCleared = true;
+            }
+
+            if (!released)
+            {
+                Log.Warning("[SurrenderFix] No writable property/field worked - using public API fallback");
+                EndCaptivityAction.ApplyByEscape(Hero.MainHero, null);
+                Log.Info("[SurrenderFix] Public API fallback applied");
+            }
+            else
+            {
+                Log.Info("[SurrenderFix] Reflection release applied successfully");
             }
         }
 
         private static void EmergencyRelease()
         {
-            SafeRelease("emergency  consecutive failures exceeded");
+            SafeRelease("emergency — consecutive failures exceeded");
             InformationManager.DisplayMessage(new InformationMessage(
-                "[BanditMilitias] Captivity system error  emergency escape executed.",
+                "[BanditMilitias] Captivity system error — emergency escape executed.",
                 Colors.Red));
         }
 
@@ -594,7 +542,8 @@ namespace BanditMilitias.Patches.SurrenderFix
 
             public static void Info(string msg)
             {
-                if (TestingMode) // ✅ FIX: Only log if TestingMode is enabled
+                if (TestingMode)
+
                 {
                     TryFileLog(msg);
                 }
@@ -615,8 +564,7 @@ namespace BanditMilitias.Patches.SurrenderFix
 
             private static void TryFileLog(string msg)
             {
-                try { BanditMilitias.Infrastructure.FileLogger.Log(msg); }
-                catch (Exception ex) { TaleWorlds.Library.Debug.Print($"[SurrenderFix] FileLogger unavailable: {ex.Message}"); }
+                BanditMilitias.Infrastructure.FileLogger.Log(msg);
             }
         }
     }
@@ -625,6 +573,18 @@ namespace BanditMilitias.Patches.SurrenderFix
     [HarmonyPriority(Priority.High)]
     internal static class PreventCaptorDestructionPatch
     {
+        [HarmonyPrepare]
+        static bool Prepare()
+        {
+            var target = TargetMethod();
+            if (target == null)
+            {
+                BanditMilitias.Infrastructure.FileLogger.LogWarning("[PreventCaptorDestructionPatch] Target method 'DestroyPartyAction.Apply' not found. Patch skipped.");
+                return false;
+            }
+            return true;
+        }
+
         [HarmonyTargetMethod]
         static System.Reflection.MethodBase? TargetMethod()
         {
@@ -634,31 +594,30 @@ namespace BanditMilitias.Patches.SurrenderFix
                 ?? HarmonyLib.AccessTools.Method(type, "Apply");
         }
 
+        // Yeni klasör fix: parameter type changed from MobileParty? to PartyBase?
+        // DestroyPartyAction.Apply's first parameter is PartyBase in v1.2.x+.
+        // Using MobileParty? would cause Harmony injection mismatch → always null.
         [HarmonyPrefix]
-        static bool Prefix(MobileParty? destroyedParty)
+        static bool Prefix(PartyBase? destroyedParty)
         {
+            var destroyedMobileParty = destroyedParty?.MobileParty;
+
             if (SurrenderCrashPatch.HasAgentCrashGuardDestroyPartyPatch())
             {
                 Log.Info("[SurrenderFix] AgentCrashGuard destroy-party safeguard detected; deferring duplicate release logic");
                 return true;
             }
 
-            if (destroyedParty == null) return true;
+            if (destroyedMobileParty == null) return true;
             if (Hero.MainHero?.IsPrisoner != true) return true;
 
             var captorParty = Hero.MainHero.PartyBelongedToAsPrisoner;
-            if (captorParty?.MobileParty != destroyedParty) return true;
+            if (captorParty?.MobileParty != destroyedMobileParty) return true;
 
-            Log.Info($"[SurrenderFix] Captor party '{destroyedParty.Name}' about to be destroyed  releasing player first");
-            try
-            {
-                EndCaptivityAction.ApplyByEscape(Hero.MainHero, null);
-                Log.Info("[SurrenderFix] Player released successfully before captor destruction");
-            }
-            catch (Exception ex)
-            {
-                Log.Error($"[SurrenderFix] Release-before-destroy failed: {ex.Message}");
-            }
+            Log.Info($"[SurrenderFix] Captor party '{destroyedMobileParty.Name}' about to be destroyed - releasing player first");
+
+            EndCaptivityAction.ApplyByEscape(Hero.MainHero, null);
+            Log.Info("[SurrenderFix] Player released successfully before captor destruction");
 
             return true;
         }
@@ -670,15 +629,14 @@ namespace BanditMilitias.Patches.SurrenderFix
 
             public static void Info(string msg)
             {
-
-                try { BanditMilitias.Infrastructure.FileLogger.Log(msg); } catch (Exception ex) { TaleWorlds.Library.Debug.Print($"[SurrenderFix] FileLogger unavailable: {ex.Message}"); }
+                BanditMilitias.Infrastructure.FileLogger.Log(msg);
             }
 
             public static void Error(string msg)
             {
                 InformationManager.DisplayMessage(new InformationMessage(
                     $"[BanditMilitias] {msg}", Colors.Red));
-                try { BanditMilitias.Infrastructure.FileLogger.Log($"ERROR: {msg}"); } catch (Exception ex) { TaleWorlds.Library.Debug.Print($"[SurrenderFix] FileLogger unavailable: {ex.Message}"); }
+                BanditMilitias.Infrastructure.FileLogger.Log($"ERROR: {msg}");
             }
         }
     }

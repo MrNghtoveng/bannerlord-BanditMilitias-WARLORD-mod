@@ -1,61 +1,36 @@
-# Build output
-bin/
-obj/
-dist/
-TestResults/
-
-# Nested build output
-**/bin/
-**/obj/
-**/dist/
-**/TestResults/
-
-# IDE
-.vs/
-.idea/
-
 # Visual Studio
+.vs/
 *.suo
 *.user
 *.userosscache
 *.sln.docstates
 
-# Rider / ReSharper
-_ReSharper*/
-*.DotSettings.user
+# Build outputs
+bin/
+obj/
+dist/
 
-# Logs and local diagnostics
+# Test outputs
+TestResults/
+BanditMilitias.Tests/TestResults/
+BanditMilitias.Tests/bin/
+BanditMilitias.Tests/obj/
+
+# Logs and temp
 *.log
-*.etl
 *.tmp
 *.cache
-*.bak
-*.pidb
-*.svclog
-
-# Archives and local exports
-*.zip
-*.7z
-*.rar
-
-# Local Bannerlord/dev data
-Data/
-Reports/
-ML/
-TestSim/
-session_*/
-BanditMilitias_Dev/
-adaptive_doctrine_*.csv
-CleanupHistory.csv
-Events.json
-Battles.csv
-BanditMilitias.log
-BanditMilitias_AIDecisions.log
-BanditMilitias_FullSim.txt
-
-# OS
-Thumbs.db
-Desktop.ini
 
 # Dotnet local home/cache used in this workspace
 .dotnet_home/
+
+# Büyük kod export dosyaları
+Documentation/Exports/
+Documentation/ModuleCodeExports/
+FULL_CODE_EXPORT_*.txt
+
+# Dev dizini
+BanditMilitias_Dev/
+
+# Backup dosyaları
+*.bak

@@ -1,11 +1,3 @@
-// Core/Memory/WorldMemory.cs — v1.2
-// Düzeltmeler:
-//  - Bedrock.Build: IsActive filtresi eklendi (deaktif sığınaklar dahil edilmez)
-//  - Bedrock.Build: kNN için de IsActive kontrolü
-//  - Geology._regionalProsperity SyncData'dan çıkarıldı (türetilmiş veri, kaydetmek anlamsız)
-//  - WeatherLayer.GetNearbyCaravans: O(N) FirstOrDefault → O(1) Dictionary ile düzeltildi
-//  - WorldMemory önceliği 100 → 101 (ModuleManager sıralaması için)
-
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -22,9 +14,7 @@ using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Core.Memory
 {
-    // ══════════════════════════════════════════════════════════
-    // KATMAN 1: BEDROCK
-    // ══════════════════════════════════════════════════════════
+
 
     public sealed class BedrockLayer
     {
@@ -62,18 +52,18 @@ namespace BanditMilitias.Core.Memory
             foreach (var s in Settlement.All)
             {
                 if (s == null || string.IsNullOrEmpty(s.StringId)) continue;
-                // DÜZELTME: Sadece aktif settlement'lar — deaktif sığınaklar hariç
-                // Hideout'lar temizlenince IsActive=false olur; bunları dahil etmek
-                // kNN grafiğini bozar ve eski pozisyonlara yönlendirmeye yol açar.
-                if (!s.IsActive && !s.IsHideout) continue; // Hideout: IsActive bazen false olabilir
-                // Not: Hideout'lar IsActive=false olabilir ama coğrafi referans için tutuyoruz.
-                // Operasyonel kararlar için AllWarlords kontrolü yapılır.
+
+
+                if (!s.IsActive && !s.IsHideout) continue;
+
 
                 Vec2 pos = CompatibilityLayer.GetSettlementPosition(s);
-                // Fallback: CompatibilityLayer başarısız olursa GatePosition dene
+
+
                 if (!pos.IsValid)
                     pos = new Vec2(s.GatePosition.X, s.GatePosition.Y);
-                // NaN/sıfır olan pozisyonları atla
+
+
                 if (float.IsNaN(pos.X) || float.IsNaN(pos.Y) || (pos.X == 0f && pos.Y == 0f))
                     continue;
 
@@ -87,22 +77,22 @@ namespace BanditMilitias.Core.Memory
                 else if (s.IsHideout) hideouts.Add(s);
             }
 
-            // kNN: O(N) spatial lookup ile optimize edildi
+
             var knn = new Dictionary<string, List<Settlement>>(all.Count);
             foreach (var s in all)
             {
                 if (!positions.TryGetValue(s.StringId, out var sPos)) continue;
-                
-                // OPTIMIZATION 4: Spatial grid kullanarak sadece yakındaki settlement'ları kontrol et
+
+
                 var nearby = ModuleManager.Instance.GetNearbySettlements(sPos, KNN_RADIUS);
                 var candidates = new List<(float d, Settlement s)>(nearby.Count);
 
                 foreach (var other in nearby)
                 {
                     if (other == s) continue;
-                    if (!other.IsActive) continue; 
+                    if (!other.IsActive) continue;
                     if (!positions.TryGetValue(other.StringId, out var oPos)) continue;
-                    
+
                     float d = sPos.Distance(oPos);
                     if (d <= KNN_RADIUS) candidates.Add((d, other));
                 }
@@ -132,7 +122,7 @@ namespace BanditMilitias.Core.Memory
         {
             if (Campaign.Current == null) return false;
 
-            // Aktif settlement sayısını karşılaştır
+
             int currentActive = Settlement.All?.Count(s => s != null && s.IsActive) ?? 0;
             bool countChanged   = currentActive != _lastKnownActiveCount;
             bool intervalPassed = IsBuilt && (CampaignTime.Now.ToDays - LastBuildDay) >= REBUILD_INTERVAL_DAYS;
@@ -177,9 +167,6 @@ namespace BanditMilitias.Core.Memory
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    // KATMAN 2: GEOLOGY — 7 Günde Bir
-    // ══════════════════════════════════════════════════════════
 
     public sealed class GeologyLayer
     {
@@ -189,11 +176,7 @@ namespace BanditMilitias.Core.Memory
         public IReadOnlyDictionary<string, float>  VillageHearth      { get; internal set; } = new Dictionary<string, float>();
         public IReadOnlyDictionary<string, string> OwnerClan          { get; internal set; } = new Dictionary<string, string>();
 
-        // DÜZELTME: RegionalProsperity artık SyncData'da kaydedilmiyor.
-        // TownProsperity + VillageHearth zaten kaydediliyor; Geology.Update() çağrısında
-        // kNN grafiğinden yeniden üretmek hem doğru hem de tutarlı.
-        // Kaydedip yüklemek: (a) gereksiz disk alanı, (b) Bedrock yeniden inşa edilince
-        // eski kNN grafiğine dayalı değerler tutarsız olur.
+
         public IReadOnlyDictionary<string, float>  RegionalProsperity { get; internal set; } = new Dictionary<string, float>();
         public IReadOnlyDictionary<string, float>  ScoutedAreas        { get; internal set; } = new Dictionary<string, float>();
 
@@ -203,7 +186,8 @@ namespace BanditMilitias.Core.Memory
         internal Dictionary<string, float>  _villageHearth   = new();
         internal Dictionary<string, string> _ownerClan       = new();
         internal Dictionary<string, float>  _scoutedAreas    = new();
-        // _regionalProsperity artık SyncData'ya yazılmıyor
+
+
         private  Dictionary<string, float>  _regionalProsperity = new();
         internal double _lastUpdateDaySave = -1;
 
@@ -229,7 +213,7 @@ namespace BanditMilitias.Core.Memory
                 if (!string.IsNullOrEmpty(owner))          _ownerClan[s.StringId]      = owner;
             }
 
-            // RegionalProsperity: Bedrock kNN + güncel refah verisi
+
             _regionalProsperity.Clear();
             foreach (var s in bedrock.AllSettlements)
             {
@@ -267,9 +251,6 @@ namespace BanditMilitias.Core.Memory
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    // KATMAN 3: WEATHER — 6 Saatte Bir
-    // ══════════════════════════════════════════════════════════
 
     public sealed class WeatherLayer
     {
@@ -278,10 +259,7 @@ namespace BanditMilitias.Core.Memory
         public IReadOnlyList<MobileParty>        ActiveCaravans    { get; private set; } = Array.Empty<MobileParty>();
         public IReadOnlyList<MobileParty>        ActiveLordParties { get; private set; } = Array.Empty<MobileParty>();
 
-        // DÜZELTME: CaravanPositions artık Vec2 → MobileParty Dictionary.
-        // Önceki implementasyonda GetNearbyCaravans O(N) FirstOrDefault yapıyordu.
-        // Artık CaravanPositions doğrudan StringId → MobileParty döndürüyor,
-        // pozisyon ayrı bir sözlükte tutuluyor.
+
         private Dictionary<string, Vec2>        _positions  = new();
         private Dictionary<string, MobileParty> _byId       = new();
 
@@ -323,7 +301,7 @@ namespace BanditMilitias.Core.Memory
             LastUpdateHour    = CampaignTime.Now.ToHours;
         }
 
-        // DÜZELTME: O(K*1) erişim — pozisyon sözlüğünden filtrele, O(1) MobileParty erişimi
+
         public IEnumerable<MobileParty> GetNearbyCaravans(Vec2 position, float radius)
         {
             float rSq = radius * radius;
@@ -344,11 +322,8 @@ namespace BanditMilitias.Core.Memory
         }
     }
 
-    // ══════════════════════════════════════════════════════════
-    // ANA SİSTEM
-    // ══════════════════════════════════════════════════════════
 
-    [AutoRegister]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 10, IsCritical = true)]
     public sealed class WorldMemory : MilitiaModuleBase
     {
         private static readonly Lazy<WorldMemory> _inst = new(() => new WorldMemory());
@@ -358,8 +333,8 @@ namespace BanditMilitias.Core.Memory
         public override string ModuleName => "WorldMemory";
         public override bool   IsEnabled  => true;
         public override bool   IsCritical => true;
-        // DÜZELTME: Priority=101 — ModuleManager yüksek önceliği ilk çalıştırır
-        // (BanditBrain=95, WorldMemory ondan önce hazır olmalı)
+
+
         public override int    Priority   => 101;
 
         public static BedrockLayer Bedrock { get; } = new BedrockLayer();
@@ -374,7 +349,7 @@ namespace BanditMilitias.Core.Memory
         public override void RegisterCampaignEvents()
         {
             if (_eventsRegistered) return;
-            EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
             _eventsRegistered = true;
         }
 
@@ -382,7 +357,7 @@ namespace BanditMilitias.Core.Memory
         {
             if (_eventsRegistered)
             {
-                EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
                 _eventsRegistered = false;
             }
         }
@@ -426,7 +401,7 @@ namespace BanditMilitias.Core.Memory
                 _ = dataStore.SyncData("BM_WM_VillageHearth",  ref Geology._villageHearth);
                 _ = dataStore.SyncData("BM_WM_OwnerClan",      ref Geology._ownerClan);
                 _ = dataStore.SyncData("BM_WM_GeologyDay",     ref Geology._lastUpdateDaySave);
-                // NOT: _regionalProsperity kaydedilmiyor — türetilmiş veri, Geology.Update'de üretilir
+
 
                 if (dataStore.IsLoading)
                 {
@@ -437,8 +412,8 @@ namespace BanditMilitias.Core.Memory
                     Geology.VillageHearth   = Geology._villageHearth;
                     Geology.OwnerClan       = Geology._ownerClan;
                     Geology.LastUpdateDay   = Geology._lastUpdateDaySave;
-                    // Bedrock Initialize()'da yeniden inşa edilecek.
-                    // RegionalProsperity, Initialize() → Geology.Update() sırasında üretilecek.
+
+
                 }
             }
             catch (Exception ex)
@@ -488,3 +463,5 @@ namespace BanditMilitias.Core.Memory
         }
     }
 }
+
+

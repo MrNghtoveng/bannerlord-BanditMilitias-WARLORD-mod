@@ -17,14 +17,9 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Combat
 {
-    /// <summary>
-    /// Milis Morali Sistemi
-    /// Her milisya partisine bağımsız moral puanı (0–100) atar.
-    /// Yüksek moral: agresiflik artar, ganimete daha hızlı gider.
-    /// Düşük moral: asker kaçma riski, savaştan kaçınma eğilimi.
-    /// Etkileyen faktörler: W/L oranı, warlord tier, mevsim, son savaştan geçen süre.
-    /// </summary>
-    [AutoRegister]
+
+
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 340, IsCritical = false)]
     public class MilitiaMoraleSystem : MilitiaModuleBase
     {
         public override string ModuleName => "MilitiaMoraleSystem";
@@ -42,9 +37,12 @@ namespace BanditMilitias.Systems.Combat
         private const float BASE_MORALE = 55f;
         private const float MORALE_WIN_GAIN = 8f;
         private const float MORALE_LOSS_PENALTY = 12f;
-        private const float MORALE_DAILY_DECAY = 0.5f;  // Her gün hafif azalma (ortalamaya doğru)
-        private const float MORALE_MEAN = 50f;          // Uzun vadeli denge noktası
-        private const float DESERTION_THRESHOLD = 20f;  // Bu altında kaçma riski
+        private const float MORALE_DAILY_DECAY = 0.5f;
+
+        private const float MORALE_MEAN = 50f;
+
+        private const float DESERTION_THRESHOLD = 20f;
+
         private const float DESERTION_RISK_PER_DAY = 0.04f;
 
         private bool _initialized = false;
@@ -56,7 +54,7 @@ namespace BanditMilitias.Systems.Combat
             if (_initialized) return;
             CampaignEvents.MapEventEnded.AddNonSerializedListener(this, new Action<MapEvent>(OnMapEventEnded));
             _initialized = true;
-            DebugLogger.Info("Morale", "MilitiaMoraleSystem başlatıldı.");
+            DebugLogger.Info("Morale", "MilitiaMoraleSystem initialized.");
         }
 
         public override void Cleanup()
@@ -76,7 +74,7 @@ namespace BanditMilitias.Systems.Combat
         public override void OnDailyTick()
         {
             if (!IsEnabled || !_initialized) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
 
             foreach (var party in CompatibilityLayer.GetSafeMobileParties())
             {
@@ -85,22 +83,22 @@ namespace BanditMilitias.Systems.Combat
                 string pid = party.StringId;
                 float morale = GetMorale(pid);
 
-                // Mevsimsel etki
+
                 float seasonalFactor = GetSeasonalMoraleFactor();
 
-                // Warlord tier etkisi
+
                 float tierFactor = GetWarlordTierFactor(comp.WarlordId);
 
-                // Ortalamaya doğru yavaş çekim
+
                 float target = BASE_MORALE + seasonalFactor + tierFactor;
                 float delta = (target - morale) * 0.05f - MORALE_DAILY_DECAY;
                 morale = MathF.Clamp(morale + delta, 0f, 100f);
                 SetMorale(pid, morale);
 
-                // Savaşa hazırlık güncelleme — agresiflik çarpanı
+
                 ApplyMoraleToParty(party, comp, morale);
 
-                // Kritik moral: asker kaçma riski
+
                 if (morale < DESERTION_THRESHOLD)
                     ProcessDesertion(party, morale);
             }
@@ -112,13 +110,15 @@ namespace BanditMilitias.Systems.Combat
         {
             if (ev == null) return;
 
-            // Her iki taraftaki milisyaları güncelle
+
             ProcessMapEventSide(ev.AttackerSide, ev.WinningSide == BattleSideEnum.Attacker);
             ProcessMapEventSide(ev.DefenderSide, ev.WinningSide == BattleSideEnum.Defender);
         }
 
         private void ProcessMapEventSide(MapEventSide side, bool won)
         {
+
+
             foreach (var party in side.Parties)
             {
                 if (party.Party?.MobileParty?.PartyComponent is not MilitiaPartyComponent) continue;
@@ -129,36 +129,37 @@ namespace BanditMilitias.Systems.Combat
 
                 if (won)
                 {
-                    // Kazandı — moral artışı
+
+
                     int streak = _winStreak.TryGetValue(pid, out var s) ? s + 1 : 1;
                     _winStreak[pid] = streak;
-                    float bonus = MORALE_WIN_GAIN * (1f + streak * 0.15f); // Seri bonusu
+                    float bonus = MORALE_WIN_GAIN * (1f + streak * 0.15f);
+
                     SetMorale(pid, MathF.Clamp(current + bonus, 0f, 100f));
 
                     if (Settings.Instance?.TestingMode == true)
-                        DebugLogger.Info("Morale", $"{party.Party.MobileParty.Name}: +{bonus:F1} moral (seri={streak})");
+                        DebugLogger.Info("Morale", $"{party.Party.MobileParty.Name}: +{bonus:F1} morale (streak={streak})");
                 }
                 else
                 {
-                    // Kaybetti — seri bozulur, moral düşer
+
+
                     _winStreak[pid] = 0;
                     SetMorale(pid, MathF.Clamp(current - MORALE_LOSS_PENALTY, 0f, 100f));
 
                     if (Settings.Instance?.TestingMode == true)
-                        DebugLogger.Info("Morale", $"{party.Party.MobileParty.Name}: -{MORALE_LOSS_PENALTY:F1} moral");
+                        DebugLogger.Info("Morale", $"{party.Party.MobileParty.Name}: -{MORALE_LOSS_PENALTY:F1} morale");
                 }
             }
         }
 
         private void ApplyMoraleToParty(MobileParty party, MilitiaPartyComponent comp, float morale)
         {
-            // Morale → Aggressiveness çarpanı (0.5 – 1.5 arası)
-            // Bu değer BanditBrain'in hedef seçimini etkileyebilir
+
+
             float aggressivenessFactor = 0.5f + (morale / 100f);
 
-            // MilitiaPartyComponent'taki Aggressiveness alanı yok ama
-            // custom field olarak WarlordId kullanıyoruz; yerine RoleData'ya not düşüyoruz
-            // Gerçek etki: ScoringFunctions'da GetMorale() çağrılacak
+
         }
 
         private void ProcessDesertion(MobileParty party, float morale)
@@ -185,17 +186,17 @@ namespace BanditMilitias.Systems.Combat
                     if (actual > 0)
                     {
                         InformationManager.DisplayMessage(new InformationMessage(
-                            $"[Moral] {party.Name}: {actual} asker moral bozukluğundan kaçtı!",
+                            $"[Morale] {party.Name}: {actual} troops deserted due to low morale!",
                             Colors.Yellow));
 
                         DebugLogger.Info("Morale",
-                            $"Kaçma: {party.Name} -{actual} asker (moral={morale:F1})");
+                            $"Desertion: {party.Name} -{actual} troops (morale={morale:F1})");
                     }
                 }
             }
             catch (Exception ex)
             {
-                DebugLogger.Warning("Morale", $"Kaçma işlemi hatası: {ex.Message}");
+                DebugLogger.Warning("Morale", $"Desertion process error: {ex.Message}");
             }
         }
 
@@ -206,10 +207,14 @@ namespace BanditMilitias.Systems.Combat
                 var season = Seasonal.SeasonalEffectsSystem.Instance.CurrentSeason;
                 return season switch
                 {
-                    MilitiaSeason.Summer => +8f,   // Yaz: yüksek moral
-                    MilitiaSeason.Autumn => +5f,   // Sonbahar: baskın sezonu, heyecanlı
-                    MilitiaSeason.Winter => -15f,  // Kış: derin moral düşüşü
-                    MilitiaSeason.Spring => +2f,   // İlkbahar: toparlanma
+                    MilitiaSeason.Summer => +8f,
+
+                    MilitiaSeason.Autumn => +5f,
+
+                    MilitiaSeason.Winter => -15f,
+
+                    MilitiaSeason.Spring => +2f,
+
                     _ => 0f
                 };
             }
@@ -223,7 +228,8 @@ namespace BanditMilitias.Systems.Combat
             {
                 var warlord = WarlordSystem.Instance.GetWarlord(warlordId);
                 if (warlord == null) return 0f;
-                // Her tier +4 moral
+
+
                 int tier = (int)WarlordCareerSystem.Instance.GetTier(warlord.StringId);
                 return tier * 4f;
             }
@@ -245,17 +251,18 @@ namespace BanditMilitias.Systems.Combat
             float m = GetMorale(partyId);
             return m switch
             {
-                >= 80 => "Coşkulu",
-                >= 60 => "Kararlı",
+                >= 80 => "Enthusiastic",
+                >= 60 => "Determined",
                 >= 40 => "Normal",
-                >= 25 => "Yorgun",
-                _ => "Çökmüş"
+                >= 25 => "Tired",
+                _ => "Broken"
             };
         }
 
         private void CleanupStaleRecords()
         {
-            // Artık var olmayan partilerin kayıtlarını temizle
+
+
             var activeIds = new HashSet<string>(
                 CompatibilityLayer.GetSafeMobileParties()
                     .Where(p => p.PartyComponent is MilitiaPartyComponent)
@@ -272,17 +279,19 @@ namespace BanditMilitias.Systems.Combat
 
         public override string GetDiagnostics()
         {
-            if (_partyMorale.Count == 0) return "MilitiaMorale: Kayıtlı parti yok.";
+            if (_partyMorale.Count == 0) return "MilitiaMorale: No registered parties.";
 
             float avg = _partyMorale.Values.Average();
             int high = _partyMorale.Values.Count(m => m >= 70);
             int low = _partyMorale.Values.Count(m => m < 30);
 
             return $"MilitiaMorale:\n" +
-                   $"  Takip edilen parti: {_partyMorale.Count}\n" +
-                   $"  Ortalama moral: {avg:F1}\n" +
-                   $"  Yüksek moral (70+): {high}\n" +
-                   $"  Düşük moral (<30): {low}";
+                   $"  Tracked parties: {_partyMorale.Count}\n" +
+                   $"  Average morale: {avg:F1}\n" +
+                   $"  High morale (70+): {high}\n" +
+                   $"  Low morale (<30): {low}";
         }
     }
 }
+
+

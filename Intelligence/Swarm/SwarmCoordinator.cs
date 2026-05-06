@@ -65,7 +65,7 @@ namespace BanditMilitias.Intelligence.Swarm
         public int BattlesLost { get; set; }
         public float CohesionScore { get; set; } = 1f;
 
-        // Lazy (Aptal) moddan anında uyandırmak için acil durum bayrağı
+
         [NonSerialized] public bool IsPriorityWake = false;
     }
 
@@ -86,6 +86,7 @@ namespace BanditMilitias.Intelligence.Swarm
         public string Reason { get; set; } = "";
     }
 
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 40, IsCritical = true)]
     public class SwarmCoordinator : MilitiaModuleBase
     {
 
@@ -132,11 +133,11 @@ namespace BanditMilitias.Intelligence.Swarm
             _partyGroupMap = new();
             _pendingOrders = new();
 
-            EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-            EventBus.Instance.Subscribe<HideoutFormedEvent>(OnHideoutFormed);
-            EventBus.Instance.Subscribe<StrategicCommandEvent>(OnStrategicCommand);
-            EventBus.Instance.Subscribe<MilitiaSpawnedEvent>(OnMilitiaSpawned);
-            EventBus.Instance.Subscribe<MilitiaDisbandedEvent>(OnMilitiaDisbanded);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutFormedEvent>(OnHideoutFormed);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<StrategicCommandEvent>(OnStrategicCommand);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaSpawnedEvent>(OnMilitiaSpawned);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaDisbandedEvent>(OnMilitiaDisbanded);
 
             DebugLogger.Info("SwarmCoordinator", "Initialized.");
         }
@@ -146,9 +147,7 @@ namespace BanditMilitias.Intelligence.Swarm
             CampaignEvents.MapEventStarted.AddNonSerializedListener(this, OnBattleStarted);
             CampaignEvents.MapEventEnded.AddNonSerializedListener(this, OnBattleEnded);
 
-            // FIX (BUG-SwarmPostLoad): Save'den yükleme sonrası _partyCache ve
-            // _partyGroupMap [NonSerialized] olduğu için boş kalır. İlk OnDailyTick'te
-            // RebuildPartyCache() çalışsın diye bayrağı set et.
+
             _pendingCacheRebuild = true;
 
             DebugLogger.Info("SwarmCoordinator", "Campaign events registered, cache rebuild scheduled.");
@@ -156,11 +155,11 @@ namespace BanditMilitias.Intelligence.Swarm
 
         public override void Cleanup()
         {
-            EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-            EventBus.Instance.Unsubscribe<HideoutFormedEvent>(OnHideoutFormed);
-            EventBus.Instance.Unsubscribe<StrategicCommandEvent>(OnStrategicCommand);
-            EventBus.Instance.Unsubscribe<MilitiaSpawnedEvent>(OnMilitiaSpawned);
-            EventBus.Instance.Unsubscribe<MilitiaDisbandedEvent>(OnMilitiaDisbanded);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutFormedEvent>(OnHideoutFormed);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<StrategicCommandEvent>(OnStrategicCommand);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaSpawnedEvent>(OnMilitiaSpawned);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaDisbandedEvent>(OnMilitiaDisbanded);
 
             CampaignEvents.MapEventStarted.ClearListeners(this);
             CampaignEvents.MapEventEnded.ClearListeners(this);
@@ -202,10 +201,10 @@ namespace BanditMilitias.Intelligence.Swarm
 
             var ungrouped = allActive.Where(p => !_partyGroupMap.ContainsKey(p.StringId)).ToList();
 
-            // Paging: Her saat sadece en eski 15 gruplanmamış birimi işle — O(N^2) patlamasını dağıtır.
+
             var seedsToProcess = ungrouped.Take(15).ToList();
 
-            // candidates için O(1) üyelik kontrolü — List.Contains(O(n)) yerine
+
             var ungroupedSet = new HashSet<string>(ungrouped.Count);
             foreach (var p in ungrouped) ungroupedSet.Add(p.StringId);
 
@@ -246,7 +245,8 @@ namespace BanditMilitias.Intelligence.Swarm
                     if (candidate == null || !candidate.IsActive) continue;
                     if (visited.Contains(candidate.StringId)) continue;
                     if (candidate.MapFaction != current.MapFaction) continue;
-                    if (!candidateIds.Contains(candidate.StringId)) continue; // O(1)
+                    if (!candidateIds.Contains(candidate.StringId)) continue;
+
 
                     _ = visited.Add(candidate.StringId);
                     queue.Enqueue(candidate);
@@ -285,30 +285,32 @@ namespace BanditMilitias.Intelligence.Swarm
         {
             int currentHour = (int)CampaignTime.Now.ToHours;
 
-            // _groups.ToList() kopyası gereksiz — iterasyon sırasında _groups değişmez
+
             for (int gi = _groups.Count - 1; gi >= 0; gi--)
             {
                 var group = _groups[gi];
-                // Staggered Ticks & Lazy Mode (Aptal Mod)
-                // Her grubun kendine has bir "uyanma saati" var. O saat gelmediyse hesaplama YAPMA.
+
+
                 int groupHash = Math.Abs(group.Id.GetHashCode());
                 bool isTurnToThink = (groupHash % 3) == (currentHour % 3);
 
                 if (!isTurnToThink && !group.IsPriorityWake)
                 {
-                    // Aptal Moddayız. Taktik hesaplanmadı, sadece son emri "PendingOrders" kuyruğuna besle.
+
+
                     var partiesSleep = ResolveParties(group);
                     if (partiesSleep.Count >= MIN_GROUP_SIZE)
                     {
-                        // Uygulanan son taktik ile var olan harekete devam et.
-                        // Order queue'sunda emri yenilemek için ApplyTactic körü körüne çağırılır (Threat hesaplanmaz).
+
+
                         ApplyTactic(group, partiesSleep, new List<MobileParty>(), group.CurrentTactic);
                     }
                     continue;
                 }
 
-                // PriorityWake veya Sıra Gelmişse Taktikleri Yenile
-                group.IsPriorityWake = false; // Uyandı, flagi sıfırla.
+
+                group.IsPriorityWake = false;
+
 
                 var parties = ResolveParties(group);
                 if (parties.Count < MIN_GROUP_SIZE) continue;
@@ -639,7 +641,8 @@ namespace BanditMilitias.Intelligence.Swarm
             var tactic = group.CurrentTactic;
             if (group.CohesionScore < 0.35f && IsOffensiveTactic(tactic))
             {
-                // Low-cohesion swarms should not hard-force aggressive maneuvers.
+
+
                 tactic = SwarmTactic.Patrol;
             }
 
@@ -748,7 +751,7 @@ namespace BanditMilitias.Intelligence.Swarm
         private void OnBattleStarted(MapEvent mapEvent, PartyBase attackerParty, PartyBase defenderParty)
         {
             if (!IsEnabled || mapEvent == null) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
 
             try
             {
@@ -781,7 +784,8 @@ namespace BanditMilitias.Intelligence.Swarm
 
                 foreach (var group in groupsInBattle)
                 {
-                    // Acil Durum Uyanması: Çatışma çıktı, grubu aptal moddan (sleep mode) acil çıkar!
+
+
                     group.IsPriorityWake = true;
 
                     int partiesInBattle = group.PartyIds
@@ -889,7 +893,7 @@ namespace BanditMilitias.Intelligence.Swarm
         private void OnBattleEnded(MapEvent mapEvent)
         {
             if (!IsEnabled || mapEvent == null) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
 
             try
             {
@@ -907,17 +911,16 @@ namespace BanditMilitias.Intelligence.Swarm
                         bool attackerWon = mapEvent.WinningSide == BattleSideEnum.Attacker;
                         bool thisSideWon = (side.MissionSide == BattleSideEnum.Attacker) == attackerWon;
 
-                        // NEW: Nam (Renown) Hesaplama Sistemi
                         if (militia.PartyComponent is Components.MilitiaPartyComponent mpc)
                         {
                             try {
                                 float mySideStrength = side.Parties.Sum(p => (p.Party?.MobileParty != null) ? BanditMilitias.Infrastructure.CompatibilityLayer.GetTotalStrength(p.Party.MobileParty) : 0f);
                                 float enemySideStrength = mapEvent.GetMapEventSide(side.MissionSide.GetOppositeSide()).Parties.Sum(p => (p.Party?.MobileParty != null) ? BanditMilitias.Infrastructure.CompatibilityLayer.GetTotalStrength(p.Party.MobileParty) : 0f);
                                 float strengthRatio = enemySideStrength / Math.Max(1f, mySideStrength);
-                                
+
                                 float renownChange = thisSideWon ? (3f * strengthRatio) : (-2f / strengthRatio);
                                 mpc.Renown = Math.Max(0f, mpc.Renown + renownChange);
-                                
+
                                 if (thisSideWon) mpc.BattlesWon++;
                                 else mpc.BattlesLost++;
 
@@ -971,7 +974,7 @@ namespace BanditMilitias.Intelligence.Swarm
         private void OnHideoutFormed(HideoutFormedEvent evt)
         {
             if (evt?.Hideout == null) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
             DebugLogger.Info("SwarmCoordinator",
                 $"Hideout formed at {evt.Hideout.Name} Â— scanning for nearby militias.");
 
@@ -986,7 +989,7 @@ namespace BanditMilitias.Intelligence.Swarm
         private void OnMilitiaSpawned(MilitiaSpawnedEvent evt)
         {
             if (evt?.Party == null || !evt.Party.IsActive) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
             if (_partyGroupMap.ContainsKey(evt.Party.StringId)) return;
 
             var pos = CompatibilityLayer.GetPartyPosition(evt.Party);
@@ -1063,7 +1066,7 @@ namespace BanditMilitias.Intelligence.Swarm
         private void OnStrategicCommand(StrategicCommandEvent evt)
         {
             if (evt?.IssuedBy == null || evt.Command == null) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
 
 
             bool issuedByBrain = string.Equals(evt.IssuedBy, "BanditBrain", StringComparison.OrdinalIgnoreCase);
@@ -1085,7 +1088,8 @@ namespace BanditMilitias.Intelligence.Swarm
 
             foreach (var g in affectedGroups)
             {
-                // Komut geldi! Aptal moddan uyan.
+
+
                 g.IsPriorityWake = true;
 
                 g.CurrentTactic = evt.Command.Type switch
@@ -1246,3 +1250,5 @@ namespace BanditMilitias.Intelligence.Swarm
         }
     }
 }
+
+

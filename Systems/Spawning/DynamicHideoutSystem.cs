@@ -15,13 +15,12 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Spawning
 {
-    // ── DynamicHideoutSystem ─────────────────────────────────────────
+
 
     public class DynamicHideoutSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
-        private static readonly Lazy<DynamicHideoutSystem> _instance =
-            new(() => new DynamicHideoutSystem());
-        public static DynamicHideoutSystem Instance => _instance.Value;
+        private static DynamicHideoutSystem? _instance;
+        public static DynamicHideoutSystem Instance => _instance ??= new DynamicHideoutSystem();
 
         public override string ModuleName => "DynamicHideoutSystem";
         public override bool IsEnabled => Settings.Instance?.EnableDynamicHideouts ?? true;
@@ -42,7 +41,7 @@ namespace BanditMilitias.Systems.Spawning
 
         public override void Initialize()
         {
-
+            _instance = this;
             DebugLogger.Log("[DynamicHideout] System initialized.");
         }
 
@@ -201,7 +200,7 @@ namespace BanditMilitias.Systems.Spawning
 
                 DebugLogger.Log($"[DynamicHideout] SUCCESS! Occupied {targetHideout.Name}. Stats: {_formationSuccesses}/{_formationAttempts}");
 
-                EventBus.Instance?.Publish(new HideoutFormedEvent
+                BanditMilitias.Core.Events.EventBus.Instance?.Publish(new HideoutFormedEvent
                 {
                     Hideout = targetHideout,
                     FormingParties = group.Parties,
@@ -373,12 +372,12 @@ namespace BanditMilitias.Systems.Spawning
         public string GetDescription() => $"Hideout formed at {Position}";
     }
 
-    // ── HardcoreDynamicHideoutSystem ─────────────────────────────────────────
+
     [BanditMilitias.Core.Components.AutoRegister]
     public class HardcoreDynamicHideoutSystem : MilitiaModuleBase
     {
-        private static readonly Lazy<HardcoreDynamicHideoutSystem> _instance = new(() => new HardcoreDynamicHideoutSystem());
-        public static HardcoreDynamicHideoutSystem Instance => _instance.Value;
+        private static HardcoreDynamicHideoutSystem? _instance;
+        public static HardcoreDynamicHideoutSystem Instance => _instance ??= new HardcoreDynamicHideoutSystem();
 
         public override string ModuleName => "HardcoreDynamicHideoutSystem";
         public override bool IsEnabled => Settings.Instance?.EnableHardcoreDynamicHideouts ?? true;
@@ -391,6 +390,7 @@ namespace BanditMilitias.Systems.Spawning
 
         public override void Initialize()
         {
+            _instance = this;
             DebugLogger.Log("[HardcoreHideouts] System initialized.");
         }
 
@@ -399,7 +399,7 @@ namespace BanditMilitias.Systems.Spawning
             if (!IsEnabled) return;
             if (Campaign.Current == null) return;
 
-            // Günde %5 şansla gizli kalmış bir sığınağı aktifleştirir
+
             if (MBRandom.RandomFloat < 0.05f)
             {
                 try
@@ -409,7 +409,7 @@ namespace BanditMilitias.Systems.Spawning
                 catch (Exception ex)
                 {
                     DebugLogger.Error("HardcoreHideouts", $"Crash during activation attempt: {ex}");
-                    InformationManager.DisplayMessage(new InformationMessage($"[HardcoreHideout] Dengeleme hatasi: {ex.Message}", Colors.Red));
+                    InformationManager.DisplayMessage(new InformationMessage($"[HardcoreHideout] Balancing error: {ex.Message}", Colors.Red));
                 }
             }
         }
@@ -421,7 +421,7 @@ namespace BanditMilitias.Systems.Spawning
 
             var hideout = inactiveHideouts.GetRandomElement();
             if (hideout == null) return;
-            
+
             var isActiveProp = typeof(Settlement).GetProperty("IsActive");
             if (isActiveProp != null && isActiveProp.CanWrite) isActiveProp.SetValue(hideout, true);
             else
@@ -429,11 +429,11 @@ namespace BanditMilitias.Systems.Spawning
                 var isActiveField = typeof(Settlement).GetField("_isVisible", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
                 if (isActiveField != null) isActiveField.SetValue(hideout, true);
             }
-            
+
             hideout.IsVisible = true;
             if (hideout.Hideout != null) hideout.Hideout.IsSpotted = true;
 
-            InformationManager.DisplayMessage(new InformationMessage($"[HARDCORE] Uyuyan bir siginak faaliyete gecti: {hideout.Name}", Colors.Red));
+            InformationManager.DisplayMessage(new InformationMessage($"[HARDCORE] A dormant hideout has become active: {hideout.Name}", Colors.Red));
             DebugLogger.Log($"[HardcoreHideouts] Activated inactive Settlement: {hideout.Name}");
         }
     }

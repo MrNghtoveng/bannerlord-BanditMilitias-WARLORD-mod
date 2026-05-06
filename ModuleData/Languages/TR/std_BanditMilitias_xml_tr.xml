@@ -94,6 +94,7 @@
         <string id="BMCheckVoiceGenderDesc" text="Haydut ses hatlarının cinsiyetle eşleşip eşleşmediğini iki kez kontrol et. Bazı resmi hatlar cinsiyet belirtmez, bu nedenle kapatılırsa kadın liderler erkek sesleri kullanabilir."/>
         <string id="BMGenderSlider" text="Lider Cinsiyet Oranı"/>
         <string id="BMGenderSliderDesc" text="Haydut Milis liderlerinin kadın olma şansı. 0 hepsi erkek, 100 hepsi kadın."/>
+        <string id="BM_Raid_Notice" text="UYARI: {SETTLEMENT} adlı mülkünüz {ATTACKER} tarafından yağmalanıyor!"/>
         
         <string id="BMLoggingLevel" text="Log Seviyesi"/>
         <string id="BMLoggingLevelDesc" text="Log dosyası 'Documents/Mount and Blade II Bannerlord/Configs/ModLogs/BanditMilitia_[Time].log' konumundadır."/>
@@ -248,8 +249,35 @@
         <string id="BMS_FormCooldown_H" text="Sığınak oluşturma girişimleri arasındaki minimum gün sayısı."/>
         <string id="BMS_PatrolDensity" text="Maksimum Devriye Yoğunluğu"/>
         <string id="BMS_PatrolDensity_H" text="Lord devriye yoğunluğu bu değeri aşınca oluşum engellenir. Yüksek = daha kolay oluşum."/>
+
+        <string id="BMS_GlobalPartyLimit" text="Küresel Performans Parti Sınırı"/>
+        <string id="BMS_GlobalPartyLimit_H" text="FPS'yi korumak için doğuşların askıya alındığı harita geneli toplam parti sayısı (lordlar dahil)."/>
+
+        <string id="BMS_HardcoreHideout" text="Zorlayıcı Dinamik Sığınaklar"/>
+        <string id="BMS_HardcoreHideout_H" text="DENEYSEL: Oyun ortasında haritaya tamamen yeni sığınak yerleşimleri enjekte eder. Uyarı: Kayıt istikrarsızlığına neden olabilir."/>
+
         <string id="BMS_HideoutReplenishChance" text="Sığınak Yeniden Dolma Şansı"/>
         <string id="BMS_HideoutReplenishChance_H" text="Terk edilmiş bir sığınağın yakındaki haydut partilerini yeniden içine çekme günlük şansı."/>
+
+        <!-- AI Promotion -->
+        <string id="BMS_FamousBanditFallback" text="Ünlü Haydut Yedek Gün Sayısı"/>
+        <string id="BMS_FamousBanditFallback_H" text="Bu kadar gün sonra hâlâ Ünlü Haydut yoksa, ilk 3 Kaptan zorla terfi ettirilir."/>
+        <string id="BMS_AlwaysSpawnCaptain" text="Her Zaman Kaptan Doğur"/>
+        <string id="BMS_AlwaysSpawnCaptain_H" text="Etkinleştirilirse, HER yeni milis partisi bir Kaptan Kahraman ile doğar. Devre dışı bırakılırsa, kaptanlar rastgele doğar."/>
+        
+        <!-- Technical & Debug -->
+        <string id="BMS_DevMode" text="Geliştirici Veri Toplama"/>
+        <string id="BMS_DevMode_H" text="SADECE GELİŞTİRİCİLER İÇİN: Tüm test verilerini Documents/BanditMilitias_Dev/ klasörüne toplar. Devre dışı bırakıldığında sıfır ek yük getirir."/>
+        <string id="BMS_AutoReport" text="Otomatik Tanılama Aralığı (Saat)"/>
+        <string id="BMS_AutoReport_H" text="Her X oyun içi saatte bir otomatik olarak Tam Sim Raporu oluşturur ve kaydeder. 0 = Devre Dışı."/>
+        <string id="BMS_NeuralAI" text="Nöral YZ'yi Etkinleştir (Sadece Geliştirici)"/>
+        <string id="BMS_NeuralAI_H" text="DENEYSEL: Özel el yazısı sinir ağı danışmanını etkinleştirir. Heuristics'e paralel çalışır."/>
+        
+        <!-- Machine Learning Thresholds -->
+        <string id="BMS_WeakThreshold" text="Zayıf Parti Eşiği"/>
+        <string id="BMS_WeakThreshold_H" text="YZ'nin bir partiyi 'zayıf' olarak kabul ettiği asker sayısı. ML durum makinesi tarafından kullanılır."/>
+        <string id="BMS_PoorThreshold" text="Fakir Parti Eşiği"/>
+        <string id="BMS_PoorThreshold_H" text="YZ'nin kendisini 'fakir' olarak kabul ettiği altın miktarı. ML durum makinesi tarafından kullanılır."/>
 
         <!-- Settings: Warlords & AI -->
         <string id="BMS_EnableWarlords" text="Savaş Lordlarını Etkinleştir"/>

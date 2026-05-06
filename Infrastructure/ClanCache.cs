@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Debug;
+using BanditMilitias.Debug;
 using System;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
@@ -24,18 +24,18 @@ namespace BanditMilitias.Infrastructure
 
             _initAttempts++;
 
-            // KRİTİK FIX: Clan.All null/empty kontrolü
+
             if (Clan.All == null || !Clan.All.Any())
             {
                 if (Settings.Instance?.TestingMode == true && _initAttempts <= 3)
                 {
                     TaleWorlds.Library.InformationManager.DisplayMessage(
                         new TaleWorlds.Library.InformationMessage(
-                            $"[ClanCache] Attempt {_initAttempts}/{MAX_INIT_ATTEMPTS}: Clan.All henüz yüklenmemiş - retry scheduled",
+                            $"[ClanCache] Attempt {_initAttempts}/{MAX_INIT_ATTEMPTS}: Clan.All hen�z y�klenmemi� - retry scheduled",
                             TaleWorlds.Library.Colors.Yellow));
                 }
 
-                // Auto-retry mekanizması
+
                 if (_initAttempts < MAX_INIT_ATTEMPTS)
                 {
                     ScheduleRetry();
@@ -54,7 +54,7 @@ namespace BanditMilitias.Infrastructure
                     {
                         TaleWorlds.Library.InformationManager.DisplayMessage(
                             new TaleWorlds.Library.InformationMessage(
-                                "[ClanCache] UYARI: Hiç klan bulunamadı! Tekrar denenecek.",
+                                "[ClanCache] UYARI: Hi� klan bulunamad�! Tekrar denenecek.",
                                 TaleWorlds.Library.Colors.Red));
                     }
 
@@ -136,16 +136,15 @@ namespace BanditMilitias.Infrastructure
 
         public static void Reset()
         {
-            // FIX #6: Reset sırasında bekleyen DailyTick retry listener'ı da temizle.
-            // Aksi hâlde _retryScheduled=true kalıp yeni oyunda ScheduleRetry() çağrılmaz
-            // ve ClanCache init başarısız olunca retry hiç yapılmaz → spawn tamamen durur.
+
+
             if (_retryScheduled)
             {
                 try
                 {
                     CampaignEvents.DailyTickEvent.RemoveNonSerializedListener(_retryOwner, RetryInit);
                 }
-                catch { /* listener zaten kaldırılmışsa sorun değil */ }
+                catch {  }
                 _retryScheduled = false;
             }
 

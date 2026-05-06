@@ -10,23 +10,38 @@ namespace BanditMilitias.Behaviors
     public class WarlordCampaignBehavior : CampaignBehaviorBase
     {
         private Queue<MobileParty> _partiesToCalculate = new Queue<MobileParty>();
+        private bool _hourlyRegistered = false;
+        private bool _dailyRegistered = false;
 
         public override void RegisterEvents()
         {
-            // Olay sızıntısını önlemek için önce mevcut abonelikleri temizle
+
+
+            bool hourlyRemoved = false;
+            bool dailyRemoved = false;
             try
             {
                 Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.HourlyTickEvent, this, OnHourlyTick);
+                hourlyRemoved = true;
                 Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.DailyTickEvent, this, OnDailyTick);
+                dailyRemoved = true;
             }
             catch { }
 
-            CampaignEvents.HourlyTickEvent.AddNonSerializedListener(this, OnHourlyTick);
-            CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
+            if (hourlyRemoved || !_hourlyRegistered)
+            {
+                CampaignEvents.HourlyTickEvent.AddNonSerializedListener(this, OnHourlyTick);
+                _hourlyRegistered = true;
+            }
+
+            if (dailyRemoved || !_dailyRegistered)
+            {
+                CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
+                _dailyRegistered = true;
+            }
         }
 
-        // BUG-03 FIX: AI taktiksel hafızasını (warlord aktif parti listesi, kuyruk büyüklüğü)
-        // kayıt dosyasına yaz.
+
         private List<string> _savedWarlordIds = new List<string>();
         private int _savedQueueSize = 0;
 
@@ -36,7 +51,8 @@ namespace BanditMilitias.Behaviors
             {
                 if (dataStore.IsSaving)
                 {
-                    // Aktif warlordları StringId listesi olarak sakla
+
+
                     _savedWarlordIds = WarlordSystem.Instance.GetAllWarlords()
                         .Where(w => w != null && w.IsAlive)
                         .Select(w => w.StringId)
@@ -49,10 +65,12 @@ namespace BanditMilitias.Behaviors
 
                 if (dataStore.IsLoading)
                 {
-                    // Kuyruk yükleme sonrası sıfırlanır; OnDailyTick'te dolduruluyor.
+                    // Guard: key may be absent if save was created before this behavior existed.
+                    _savedWarlordIds ??= new List<string>();
+
                     _partiesToCalculate.Clear();
                     Debug.DebugLogger.Info("WarlordCampaignBehavior",
-                        $"SyncData loaded: {_savedWarlordIds?.Count ?? 0} warlords persisted.");
+                        $"SyncData loaded: {_savedWarlordIds.Count} warlords persisted.");
                 }
             }
             catch (Exception ex)
@@ -64,14 +82,14 @@ namespace BanditMilitias.Behaviors
         private void OnDailyTick()
         {
             _partiesToCalculate.Clear();
-            
-            // Tüm rütbelerdeki (Eskiya'dan Fatih'e) milisleri hesaplama kuyruğuna ekle.
-            // StrategyEngine rütbeye göre kararlarını kendisi ölçeklendirecektir.
+
+
             foreach (var warlord in WarlordSystem.Instance.GetAllWarlords())
             {
                 if (warlord != null && warlord.IsAlive)
                 {
-                    foreach (var party in warlord.CommandedMilitias.ToList()) // ✅ FIX: Snapshot to prevent concurrent modification
+                    foreach (var party in warlord.CommandedMilitias.ToList())
+
                     {
                         if (party != null && party.IsActive)
                         {
@@ -84,10 +102,10 @@ namespace BanditMilitias.Behaviors
 
         private void OnHourlyTick()
         {
-            // Her saat başı, sadece BİRKAÇ partinin stratejisini hesapla.  
-            // Bu, tek çekirdekli motorun kilitlenmesini engeller.
-            int calculationsPerTick = 3; 
-            
+
+
+            int calculationsPerTick = 3;
+
             for (int i = 0; i < calculationsPerTick; i++)
             {
                 if (_partiesToCalculate.Count > 0)
@@ -95,8 +113,9 @@ namespace BanditMilitias.Behaviors
                     MobileParty party = _partiesToCalculate.Dequeue();
                     if (party != null && party.IsActive)
                     {
-                        // Strateji güncellemesini BURADA çalıştır (Asenkron ağır işlem).
-                        StrategyEngine.UpdateWarlordStrategy(party); 
+
+
+                        StrategyEngine.UpdateWarlordStrategy(party);
                     }
                 }
             }

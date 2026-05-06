@@ -94,6 +94,7 @@
         <string id="BMCheckVoiceGenderDesc" text="Double-check if the bandit voice lines match the gender. Some official lines don't specify gender, so female leaders might use male voices if disabled."/>
         <string id="BMGenderSlider" text="Leader Gender Ratio"/>
         <string id="BMGenderSliderDesc" text="Chance for Bandit Militia leaders to be female. 0 is all male, 100 is all female."/>
+        <string id="BM_Raid_Notice" text="WARNING: Your property {SETTLEMENT} is being raided by {ATTACKER}!"/>
         
         <string id="BMLoggingLevel" text="Log Level"/>
         <string id="BMLoggingLevelDesc" text="The log file is at 'Documents/Mount and Blade II Bannerlord/Configs/ModLogs/BanditMilitia_[Time].log'."/>
@@ -248,8 +249,34 @@
         <string id="BMS_FormCooldown_H" text="Minimum days between hideout formation attempts."/>
         <string id="BMS_PatrolDensity" text="Max Patrol Density"/>
         <string id="BMS_PatrolDensity_H" text="Formation is blocked when lord patrol density exceeds this value. Higher = easier formation."/>
+        <string id="BMS_GlobalPartyLimit" text="Global Performance Party Limit"/>
+        <string id="BMS_GlobalPartyLimit_H" text="Map-wide total party count (including lords) at which spawning is suspended to protect FPS."/>
+
+        <string id="BMS_HardcoreHideout" text="Hardcore Dynamic Hideouts"/>
+        <string id="BMS_HardcoreHideout_H" text="EXPERIMENTAL: Dynamically injects completely new hideout settlements into the map mid-game. Warning: Can cause save instability."/>
+        
         <string id="BMS_HideoutReplenishChance" text="Hideout Replenish Chance"/>
         <string id="BMS_HideoutReplenishChance_H" text="Daily chance for an abandoned hideout to attract nearby bandit parties back to it."/>
+
+        <!-- AI Promotion -->
+        <string id="BMS_FamousBanditFallback" text="Famous Bandit Fallback Days"/>
+        <string id="BMS_FamousBanditFallback_H" text="If no Famous Bandit exists after this many days, the top 3 Captains are force-promoted."/>
+        <string id="BMS_AlwaysSpawnCaptain" text="Always Spawn Captain"/>
+        <string id="BMS_AlwaysSpawnCaptain_H" text="If enabled, EVERY new militia party will spawn with a Captain Hero. If disabled, captains will spawn randomly."/>
+        
+        <!-- Technical & Debug -->
+        <string id="BMS_DevMode" text="Developer Data Collection"/>
+        <string id="BMS_DevMode_H" text="DEVELOPER ONLY: Collects all test data to Documents/BanditMilitias_Dev/. Zero overhead when disabled."/>
+        <string id="BMS_AutoReport" text="Auto Diagnostic Interval (Hours)"/>
+        <string id="BMS_AutoReport_H" text="Automatically generates and saves a Full Sim Report every X in-game hours. 0 = Disabled."/>
+        <string id="BMS_NeuralAI" text="Enable Neural AI (Dev Only)"/>
+        <string id="BMS_NeuralAI_H" text="EXPERIMENTAL: Enables the custom hand-written neural network advisor. Parallel to heuristics."/>
+        
+        <!-- Machine Learning Thresholds -->
+        <string id="BMS_WeakThreshold" text="Weak Party Threshold"/>
+        <string id="BMS_WeakThreshold_H" text="Troop count below which AI considers a party 'weak'. Used by ML state machine."/>
+        <string id="BMS_PoorThreshold" text="Poor Party Threshold"/>
+        <string id="BMS_PoorThreshold_H" text="Gold amount below which AI considers itself 'poor'. Used by ML state machine."/>
 
         <!-- Settings: Warlords & AI -->
         <string id="BMS_EnableWarlords" text="Enable Warlords"/>

@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Core.Components;
+using BanditMilitias.Core.Components;
 using BanditMilitias.Debug;
 using BanditMilitias.Intelligence.Strategic;
 using System;

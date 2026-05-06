@@ -8,7 +8,8 @@ using TaleWorlds.Localization;
 
 namespace BanditMilitias.Models
 {
-    // ── ModPartySizeLimitModel ─────────────────────────────────────────
+
+
     public class ModPartySizeLimitModel : DefaultPartySizeLimitModel
     {
         public override ExplainedNumber GetPartyMemberSizeLimit(PartyBase party, bool includeDlc = false)
@@ -18,7 +19,8 @@ namespace BanditMilitias.Models
             if (party.MobileParty != null && (party.MobileParty.IsBandit || party.MobileParty.PartyComponent is MilitiaPartyComponent))
             {
                 var mult = Settings.Instance?.BanditSizeMultiplier ?? 1.0f;
-                // [FIX] Avoid +0% spam in tooltip
+
+
                 if (Math.Abs(mult - 1.0f) > 0.01f)
                 {
                     result.AddFactor(mult - 1.0f, new TaleWorlds.Localization.TextObject("{=BanditExpansion}Bandit Horde"));
@@ -29,7 +31,7 @@ namespace BanditMilitias.Models
         }
     }
 
-    // ── MilitiaSpeedModel ─────────────────────────────────────────
+
     public class MilitiaSpeedModel : DefaultPartySpeedCalculatingModel
     {
         public override ExplainedNumber CalculateFinalSpeed(MobileParty mobileParty, ExplainedNumber finalSpeed)
@@ -38,37 +40,37 @@ namespace BanditMilitias.Models
 
             if (mobileParty?.PartyComponent is MilitiaPartyComponent component)
             {
-                // Temel Vur-Kaç Taktiği Bonusu (%10 Raider, %5 Guardian)
+
+
                 float roleSpeedFactor = component.Role == MilitiaPartyComponent.MilitiaRole.Raider ? 0.10f : 0.05f;
                 result.AddFactor(roleSpeedFactor, new TextObject("{=BM_Speed_Tactics}Hit & Run Tactics"));
 
-                // KERVAN TAKİBİ BONUSU: Kervanları yakalayabilmeleri için ekstra hız
+
                 if (mobileParty.TargetParty != null && mobileParty.TargetParty.IsCaravan)
                 {
                     result.AddFactor(0.25f, new TextObject("{=BM_Speed_Caravan}Caravan Hunter Focus"));
                 }
-                
-                // PREDATORY AI BONUSU: Zayıf milisleri kovalarken hızlanma
+
+
                 else if (mobileParty.TargetParty != null && mobileParty.TargetParty.PartyComponent is MilitiaPartyComponent)
                 {
                     result.AddFactor(0.15f, new TextObject("{=BM_Speed_Predatory}Predatory Instincts"));
                 }
-                
-                // SCAVENGE BONUSU: Savaş meydanına yetişme hızı
+
+
                 else if (mobileParty.TargetParty != null && mobileParty.TargetParty.MapEvent != null)
                 {
                     result.AddFactor(0.10f, new TextObject("{=BM_Speed_Scavenge}Scavenge Rush"));
                 }
 
-                // LORD SPEED BONUS: Rütbe yükseldikçe artan stratejik hız (User Request)
-                // OPTIMIZATION: O(N) GetWarlordForParty yerine cached O(1) AssignedWarlord kullanılıyor
+
                 var warlord = component?.AssignedWarlord;
                 if (warlord != null && warlord.SpeedBonus > 0)
                 {
                     result.AddFactor(warlord.SpeedBonus, new TextObject("{=BM_Speed_Warlord}Warlord Leadership"));
                 }
 
-                // MEVSİMSEL HIZ ÇARPANI: Yaz +%15, Kış -%12
+
                 try
                 {
                     float seasonalMult = BanditMilitias.Systems.Seasonal.SeasonalEffectsSystem.Instance.SpeedMultiplier;
@@ -77,14 +79,18 @@ namespace BanditMilitias.Models
                         result.AddFactor(seasonalMult - 1f, new TextObject("{=BM_Speed_Season}Seasonal Conditions"));
                     }
                 }
-                catch { /* SeasonalSystem hazır değilse atla */ }
+                catch (Exception ex)
+                {
+                    if (Settings.Instance?.TestingMode == true)
+                        BanditMilitias.Infrastructure.FileLogger.LogWarning($"[MilitiaSpeedModel] SeasonalEffectsSystem.SpeedMultiplier failed: {ex.Message}");
+                }
             }
 
             return result;
         }
     }
 
-    // ── ModBanditDensityModel ─────────────────────────────────────────
+
     public class ModBanditDensityModel : BanditDensityModel
     {
         private readonly DefaultBanditDensityModel _default = new DefaultBanditDensityModel();
@@ -119,18 +125,21 @@ namespace BanditMilitias.Models
             {
                 var mult = Settings.Instance?.BanditDensityMultiplier ?? 1.0f;
 
-                // PERFORMANCE GUARD: Throttle vanilla bandit spawning if world is over-populated
+
                 if (Campaign.Current != null)
                 {
-                    // OPTIMIZATION: O(N) MobileParties.Count yerine cached deÄŸeri kullan
+
+
                     int totalParties = Infrastructure.ModuleManager.Instance.CachedTotalParties;
                     if (totalParties > 1800)
                     {
-                        // Scale multiplier down as we approach the limit
+
+
                         float threshold = 1800f;
                         float limit = 2200f;
                         float penaltyFactor = Math.Min(1.0f, (totalParties - threshold) / (limit - threshold));
-                        mult *= (1.0f - (0.75f * penaltyFactor)); // Up to 75% reduction
+                        mult *= (1.0f - (0.75f * penaltyFactor));
+
                     }
                 }
 

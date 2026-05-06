@@ -8,12 +8,9 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Intelligence.AI.Components
 {
-    // ── StaticDataCache ───────────────────────────────────────────
-    /// <summary>
-    /// Oturum boyunca degismeyen settlement listelerini RAM'de tutar.
-    /// Settlement.All her cagrildiginda O(n) tarama yapar — bunu once yap.
-    /// </summary>
-    [BanditMilitias.Core.Components.AutoRegister]
+
+
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 20, IsCritical = true)]
     public class StaticDataCache : MilitiaModuleBase
     {
         private static StaticDataCache? _instance;
@@ -41,10 +38,10 @@ namespace BanditMilitias.Intelligence.AI.Components
         private void SafeRefreshCacheOnSessionLaunched(CampaignGameStarter _)
         {
             _isCacheLoaded = false;
-            try 
+            try
             {
-                // Session launched anında temizle ama hemen doldurma (çakışmaları önlemek için)
-                // Gerektiğinde EnsureCacheLoaded üzerinden otomatik yüklenecektir.
+
+
             }
             catch (System.Exception ex)
             {
@@ -76,10 +73,10 @@ namespace BanditMilitias.Intelligence.AI.Components
 
             _isCacheLoaded = true;
             Debug.DebugLogger.Info("StaticDataCache",
-                $"Yenilendi: {_allHideouts.Count} Hideout, {_allVillages.Count} Köy, " +
-                $"{_allTowns.Count} Şehir, {_allCastles.Count} Kale");
+                $"Refreshed: {_allHideouts.Count} Hideouts, {_allVillages.Count} Villages, " +
+                $"{_allTowns.Count} Towns, {_allCastles.Count} Castles");
 
-            // Settlement'lar hazır — mesafe tablosunu sıfırla
+
             SettlementDistanceCache.Instance.Invalidate();
         }
 
@@ -95,23 +92,13 @@ namespace BanditMilitias.Intelligence.AI.Components
             => $"StaticCache: {_isCacheLoaded} | {_allHideouts.Count}H {_allVillages.Count}V {_allTowns.Count}T {_allCastles.Count}C";
     }
 
-    // ── SettlementDistanceCache ───────────────────────────────────
-    /// <summary>
-    /// Bannerlord'un NavMesh mesafe tablosunu taklit eder.
-    ///
-    /// Settlement'lar sabittir — Vec2.Distance hesabini bir kez yap, sonsuza dek oku.
-    /// Sorgu: O(1) dictionary lookup (lazy populate).
-    ///
-    /// NOT: TaleWorlds'ün NavMesh API'si modlara kapalı. Vec2.Distance
-    /// gerçek yol mesafesi değil kuş uçuşu mesafesidir — ama single lookup
-    /// vs. her çağrıda hesaplama olarak hâlâ net kazanç sağlar.
-    /// </summary>
+
     public class SettlementDistanceCache
     {
         private static readonly SettlementDistanceCache _instance = new();
         public static SettlementDistanceCache Instance => _instance;
 
-        // Key: settlement StringId çifti (alfabetik sıra, tutarlı hash için)
+
         private readonly Dictionary<long, float> _distTable = new(2048);
         private bool _ready;
 
@@ -121,10 +108,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             _ready = false;
         }
 
-        /// <summary>
-        /// İki settlement arasındaki mesafeyi döndürür.
-        /// İlk sorguda hesaplanır, sonraki sorgu O(1).
-        /// </summary>
+
         public float GetDistance(Settlement a, Settlement b)
         {
             if (a == null || b == null) return float.MaxValue;
@@ -142,10 +126,8 @@ namespace BanditMilitias.Intelligence.AI.Components
         }
 
         public string GetDiagnostics() => $"Count={_distTable.Count}, Ready={_ready}";
-        /// <summary>
-        /// Verilen konuma en yakın hideout'u döndürür.
-        /// StaticDataCache listesi üzerinden çalışır — O(n) ama n küçük.
-        /// </summary>
+
+
         public Settlement? FindNearestHideout(Vec2 position)
         {
             Settlement? best = null;
@@ -160,9 +142,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             return best;
         }
 
-        /// <summary>
-        /// Verilen konuma en yakın şehri döndürür.
-        /// </summary>
+
         public Settlement? FindNearestTown(Vec2 position)
         {
             Settlement? best = null;
@@ -177,10 +157,11 @@ namespace BanditMilitias.Intelligence.AI.Components
             return best;
         }
 
-        // Çift sıralı string id → tek long key (sıra bağımsız)
+
         private static long MakeKey(Settlement a, Settlement b)
         {
-            // StringId hash kullan — string karşılaştırma gereksiz
+
+
             int ha = a.StringId.GetHashCode();
             int hb = b.StringId.GetHashCode();
             if (ha > hb) { int tmp = ha; ha = hb; hb = tmp; }
@@ -190,7 +171,7 @@ namespace BanditMilitias.Intelligence.AI.Components
         public int CacheSize => _distTable.Count;
     }
 
-    // ── MilitiaSmartCache ─────────────────────────────────────────
+
     public class MilitiaSmartCache
     {
         private static readonly MilitiaSmartCache _instance = new();
@@ -270,16 +251,15 @@ namespace BanditMilitias.Intelligence.AI.Components
                         if (results[i] == null || !seen.Add(results[i]))
                             results.RemoveAt(i);
                     }
-                    
-                    // BUG-2 Fix: Grid bozuk değilse (yoklama yapıldıysa ve boş dönmüşse)
-                    // Linear Scan maskelemesine düşme ve erken dön. Linear scan CPU leak önlendi.
-                    if (!grid.IsEmpty) 
+
+
+                    if (!grid.IsEmpty)
                         return;
                 }
             }
             catch (System.Exception ex)
             {
-                Debug.DebugLogger.Warning("SmartCache", $"Grid sorgusu başarısız: {ex.Message}");
+                Debug.DebugLogger.Warning("SmartCache", $"Grid query failed: {ex.Message}");
             }
 
             float rSq = radius * radius;

@@ -5,10 +5,8 @@ using System.Text.RegularExpressions;
 
 namespace BanditMilitias.Tests
 {
-    /// <summary>
-    /// Kayit defteri denetim testleri.
-    /// TaleWorlds DLL'leri olmadan calisir; kaynak dosyalari okuyarak statik analiz yapar.
-    /// </summary>
+
+
     [TestClass]
     [DoNotParallelize]
     public class RegistryAuditTests
@@ -35,18 +33,32 @@ namespace BanditMilitias.Tests
                 }
             }
 
-            string submoduleContent = GetSourceFiles()
-                .FirstOrDefault(x => x.rel.EndsWith("SubModule.cs", System.StringComparison.OrdinalIgnoreCase)).content ?? string.Empty;
+            string registrarContent = GetSourceFiles()
+                .FirstOrDefault(x => x.rel.Replace('\\', '/').EndsWith("Boot/ModuleRegistrar.cs", System.StringComparison.OrdinalIgnoreCase)).content ?? string.Empty;
 
             var registered = new HashSet<string>(
                 Regex.Matches(
-                        submoduleContent,
-                        @"RegisterSafe\(\s*\(\)\s*=>\s*(?:new\s+)?(?:[\w]+\.)+(\w+)(?:\.Instance|\(\))")
+                        registrarContent,
+                        @"\[AutoRegister\b")
                     .Cast<Match>()
-                    .Select(match => match.Groups[1].Value));
+                    .Select(match => {
+                        // This is a bit simplified, but since the test scans all files for MilitiaModuleBase
+                        // we can check if the file containing the class also has [AutoRegister].
+                        return ""; // Placeholder, we'll refactor the logic below
+                    }));
 
-            var ghosts = moduleClasses.Except(registered).OrderBy(x => x).ToList();
-            ghosts.RemoveAll(x => x is "MilitiaUpgradeSystem" or "TroopProgressionSystem");
+            // Refactored logic: for each module class, check if its source file contains [AutoRegister]
+            var ghosts = new List<string>();
+            foreach (var moduleClass in moduleClasses)
+            {
+                if (moduleClass is "MilitiaUpgradeSystem" or "TroopProgressionSystem") continue;
+
+                var file = GetSourceFiles().FirstOrDefault(f => f.content.Contains($"class {moduleClass}"));
+                if (file.content != null && !Regex.IsMatch(file.content, @"\[[\w\.]*AutoRegister"))
+                {
+                    ghosts.Add(moduleClass);
+                }
+            }
 
             TestContext.WriteLine($"Bulunan modul: {moduleClasses.Count}");
             TestContext.WriteLine($"Kayitli modul: {registered.Count}");

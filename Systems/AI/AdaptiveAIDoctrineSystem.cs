@@ -4,6 +4,7 @@ using BanditMilitias.Core.Events;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Progression;
+using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Tracking;
 using BanditMilitias.Core.Neural;
 using System;
@@ -51,7 +52,7 @@ namespace BanditMilitias.Systems.AI
         public float AggressionBias { get; set; }
     }
 
-    [AutoRegister]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 120, IsCritical = false)]
     public class AdaptiveAIDoctrineSystem : MilitiaModuleBase
     {
         public override string ModuleName => "AdaptiveAIDoctrineSystem";
@@ -86,13 +87,12 @@ namespace BanditMilitias.Systems.AI
                     return;
 
                 CampaignEvents.MapEventEnded.AddNonSerializedListener(this, OnMapEventEnded);
-                // FIX-GHOST: WarlordEquipmentMissionBehavior doctrine buff'larını uygulayabilmesi
-                // için MapEventStarted'da CurrentBattleDoctrine set edilmesi gerekiyor.
-                // Önceden bu bağlantı yoktu — doctrine seçiliyordu ama savaşa aktarılmıyordu.
+
+
                 CampaignEvents.MapEventStarted.AddNonSerializedListener(this, OnMapEventStarted);
-                EventBus.Instance.Subscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
-                
-                // FIX: CampaignTime.Now crash prevention
+                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
+
+
                 EnsureGlobalProfile();
 
                 _isInitialized = true;
@@ -101,8 +101,8 @@ namespace BanditMilitias.Systems.AI
 
         public override void RegisterCampaignEvents()
         {
-            // SAFE-FIX: When session is launched, Now is safe.
-            // Update any profile that was initialized with Zero to Now to fix user's "0h AI Bug".
+
+
             lock (_stateLock)
             {
                 foreach (var profile in _profilesByWarlord.Values)
@@ -121,7 +121,7 @@ namespace BanditMilitias.Systems.AI
             {
                 CampaignEvents.MapEventEnded.ClearListeners(this);
                 CampaignEvents.MapEventStarted.ClearListeners(this);
-                EventBus.Instance.Unsubscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
+                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
                 MilitiaEquipmentManager.Instance.ResetMissionEquipmentPolicies();
 
                 _profilesByWarlord.Clear();
@@ -140,7 +140,7 @@ namespace BanditMilitias.Systems.AI
             if (!IsEnabled || !_isInitialized)
                 return;
 
-            if (CompatibilityLayer.IsGameplayActivationDelayed())
+            if (ModActivationManager.IsGameplayActivationDelayed())
                 return;
 
             lock (_stateLock)
@@ -205,13 +205,14 @@ namespace BanditMilitias.Systems.AI
                 float doctrineMod = AdaptiveDoctrineRules.GetDecisionModifier(profile.ActiveCounterDoctrine, decisionType, isRaider);
                 float finalMod = doctrineMod + profile.AggressionBias;
 
-                // FIX: If Warlord is poor, boost Raid/Aggression to overcome stagnation
+
                 if (decisionType == AIDecisionType.Raid || decisionType == AIDecisionType.Engage)
                 {
                     Warlord? warlord = WarlordSystem.Instance.GetWarlord(profile.WarlordId);
                     if (warlord != null && warlord.Gold < 15000)
                     {
-                        finalMod += 10f; // High desperation for gold
+                        finalMod += 10f;
+
                     }
                 }
 
@@ -285,8 +286,7 @@ namespace BanditMilitias.Systems.AI
             PlayStyle style = tracker.GetPlayerPlayStyle();
             float threatLevel = tracker.GetThreatLevel();
 
-            // FIX: WarlordTacticsSystem.Instance null olabilir (erken init, sandbox veya geç yükleme).
-            // Null durumunda ArmyComposition.Default döndür — sıfır oranlar → Balanced doctrine.
+
             var tacticsSystem = Systems.Enhancement.WarlordTacticsSystem.Instance;
             var playerArmy = tacticsSystem != null
                 ? tacticsSystem.AnalyzePlayerArmy()
@@ -297,9 +297,10 @@ namespace BanditMilitias.Systems.AI
             float cavalryRatio = (playerArmy.CavalryCount + playerArmy.HorseArcherCount * 0.5f) / total;
 
             PlayerCombatDoctrine observed = AdaptiveDoctrineRules.InferPlayerDoctrine(infantryRatio, rangedRatio, cavalryRatio);
-            ApplyDoctrineUpdate(GetGlobalProfile(), observed, style, PersonalityType.Cunning, threatLevel, isGlobalProfile: true, BanditMilitias.Systems.Progression.LegitimacyLevel.Warlord);
+            ApplyDoctrineUpdate(GetGlobalProfile(), observed, style, PersonalityType.Cunning, threatLevel, isGlobalProfile: true, LegitimacyLevel.Warlord);
 
-            var warlords = WarlordSystem.Instance.GetAllWarlords(); // GetAllWarlords zaten IsAlive filtreli
+            var warlords = WarlordSystem.Instance.GetAllWarlords();
+
 
             HashSet<string> activeIds = new HashSet<string>(warlords.Select(w => w.StringId));
             RemoveStaleProfiles(activeIds);
@@ -307,7 +308,7 @@ namespace BanditMilitias.Systems.AI
             foreach (var warlord in warlords)
             {
                 AdaptiveDoctrineProfile profile = GetOrCreateProfile(warlord.StringId);
-                var wLevel = BanditMilitias.Systems.Progression.WarlordLegitimacySystem.Instance.GetLevel(warlord.StringId);
+                var wLevel = WarlordLegitimacySystem.Instance.GetLevel(warlord.StringId);
                 ApplyDoctrineUpdate(profile, observed, style, warlord.Personality, threatLevel, isGlobalProfile: false, wLevel);
             }
         }
@@ -319,7 +320,7 @@ namespace BanditMilitias.Systems.AI
             PersonalityType personality,
             float threatLevel,
             bool isGlobalProfile,
-            BanditMilitias.Systems.Progression.LegitimacyLevel warlordLevel)
+            LegitimacyLevel warlordLevel)
         {
             profile.ObservedPlayerDoctrine = observed;
             profile.LastUpdatedTime = CampaignTime.Now;
@@ -370,17 +371,16 @@ namespace BanditMilitias.Systems.AI
             _observedDoctrineSamples++;
         }
 
-        // FIX-GHOST: Bu metot MapEventStarted'a abone edildi (Initialize'da).
-        // Her savaş başladığında, bandit partisinin aktif doktrini MilitiaEquipmentManager'a
-        // iletiliyor — WarlordEquipmentMissionBehavior agent spawn ederken bunu okuyor.
+
         private void OnMapEventStarted(MapEvent mapEvent, PartyBase attackerParty, PartyBase defenderParty)
         {
             if (!IsEnabled || !_isInitialized || mapEvent == null) return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (ModActivationManager.IsGameplayActivationDelayed()) return;
 
             lock (_stateLock)
             {
-                // Saldırgan tarafta milisya parti var mı?
+
+
                 MobileParty? militiaParty = null;
                 foreach (var p in mapEvent.AttackerSide.Parties)
                 {
@@ -390,7 +390,8 @@ namespace BanditMilitias.Systems.AI
                         break;
                     }
                 }
-                // Yoksa savunucu tarafta ara
+
+
                 if (militiaParty == null)
                 {
                     foreach (var p in mapEvent.DefenderSide.Parties)
@@ -414,7 +415,7 @@ namespace BanditMilitias.Systems.AI
         {
             if (!IsEnabled || !_isInitialized || mapEvent == null)
                 return;
-            if (CompatibilityLayer.IsGameplayActivationDelayed())
+            if (ModActivationManager.IsGameplayActivationDelayed())
                 return;
 
             lock (_stateLock)
@@ -552,7 +553,7 @@ namespace BanditMilitias.Systems.AI
             if (_profilesByWarlord.ContainsKey(GLOBAL_PROFILE_ID))
                 return;
 
-            // FIX: CampaignTime.Now crash prevention.
+
             var safeTime = Campaign.Current != null ? CampaignTime.Now : CampaignTime.Zero;
             _profilesByWarlord[GLOBAL_PROFILE_ID] = new AdaptiveDoctrineProfile
             {
@@ -581,9 +582,8 @@ namespace BanditMilitias.Systems.AI
                 _ => 0f
             };
 
-            // FIX-8: Değişken Agresiflik Yapısı (Confidence tabanlı)
-            // Confidence (0.05 - 1.0) -> Düşük güven = daha temkinli (-), Yüksek güven = daha riskli (+)
-            float confidenceMod = (confidence - 0.5f) * 5.0f; 
+
+            float confidenceMod = (confidence - 0.5f) * 5.0f;
             bias += confidenceMod;
 
             if (style == PlayStyle.Aggressive) bias += 1.0f;
@@ -599,7 +599,7 @@ namespace BanditMilitias.Systems.AI
             if (warlord == null)
                 return;
 
-            var evt = EventBus.Instance.Get<AdaptiveDoctrineShiftedEvent>();
+            var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<AdaptiveDoctrineShiftedEvent>();
             evt.Warlord = warlord;
             evt.OldDoctrine = oldDoctrine.ToString();
             evt.NewDoctrine = newDoctrine.ToString();
@@ -607,7 +607,7 @@ namespace BanditMilitias.Systems.AI
             evt.ChangedAt = CampaignTime.Now;
 
             NeuralEventRouter.Instance.Publish(evt);
-            EventBus.Instance.Return(evt);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
         }
 
         [CommandLineFunctionality.CommandLineArgumentFunction("doctrine_status", "militia")]
@@ -642,7 +642,6 @@ namespace BanditMilitias.Systems.AI
         }
     }
 
-    // ── AdaptiveDoctrineRules (inline) ─────────────────────
 
     public static class AdaptiveDoctrineRules
     {
@@ -674,7 +673,8 @@ namespace BanditMilitias.Systems.AI
             float threatLevel,
             LegitimacyLevel warlordLevel)
         {
-            // Tier 1: Outlaws have no tactical capability, always default to basic.
+
+
             if (warlordLevel == LegitimacyLevel.Outlaw)
                 return CounterDoctrine.Balanced;
 
@@ -712,21 +712,21 @@ namespace BanditMilitias.Systems.AI
                 _ => CounterDoctrine.Balanced
             };
 
-            // Tier 2: Rebels can only use basic guerrilla tactics, not advanced formations.
+
             if (warlordLevel == LegitimacyLevel.Rebel)
             {
                 if (ideal == CounterDoctrine.SpearWall || ideal == CounterDoctrine.ShockRaid)
                     return CounterDoctrine.Balanced;
             }
 
-            // Tier 3: Warlords are smart but not coordinated enough for ShockRaid
+
             if (warlordLevel == LegitimacyLevel.FamousBandit)
             {
                 if (ideal == CounterDoctrine.ShockRaid)
                     return CounterDoctrine.Balanced;
             }
- 
-            // Tier 3+ (Warlord, Recognized, TheConqueror) have access to ALL doctrines.
+
+
             return ideal;
         }
 
@@ -825,10 +825,10 @@ namespace BanditMilitias.Systems.AI
             if (current == candidate) return false;
             if (hoursSinceSwitch < cooldownHours) return false;
 
-            // Confidence drops below 40% -> switch faster
+
             if (confidence < 0.40f) return true;
 
-            // Normal operation -> switch if confidence is high enough to risk it
+
             return confidence > 0.55f;
         }
 
@@ -842,3 +842,5 @@ namespace BanditMilitias.Systems.AI
         private static float Clamp01(float v) => MathF.Clamp(v, 0f, 1f);
     }
 }
+
+

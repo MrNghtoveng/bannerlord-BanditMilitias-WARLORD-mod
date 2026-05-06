@@ -14,7 +14,7 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Tracking
 {
-    // ── IPlayerTracker (inline) ───────────────────────────────────
+
     public interface IPlayerTracker
     {
         bool IsEnabled { get; }
@@ -39,8 +39,8 @@ namespace BanditMilitias.Systems.Tracking
     }
 
 
-
-    public sealed class PlayerTracker : BanditMilitias.Core.Components.MilitiaModuleBase, IPlayerTracker
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 430, IsCritical = false)]
+    public class PlayerTracker : BanditMilitias.Core.Components.MilitiaModuleBase, IPlayerTracker
     {
         public override string ModuleName => "PlayerTracker";
         public override bool IsEnabled => true;
@@ -96,16 +96,16 @@ namespace BanditMilitias.Systems.Tracking
 
         public override void Initialize()
         {
-            EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-            EventBus.Instance.Subscribe<PlayerEnteredTerritoryEvent>(OnPlayerEnteredTerritory);
-            EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<PlayerEnteredTerritoryEvent>(OnPlayerEnteredTerritory);
+            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
         }
 
         public override void Cleanup()
         {
-            EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-            EventBus.Instance.Unsubscribe<PlayerEnteredTerritoryEvent>(OnPlayerEnteredTerritory);
-            EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<PlayerEnteredTerritoryEvent>(OnPlayerEnteredTerritory);
+            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
 
             _cachedThreatLevel = 0f;
             _lastPublishedThreat = 0f;
@@ -205,7 +205,7 @@ namespace BanditMilitias.Systems.Tracking
         {
             try
             {
-                var evt = EventBus.Instance.Get<ThreatLevelChangedEvent>();
+                var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<ThreatLevelChangedEvent>();
                 evt.NewThreatLevel = newThreat;
                 evt.OldThreatLevel = oldThreat;
                 evt.ThreatDelta = newThreat - oldThreat;
@@ -213,7 +213,7 @@ namespace BanditMilitias.Systems.Tracking
                 evt.ChangeTime = CampaignTime.Now;
 
                 NeuralEventRouter.Instance.Publish(evt);
-                EventBus.Instance.Return(evt);
+                BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
 
                 _lastPublishedThreat = newThreat;
                 _threatEventsPublished++;
@@ -244,7 +244,7 @@ namespace BanditMilitias.Systems.Tracking
             return "Threat assessment updated";
         }
 
-        // RecordPlayerMovement: Şu an hiçbir yerde çağrılmıyor — ilerideki hareket takibi için rezerve.
+
         public void RecordPlayerMovement()
         {
             if (Hero.MainHero?.PartyBelongedTo == null) return;
@@ -299,7 +299,8 @@ namespace BanditMilitias.Systems.Tracking
 
         public float GetThreatLevel()
         {
-            // Kampanya henüz hazır değilse güvenli sıfır döndür
+
+
             if (Campaign.Current == null) return 0f;
 
             float hoursSinceUpdate = _lastThreatUpdate != CampaignTime.Zero
@@ -388,8 +389,8 @@ namespace BanditMilitias.Systems.Tracking
 
         public PlayStyle GetPlayerPlayStyle()
         {
-            // FIX: _styleProb boşsa (ilk init veya reset sonrası) InvalidOperationException fırlatır.
-            // Null/boş dict durumunda güvenli varsayılan döndür.
+
+
             if (_styleProb == null || _styleProb.Count == 0)
                 return PlayStyle.Balanced;
             return _styleProb.OrderByDescending(kvp => kvp.Value).First().Key;
@@ -571,9 +572,12 @@ namespace BanditMilitias.Systems.Tracking
                 _ => "KNOWN"
             };
 
-            InformationManager.DisplayMessage(new InformationMessage(
-                $"[Reputation] {hideout.Name}: {level} ({rep.KillCount} kills)",
-                Colors.Red));
+            if (Settings.Instance?.TestingMode == true)
+            {
+                InformationManager.DisplayMessage(new InformationMessage(
+                    $"[Reputation] {hideout.Name}: {level} ({rep.KillCount} kills)",
+                    Colors.Red));
+            }
         }
 
         public override void SyncData(IDataStore dataStore)
@@ -616,7 +620,7 @@ namespace BanditMilitias.Systems.Tracking
                 if (_behaviorModel == null || _hideoutReputations == null)
                     return $"{ModuleName}: Initializing tracking models...";
 
-                // Kampanya henüz hazır değilse tehdit hesabı yapma
+
                 float threat = Campaign.Current != null ? GetThreatLevel() : 0f;
 
                 return "PlayerTracker:\n" +
@@ -701,3 +705,5 @@ namespace BanditMilitias.Systems.Tracking
     }
 
 }
+
+

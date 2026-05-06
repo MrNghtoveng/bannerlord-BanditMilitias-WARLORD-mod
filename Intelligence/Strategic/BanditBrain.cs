@@ -1,769 +1,196 @@
-using BanditMilitias.Components;
-using BanditMilitias.Core.Events;
-using BanditMilitias.Debug;
-using BanditMilitias.Infrastructure;
-using BanditMilitias.Intelligence.AI.Components;
-using BanditMilitias.Intelligence.Logging;
-using BanditMilitias.Intelligence.Neural;
-using BanditMilitias.Systems.Bounty;
-using BanditMilitias.Systems.Fear;
-using BanditMilitias.Systems.Progression;
-using BanditMilitias.Core.Neural;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using BanditMilitias.Core.Events;
+using BanditMilitias.Core.Neural;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Systems.Bounty;
+using BanditMilitias.Systems.Fear;
+using BanditMilitias.Systems.WarlordLegitimacy;
+using BanditMilitias.Systems.Progression;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
+using BanditMilitias.Diagnostics;
+using BanditMilitias.Debug;
+using BanditMilitias.Components;
+using BanditMilitias.Intelligence.AI.Components;
+using BanditMilitias.Intelligence.Neural;
+using BanditMilitias.Intelligence.Logging;
 using TaleWorlds.CampaignSystem.Settlements;
-using TaleWorlds.Core;
 using TaleWorlds.Library;
-using MathF = TaleWorlds.Library.MathF;
+using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Intelligence.Strategic
 {
-    public sealed partial class BanditBrain : BanditMilitias.Core.Components.MilitiaModuleBase
+    [Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Scheduling.AISchedulerSystem),
+        typeof(BanditMilitias.Systems.Grid.SpatialGridSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 150, IsCritical = true, IsSingleton = true)]
+    public sealed partial class BanditBrain : Core.Components.MilitiaModuleBase
     {
+        private static Lazy<BanditBrain> _instanceLazy = CreateLazyInstance();
+        private static Lazy<BanditBrain> CreateLazyInstance() => new Lazy<BanditBrain>(() => new BanditBrain(), System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
+        public static BanditBrain Instance => _instanceLazy.Value;
 
+        private bool _isEnabled;
+        public override bool IsEnabled => _isEnabled;
         public override string ModuleName => "BanditBrain";
-        public override bool IsEnabled => Settings.Instance?.EnableCustomAI ?? true;
-        public override int Priority => 78;
 
+        /// <summary>
+        /// Active personality type for this brain instance.
+        /// MilitiaRaidSystem reads this per-militia via MilitiaPartyComponent.Brain,
+        /// which returns the singleton — so this is a session-wide default personality.
+        /// Individual warlord personalities are stored on the Warlord object itself.
+        /// </summary>
         public PersonalityType PersonalityType { get; set; } = PersonalityType.Cunning;
 
-        private static readonly Lazy<BanditBrain> _instance =
-            new(() => new BanditBrain());
-
-        public static BanditBrain Instance => _instance.Value;
-
+        [SaveableField(1)]
         private BrainState _currentState = BrainState.Dormant;
-        private bool _isInitialized = false;
-        private readonly object _stateLock = new();
 
-        private readonly Dictionary<Settlement, ThreatAssessment> _threatMap = new();
+        [SaveableField(2)]
+        private PlayerProfile _playerProfile = new PlayerProfile();
 
-        private PlayerProfile _playerProfile = new();
+        [SaveableField(3)]
+        private int _totalDecisionsMade;
 
-        private Dictionary<string, MilitiaPerformance> _militiaMetrics = new();
+        private readonly Dictionary<Settlement, ThreatAssessment> _threatMap = new Dictionary<Settlement, ThreatAssessment>();
+        private readonly Dictionary<PersonalityType, IPersonalityStrategy> _strategies = new Dictionary<PersonalityType, IPersonalityStrategy>();
+        private readonly Dictionary<CommandType, float> _baseUtilityScores = new Dictionary<CommandType, float>();
+        private readonly Dictionary<CommandType, RunningAverage> _actionSuccessRates = new Dictionary<CommandType, RunningAverage>();
+        private readonly Dictionary<string, CommandFeedback> _commandFeedback = new Dictionary<string, CommandFeedback>();
+        private readonly Dictionary<string, MilitiaPerformance> _militiaMetrics = new Dictionary<string, MilitiaPerformance>();
 
-        private readonly CircularBuffer<CombatOutcome> _combatHistory = new(50);
+        private readonly CircularBuffer<CombatOutcome> _combatHistory = new CircularBuffer<CombatOutcome>(50);
+        private readonly CoordinationPlanner _planner = new CoordinationPlanner();
+        private readonly PIDController _responseController = new PIDController(0.6f, 0.1f, 0.05f);
+        private readonly ComputationCache<float> _computationCache = new ComputationCache<float>(TimeSpan.FromMinutes(30));
 
-        private Dictionary<string, CommandFeedback> _commandFeedback = new();
+        private CampaignTime _lastTickTime = CampaignTime.Zero;
+        private readonly object _initLock = new object();
+
+
+        private readonly Dictionary<string, CommandType> _recentDecisions = new Dictionary<string, CommandType>();
+
+
+        private float _averageDecisionTime = 0f;
         private int _totalCommandsIssued = 0;
         private int _successfulCommands = 0;
         private float _overallSuccessRate = 0f;
-
-        private readonly Dictionary<CommandType, float> _baseUtilityScores = new()
-        {
-            { CommandType.Patrol, 0.3f },
-            { CommandType.Ambush, 0.7f },
-            { CommandType.Retreat, 0.5f },
-            { CommandType.Hunt, 0.8f },
-            { CommandType.Harass, 0.6f },
-            { CommandType.Defend, 0.7f },
-            { CommandType.AvoidCrowd, 0.4f },
-            { CommandType.Raid, 0.7f },
-            { CommandType.Engage, 0.8f },
-            { CommandType.Scavenge, 0.4f },
-            { CommandType.Retrieve, 0.3f },
-
-            { CommandType.CommandRaidVillage, 0.6f },
-            { CommandType.CommandLayLow, 0.5f },
-            { CommandType.CommandExtort, 0.5f },
-            { CommandType.CommandBuildRepute, 0.4f }
-        };
-
-        private readonly CoordinationPlanner _planner = new();
-        private readonly Dictionary<string, CommandType> _recentDecisions = new();
-
-        private readonly Dictionary<PersonalityType, IPersonalityStrategy> _strategies = new();
-
-        private readonly BanditMilitias.Infrastructure.PIDController _responseController = new(
-            kp: 0.5f, ki: 0.1f, kd: 0.2f, setpoint: 0.7f);
-
-
-        private Dictionary<CommandType, RunningAverage> _actionSuccessRates = new();
-
-        private readonly LRUCache<string, float> _computationCache = new(100);
-
-        private int _totalDecisionsMade = 0;
-        private int _successfulCoordinations = 0;
+        private int _successfulCoordinations;
         private int _failedCoordinations = 0;
-        private float _averageDecisionTime = 0f;
 
         private Dictionary<CommandType, RunningAverage>? _backupActionSuccessRates;
         private Dictionary<string, CommandFeedback>? _backupCommandFeedback;
         private int _backupTotalDecisions = 0;
 
-        private BanditBrain()
-        {
-            InitializePersonalityStrategies();
-            InitializeActionSuccessTrackers();
-        }
-
         public override void Initialize()
         {
-            lock (_stateLock)
+            lock (_initLock)
             {
-                if (_isInitialized) return;
+                if (_isEnabled) return;
 
-                EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-                EventBus.Instance.Subscribe<PlayerEnteredTerritoryEvent>(OnPlayerTerritory);
-                EventBus.Instance.Subscribe<MilitiaMergeEvent>(OnMilitiaMerge);
-                EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
-                EventBus.Instance.Subscribe<CommandCompletionEvent>(OnCommandCompletion);
-                EventBus.Instance.Subscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
-                EventBus.Instance.Subscribe<MilitiaSpawnedEvent>(OnMilitiaSpawned);
-                EventBus.Instance.Subscribe<MilitiaDisbandedEvent>(OnMilitiaDisbanded);
+                InitializeUtilityScores();
+                InitializePersonalityStrategies();
+                InitializeActionSuccessTrackers();
 
-                // Watchdog kaydı SubModule.cs'de yapılıyor (güvenli zamanlama)
+                _isEnabled = true;
+                _currentState = BrainState.Active;
+                _lastTickTime = CampaignTime.Now;
 
-                // FIX: Cleanup() sonrası _strategies ve _actionSuccessRates boş kalır.
-                // Constructor'da bir kez dolduruluyor ama Cleanup() bunları temizliyor.
-                // Initialize() her çağrıldığında yeniden doldurmak zorunlu.
-                if (_strategies.Count == 0)
-                    InitializePersonalityStrategies();
-                if (_actionSuccessRates.Count == 0)
-                    InitializeActionSuccessTrackers();
+                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
 
-                // UpdatePlayerProfile sadece kampanya tamamen hazırsa çağır
-                _isInitialized = true;
-                _currentState = BrainState.Dormant;
-            }
-        }
-
-        public override void RegisterCampaignEvents()
-        {
-            lock (_stateLock)
-            {
-                if (!_isInitialized || _currentState == BrainState.Active)
-                {
-                    return;
-                }
-
-                if (CompatibilityLayer.IsGameplayActivationDelayed())
-                {
-                    _currentState = BrainState.Dormant;
-                    DebugLogger.Info("BanditBrain", "Gameplay activation is delayed. Brain set to DORMANT.");
-                }
-                else
-                {
-                    UpdatePlayerProfile();
-                    _currentState = BrainState.Active;
-                    AIDecisionLogger.LogSessionStart();
-                }
-
-                if (Settings.Instance?.TestingMode == true && Settings.Instance?.ShowTestMessages == true)
-                {
-                    InformationManager.DisplayMessage(new InformationMessage(
-                        "[BanditBrain] Advanced AI Online - Adaptive Mode Enabled",
-                        Colors.Cyan));
-                }
-            }
-        }
-
-        public override void OnHourlyTick()
-        {
-            if (_currentState == BrainState.Dormant)
-            {
-                if (!CompatibilityLayer.IsGameplayActivationDelayed())
-                {
-                    _currentState = BrainState.Active;
-                    UpdatePlayerProfile();
-                    AIDecisionLogger.LogSessionStart();
-                    DebugLogger.Info("BanditBrain", "Gameplay activation delay expired. Brain is now ACTIVE.");
-                }
-                else return;
-            }
-
-            if (_currentState != BrainState.Active) return;
-
-            var timer = System.Diagnostics.Stopwatch.StartNew();
-
-            try
-            {
-
-                if (Settings.Instance?.EnableSpatialAwareness == true)
-                {
-                    UpdateThreatAssessments();
-                }
-
-                ProcessCoordinations();
-                EvaluateStrategicOpportunities();
-
-                IssueAdaptiveCommands();
-
-                UpdateActionSuccessRates();
-
-            }
-            catch (Exception ex)
-            {
-                HandleCriticalError("OnHourlyTick", ex);
-            }
-            finally
-            {
-                timer.Stop();
-                _averageDecisionTime = (_averageDecisionTime * 0.9f) +
-                                      ((float)timer.Elapsed.TotalMilliseconds * 0.1f);
-
-                Systems.Diagnostics.SystemWatchdog.Instance.ReportHeartbeat("BanditBrain");
-                Systems.Diagnostics.SystemWatchdog.Instance.ReportHeartbeat("NeuralActivity");
-            }
-        }
-
-        public override void OnDailyTick()
-        {
-            if (_currentState != BrainState.Active) return;
-
-            try
-            {
-
-                UpdatePlayerProfile();
-                OptimizeThreatResponse();
-                PruneStaleData();
-
-                if (_playerProfile.TotalKills > 0)
-                {
-                    _playerProfile.TotalKills = Math.Max(1, (int)(_playerProfile.TotalKills * 0.985f));
-                }
-
-                _responseController.Reset();
-
-                AIDecisionLogger.LogDailySummary(
-                    _totalDecisionsMade,
-                    _totalCommandsIssued,
-                    _overallSuccessRate,
-                    0f,
-                    _commandFeedback.Count);
-            }
-            catch (Exception ex)
-            {
-                HandleCriticalError("OnDailyTick", ex);
+                DebugLogger.Info("BanditBrain", "Strategic Intelligence Engine Initialized.");
             }
         }
 
         public override void Cleanup()
         {
-            lock (_stateLock)
+            lock (_initLock)
             {
-                EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-                EventBus.Instance.Unsubscribe<PlayerEnteredTerritoryEvent>(OnPlayerTerritory);
-                EventBus.Instance.Unsubscribe<MilitiaMergeEvent>(OnMilitiaMerge);
-                EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
-                EventBus.Instance.Unsubscribe<CommandCompletionEvent>(OnCommandCompletion);
-                EventBus.Instance.Unsubscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
-                EventBus.Instance.Unsubscribe<MilitiaSpawnedEvent>(OnMilitiaSpawned);
-                EventBus.Instance.Unsubscribe<MilitiaDisbandedEvent>(OnMilitiaDisbanded);
+                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
 
-                _backupActionSuccessRates = new Dictionary<CommandType, RunningAverage>(_actionSuccessRates);
-                _backupCommandFeedback = new Dictionary<string, CommandFeedback>(_commandFeedback);
-                _backupTotalDecisions = _totalDecisionsMade;
-
+                _isEnabled = false;
+                _currentState = BrainState.Dormant;
                 _threatMap.Clear();
-                _militiaMetrics.Clear();
-                _combatHistory.Clear();
+                _strategies.Clear();
+                _baseUtilityScores.Clear();
+                _actionSuccessRates.Clear();
+                _commandFeedback.Clear();
                 _planner.Clear();
                 _computationCache.Clear();
-
-                _playerProfile.CurrentStrength = 0;
-                _playerProfile.ClanTier = 0;
-
-                _commandFeedback.Clear();
-                _actionSuccessRates.Clear();  // Initialize()'da yeniden doldurulacak
-                _strategies.Clear();           // Initialize()'da yeniden doldurulacak
-                _totalDecisionsMade = 0;
-                _successfulCommands = 0;
-                _overallSuccessRate = 0f;
-
-                _currentState = BrainState.Dormant;
-                _isInitialized = false;
             }
+            _instanceLazy = CreateLazyInstance();
         }
 
-        private void OnMilitiaKilled(MilitiaKilledEvent e)
+        private void InitializeUtilityScores()
         {
-
-            if (e.WasPlayerKill)
-            {
-                _playerProfile.TotalKills++;
-                _playerProfile.LastKillTime = CampaignTime.Now;
-
-                _combatHistory.Add(new CombatOutcome
-                {
-                    PlayerWon = true,
-                    PlayerStrength = GetPlayerStrength(),
-                    MilitiaStrength = GetPartyStrength(e.Victim),
-                    Timestamp = CampaignTime.Now
-                });
-
-                const float elapsedHours = 1.0f;
-                _responseController.Update(_playerProfile.GetCurrentThreat(), elapsedHours);
-            }
-
-            if (e.Victim != null)
-            {
-                string militiaId = e.Victim.StringId;
-                if (_militiaMetrics.TryGetValue(militiaId, out var metrics))
-                {
-                    metrics.Deaths++;
-                    metrics.LastDeathTime = CampaignTime.Now;
-                }
-            }
+            _baseUtilityScores[CommandType.Patrol] = 0.4f;
+            _baseUtilityScores[CommandType.Ambush] = 0.7f;
+            _baseUtilityScores[CommandType.Hunt] = 0.8f;
+            _baseUtilityScores[CommandType.Defend] = 0.9f;
+            _baseUtilityScores[CommandType.Retreat] = 0.95f;
+            _baseUtilityScores[CommandType.CommandRaidVillage] = 0.65f;
+            _baseUtilityScores[CommandType.CommandLayLow] = 0.85f;
+            _baseUtilityScores[CommandType.CommandExtort] = 0.75f;
+            _baseUtilityScores[CommandType.CommandBuildRepute] = 0.60f;
+            _baseUtilityScores[CommandType.Scavenge] = 0.50f;
+            _baseUtilityScores[CommandType.Retrieve] = 0.55f;
         }
 
-        private void OnThreatLevelChanged(ThreatLevelChangedEvent e)
+        public override void OnHourlyTick()
         {
-
-            if (e.ThreatDelta > 0)
-            {
-
-                _responseController.Update(e.NewThreatLevel, 1.0f);
-            }
-
-            _playerProfile.UpdateThreatCache(e.NewThreatLevel);
-
-            if (Settings.Instance?.TestingMode == true)
-            {
-                DebugLogger.Info("BanditBrain", $"[Threat Awareness] Level changed: {e.OldThreatLevel:F2} -> {e.NewThreatLevel:F2} ({e.Reason})");
-            }
-        }
-
-        private void OnPlayerTerritory(PlayerEnteredTerritoryEvent e)
-        {
-            if (e.NearbyHideout == null) return;
-
-            var warlord = WarlordSystem.Instance.GetWarlordForHideout(e.NearbyHideout);
-            if (warlord == null) return;
-
-            DecideWarlordResponse(warlord, e);
-        }
-
-        private void DecideWarlordResponse(Warlord warlord, PlayerEnteredTerritoryEvent e)
-        {
-
-            var threat = AssessThreatFuzzy(e.NearbyHideout);
-            if (e.NearbyHideout != null)
-            {
-                _threatMap[e.NearbyHideout] = threat;
-            }
-
-            if (!_strategies.TryGetValue(warlord.Personality, out var strategy))
-                return;
-
-            float confidence = 1.0f;
-            bool strategyOverridden = false;
-            bool madeConservative = false;
-
-            if (_commandFeedback.TryGetValue(warlord.StringId, out var feedback))
-            {
-                confidence = feedback.StrategyConfidence;
-
-                if (feedback.SuccessRate < 0.3f && threat.OverallThreat > 0.7f)
-                {
-
-                    if (_strategies.TryGetValue(PersonalityType.Cautious, out var cautiousStrategy))
-                    {
-                        strategy = cautiousStrategy;
-                        strategyOverridden = true;
-                    }
-                }
-            }
-
-            var level = WarlordLegitimacySystem.Instance != null
-                ? WarlordLegitimacySystem.Instance.GetLevel(warlord.StringId)
-                : LegitimacyLevel.Outlaw;
-            var command = strategy.DetermineResponse(warlord, level, threat, _playerProfile);
-
-            // ── BACKSTORY DAVRANIŞI: Kişisel geçmişe göre komut önceliği ayarı ──
-            // BetrayedNoble: Lord partilerine karşı agresif (+%40 Hunt önceliği)
-            // VengefulSurvivor: Düşman hasarını maksimize et, ölüm korkusu yok
-            // FailedMercenary: Yüksek altın hedefleri tercih et (kervan/şehir)
-            // ExiledLeader: Stratejik bölge kontrolü, geri çekilmekten kaçın
-            // AmbitionDriven: Her zaman büyüme — Patrol → Ambush dönüşümü
-            // ── BACKSTORY DAVRANIŞI: Kişisel geçmişe göre komut önceliği ayarı ──
-            // Güç Filtresi: Sadece belirli bir güç seviyesinin üzerindeyse risk al
-            float warlordPower = CalculateWarlordPower(warlord);
-            int troopCount = warlord.CommandedMilitias.Sum(p => p.MemberRoster.TotalManCount);
-            bool isPowerfulEnough = warlordPower > 500f || troopCount > 40;
+            if (!_isEnabled || _currentState == BrainState.Degraded) return;
 
             try
             {
-                switch (warlord.Backstory)
+                UpdatePlayerProfile();
+                UpdateThreatAssessments();
+                UpdateActionSuccessRates();
+                OptimizeThreatResponse();
+
+
+                ProcessDecisions();
+
+                ProcessCoordinations();
+
+                if (CampaignTime.Now.GetHourOfDay == 0)
                 {
-                    case BackstoryType.BetrayedNoble:
-                        // Lord partilerini avla — Sadece güçlüyse intikam alabilir
-                        if (isPowerfulEnough && (command.Type == CommandType.Ambush || command.Type == CommandType.Patrol))
-                        {
-                            command.Priority *= 1.4f;
-                            command.Reason += " [Backstory: İhanet edilmiş soylu — lordları avla]";
-                        }
-                        else if (!isPowerfulEnough && command.Type == CommandType.Hunt)
-                        {
-                            command.Type = CommandType.Defend; // Zayıfsa savunmaya çekil
-                            command.Reason += " [Backstory: İhanet edilmiş soylu — henüz çok zayıf]";
-                        }
-                        break;
-
-                    case BackstoryType.VengefulSurvivor:
-                        // İntikamcı — Saldırı odaklı ama intihar değil
-                        if (isPowerfulEnough && (command.Type == CommandType.Hunt || command.Type == CommandType.Ambush))
-                        {
-                            command.Priority *= 1.25f;
-                            command.Reason += " [Backstory: İntikamcı hayatta kalan]";
-                        }
-                        break;
-
-                    case BackstoryType.FailedMercenary:
-                        // Ekonomik hedefler önce — Altın hırsı riskleri artırır
-                        if (command.Type == CommandType.Patrol)
-                        {
-                            command.Type = CommandType.Ambush;
-                            command.Reason += " [Backstory: Başarısız paralı asker — altın önce]";
-                        }
-                        break;
-
-                    case BackstoryType.ExiledLeader:
-                        // Bölge kontrolü — geri çekilme yok
-                        if (command.Type == CommandType.Retreat || command.Type == CommandType.Defend)
-                        {
-                            command.Type = CommandType.Patrol;
-                            command.Priority *= 1.15f;
-                            command.Reason += " [Backstory: Sürgün lider — toprak savunusu]";
-                        }
-                        break;
-
-                    case BackstoryType.AmbitionDriven:
-                        // Sürekli büyüme — Güce bakmaksızın aktif kalmaya çalışır
-                        if (command.Type == CommandType.Patrol && threat.OverallThreat < 0.6f)
-                        {
-                            command.Type = CommandType.Ambush;
-                            command.Reason += " [Backstory: Hırslı — sürekli büyüme]";
-                        }
-                        break;
-                }
-            }
-            catch { /* Backstory sistemi hazır değilse atla */ }
-            // ── BACKSTORY DAVRANIŞI SONU ──────────────────────────────────────
-
-            var drive = WarlordLegitimacySystem.Instance != null
-                ? WarlordLegitimacySystem.Instance.ComputePromotionDrive(warlord)
-                : default;
-
-            // Promotion Drive Dynamics: AI davranışlarını rütbe hedeflerine göre bükme
-            if (WarlordLegitimacySystem.Instance != null && !drive.IsCloseToPromotion)
-            {
-                if (drive.WealthDrive > 0.6f && (command.Type == CommandType.Patrol || command.Type == CommandType.Defend))
-                {
-                    command.Type = CommandType.Ambush;
-                    command.Reason += " (Promotion Wealth Drive)";
-                    command.Priority *= 1.25f;
-                }
-                else if (drive.PowerDrive > 0.6f && (command.Type == CommandType.Hunt || command.Type == CommandType.Ambush))
-                {
-                    command.Type = CommandType.Patrol;
-                    command.Reason += " (Promotion Power Drive)";
-                    command.Priority *= 0.85f;
-                }
-                else if (drive.HonorDrive > 0.7f && (command.Type == CommandType.Defend || command.Type == CommandType.Patrol))
-                {
-                    command.Type = CommandType.Hunt;
-                    command.Reason += " (Promotion Honor Drive)";
-                }
-            }
-            else if (drive.IsCloseToPromotion)
-            {
-                if (threat.OverallThreat > 0.5f)
-                {
-                    command = MakeCommandMoreConservative(command);
-                    command.Reason += " (Promotion Integrity Strategy)";
-                }
-            }
-
-            if (confidence < 0.5f)
-            {
-                bool isHighLevel = level >= LegitimacyLevel.Warlord;
-                // 4. Rapor Revize: Düşük seviyeli warlordlar için "Aşırı Muhafazakar" kilidini gevşet
-                // Onların büyümek için risk alması gerekiyor. Sadece Ölümcül tehditte (0.95) kaçarlar.
-                if ((isHighLevel && threat.OverallThreat > 0.85f) || threat.OverallThreat > 0.95f)
-                {
-                    command = MakeCommandMoreConservative(command);
-                    madeConservative = true;
-                }
-            }
-
-            AIDecisionLogger.LogWarlordResponse(
-                warlord.StringId,
-                warlord.Personality.ToString(),
-                threat.OverallThreat,
-                confidence,
-                command.Type.ToString(),
-                strategyOverridden || madeConservative,
-                strategyOverridden ? "Low success rate + high threat -> Cautious" :
-                madeConservative ? $"Low success rate ({confidence:F2}) -> Conservative" : null);
-
-            var assessment = CreateStrategicAssessment(warlord);
-            var assessmentEvt = EventBus.Instance.Get<StrategicAssessmentEvent>();
-            assessmentEvt.TargetWarlord = warlord;
-            assessmentEvt.Assessment = assessment;
-            NeuralEventRouter.Instance.Publish(assessmentEvt);
-            EventBus.Instance.Return(assessmentEvt);
-
-            IssueCommandToWarlord(warlord, command);
-        }
-
-        private StrategicCommand MakeCommandMoreConservative(StrategicCommand command)
-        {
-
-            if (command.Type == CommandType.Hunt || command.Type == CommandType.Ambush)
-            {
-                var newCmd = CloneCommand(command);
-                newCmd.Type = CommandType.Defend;
-                newCmd.TargetLocation = command.TargetLocation;
-                newCmd.Priority = command.Priority * 0.7f;
-                newCmd.Reason = command.Reason + " (Conservative Override)";
-                return newCmd;
-            }
-
-            return command;
-        }
-
-        private StrategicAssessment CreateStrategicAssessment(Warlord warlord)
-        {
-
-            float threat = Systems.Tracking.PlayerTracker.Instance.GetThreatLevel();
-
-            var posture = threat switch
-            {
-                > 2.0f => StrategicPosture.Defensive,
-                > 1.0f => StrategicPosture.Defensive,
-                > 0.5f => StrategicPosture.Opportunistic,
-                _ => StrategicPosture.Offensive
-            };
-
-            float confidence = 0.5f;
-            if (_commandFeedback.TryGetValue(warlord.StringId, out var feedback))
-            {
-                confidence = feedback.StrategyConfidence;
-            }
-
-            return new StrategicAssessment
-            {
-                ThreatLevel = threat,
-                RecommendedPosture = posture,
-                PlayerThreat = threat,
-                Confidence = confidence,
-                AssessmentTime = CampaignTime.Now
-            };
-        }
-
-        private void OnMilitiaMerge(MilitiaMergeEvent e)
-        {
-
-            if (e.ResultingParty != null)
-            {
-                _planner.NotifyCoalitionFormed(e.ResultingParty);
-            }
-        }
-
-        private void OnMilitiaSpawned(MilitiaSpawnedEvent evt)
-        {
-            if (evt?.Party == null) return;
-            _totalDecisionsMade++;
-
-            if (Settings.Instance?.TestingMode == true)
-                DebugLogger.Info("BanditBrain",
-                    $"[Fleet+] {evt.Party.Name} doğdu. Aktif milis: {ModuleManager.Instance.GetMilitiaCount()}");
-        }
-
-        private void OnMilitiaDisbanded(MilitiaDisbandedEvent evt)
-        {
-            if (evt?.Party == null) return;
-
-            string? warlordId = (evt.Party.PartyComponent as MilitiaPartyComponent)?.WarlordId;
-            if (warlordId != null && _commandFeedback.TryGetValue(warlordId, out var feedback))
-            {
-                feedback.TotalCommands /= 2;
-                feedback.SuccessCount /= 2;
-                feedback.FailureCount /= 2;
-            }
-
-            if (Settings.Instance?.TestingMode == true)
-                DebugLogger.Info("BanditBrain",
-                    $"[Fleet-] {evt.Party.Name} dağıtıldı. {(evt.IsNuclearCleanup ? "(zorla)" : "")}");
-        }
-
-        private void OnCommandCompletion(CommandCompletionEvent evt)
-        {
-            if (evt.Party == null) return;
-
-            try
-            {
-
-                var warlord = FindWarlordForMilitia(evt.Party);
-                if (warlord == null) return;
-
-                if (!_commandFeedback.TryGetValue(warlord.StringId, out var feedback))
-                {
-                    feedback = new CommandFeedback();
-                    _commandFeedback[warlord.StringId] = feedback;
+                    PruneStaleData();
                 }
 
-                float oldConfidence = feedback.StrategyConfidence;
-                feedback.TotalCommands++;
-                _totalCommandsIssued++;
-
-                if (evt.Status == CommandCompletionStatus.Success)
-                {
-                    feedback.SuccessCount++;
-                    _successfulCommands++;
-
-                    if (_strategies.TryGetValue(warlord.Personality, out var strategy))
-                    {
-
-                        feedback.StrategyConfidence = Math.Min(1f, feedback.StrategyConfidence + 0.05f);
-                    }
-                }
-                else
-                {
-                    feedback.FailureCount++;
-
-                    if (_strategies.TryGetValue(warlord.Personality, out var strategy))
-                    {
-                        feedback.StrategyConfidence = Math.Max(0.1f, feedback.StrategyConfidence - 0.1f);
-                    }
-                }
-
-                feedback.SuccessRate = feedback.SuccessCount / (float)Math.Max(1, feedback.TotalCommands);
-                _overallSuccessRate = _successfulCommands / (float)Math.Max(1, _totalCommandsIssued);
-
-                AIDecisionLogger.LogCommandOutcome(
-                    warlord.Name,
-                    evt.Command?.Type.ToString() ?? "TacticalAI",
-                    evt.Status.ToString(),
-                    feedback.SuccessRate,
-                    oldConfidence,
-                    feedback.StrategyConfidence);
-
-
-                if (Settings.Instance?.TestingMode == true)
-                {
-                    DebugLogger.Info("BanditBrain",
-                        $"[Feedback] {warlord.Name}: {evt.Command?.Type.ToString() ?? "TacticalAI"} {evt.Status} " +
-                        $"(Success rate: {feedback.SuccessRate:P0})");
-                }
+                _lastTickTime = CampaignTime.Now;
             }
             catch (Exception ex)
             {
-                DebugLogger.Error("BanditBrain", $"Feedback processing failed: {ex.Message}");
+                HandleCriticalError("HourlyTick", ex);
             }
         }
 
-        private Warlord? FindWarlordForMilitia(MobileParty militia)
+        private void ProcessDecisions()
         {
-            if (militia?.PartyComponent is not BanditMilitias.Components.MilitiaPartyComponent component)
-                return null;
+            var warlords = WarlordSystem.Instance.GetAllWarlords();
+            if (warlords.Count == 0) return;
 
-            if (component.HomeSettlement == null) return null;
-
-            return WarlordSystem.Instance.GetWarlordForHideout(component.HomeSettlement);
-        }
+            int currentHour = (int)CampaignTime.Now.ToHours;
 
 
-        private void OnHideoutCleared(HideoutClearedEvent e)
-        {
-            if (e.Hideout == null) return;
+            bool isUrgent = _playerProfile.GetCurrentThreat() > 0.85f || _responseController.Output > 0.75f;
 
-            _playerProfile.HideoutsDestroyed++;
-            if (e.Hideout != null)
-                _ = _threatMap.Remove(e.Hideout);
-
-            var hideout = e.Hideout;
-            if (hideout != null)
+            foreach (var warlord in warlords)
             {
-                BroadcastDistressSignal(hideout, DistressLevel.Critical);
-            }
-        }
+                if (warlord == null || !warlord.IsAlive) continue;
 
-        private void UpdateEntanglements(IReadOnlyList<Warlord> warlords)
-        {
-            // ML-based entanglement removed.
-        }
 
-        private void ResolveCommandTarget(StrategicCommand command, Warlord warlord)
-        {
-            if (command.Type == CommandType.Raid || command.Type == CommandType.Hunt || 
-                command.Type == CommandType.Ambush || command.Type == CommandType.CommandRaidVillage ||
-                command.Type == CommandType.Harass || command.Type == CommandType.Engage)
-            {
-                // ── KATMANLI ZEKA: 1. KATMAN - Gözlemci Verisi (Shared Intel) ──
-                // Eğer sığınak ağında bir gözlemci varsa ve veri paylaşmışsa, önce ona bak.
-                if (warlord.SharedIntel.Count > 0 && MBRandom.RandomFloat < 0.7f)
+                if (!isUrgent && (Math.Abs(warlord.StringId.GetHashCode()) % 2 != currentHour % 2))
+                    continue;
+
+                using (new PerformanceTimer($"Decision:{warlord.Name}"))
                 {
-                    var intelTarget = warlord.SharedIntel[MBRandom.RandomInt(warlord.SharedIntel.Count)];
-                    if (intelTarget != null && intelTarget.IsActive)
-                    {
-                        command.TargetParty = intelTarget;
-                        command.TargetLocation = CompatibilityLayer.GetPartyPosition(intelTarget);
-                        command.Reason += " [Shared Intel]";
-                        return;
-                    }
-                }
 
-                // ── KATMANLI ZEKA: 2. KATMAN - Yerel Sensörler (Kendi Görüşü) ──
-                var currentPos = warlord.AssignedHideout != null 
-                    ? CompatibilityLayer.GetSettlementPosition(warlord.AssignedHideout) 
-                    : Vec2.Zero;
 
-                float maxDistance = 150f;
-                
-                // PERFORMANS OPTİMİZASYONU: Listeleri birleştirmek (Concat) yerine 
-                // doğrudan BedrockLayer ve SpatialGrid üzerinden sorgu yap.
-                
-                // 1. Yerleşim Yerleri (Static Grid)
-                var nearbySettlements = Core.Memory.WorldMemory.Bedrock.GetNearest(currentPos, 10, maxDistance);
-                
-                // 2. Partiler (Dynamic SpatialGrid)
-                var nearbyParties = new List<MobileParty>();
-                if (currentPos != Vec2.Zero)
-                {
-                    Systems.Grid.SpatialGridSystem.Instance.QueryNearby(currentPos, maxDistance, nearbyParties);
-                }
-
-                // Rastgele hedef seçimi
-                if (nearbyParties.Count > 0 && MBRandom.RandomFloat < 0.5f)
-                {
-                    var target = nearbyParties[MBRandom.RandomInt(nearbyParties.Count)];
-                    if (target != null && !warlord.CommandedMilitias.Contains(target))
-                    {
-                        command.TargetParty = target;
-                        command.TargetLocation = CompatibilityLayer.GetPartyPosition(target);
-                        return;
-                    }
-                }
-
-                var targetSettlement = nearbySettlements.FirstOrDefault(s => s != warlord.AssignedHideout);
-                if (targetSettlement != null)
-                {
-                    command.TargetLocation = CompatibilityLayer.GetSettlementPosition(targetSettlement);
-                }
-            }
-        }
-
-        private void EvaluateStrategicOpportunities()
-        {
-            // SharedPercept zaten bu tick'te güncellenmiş listeyi tutar —
-            // GetAllWarlords().ToList() kopyası yerine doğrudan kullan
-            var warlords = BanditMilitias.Core.Neural.SharedPercept.Current.AllWarlords;
-            _recentDecisions.Clear();
-
-            if (warlords.Count > 0)
-            {
-                UpdateEntanglements(warlords);
-
-                foreach (var warlord in warlords)
-                {
-                    if (!warlord.IsAlive) continue;
-
-                    // ── KOLEKTİF İSTİHBARAT: Gözlemci Verilerini Güncelle ──
                     UpdateWarlordIntelligence(warlord);
 
                     var bestAction = SelectOptimalAction(warlord);
@@ -779,7 +206,7 @@ namespace BanditMilitias.Intelligence.Strategic
                         _baseUtilityScores.ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value));
 
                     var command = CreateCommand(bestAction, warlord);
-                    ResolveCommandTarget(command, warlord);
+                    ResolveCommandTarget(command, warlord.CommandedMilitias.FirstOrDefault(p => p.IsActive));
                     IssueCommandToWarlord(warlord, command);
                 }
             }
@@ -787,29 +214,26 @@ namespace BanditMilitias.Intelligence.Strategic
             EvaluateAutonomousMilitiaCommands();
         }
 
-        /// <summary>
-        /// Warlord ağındaki Gözlemci (Watcher) biriminin karmaşık tarama verilerini işler.
-        /// </summary>
         private void UpdateWarlordIntelligence(Warlord warlord)
         {
             try
             {
-                // 1. Halefiyet kontrolü (Gözlemci öldüyse yenisini ata)
+
+
                 warlord.EnsureWatcherSuccession();
 
                 if (string.IsNullOrEmpty(warlord.WatcherPartyId)) return;
 
-                // 2. Gözlemciyi bul
+
                 var watcher = warlord.CommandedMilitias.FirstOrDefault(p => p.StringId == warlord.WatcherPartyId && p.IsActive);
                 if (watcher == null) return;
 
-                // 3. Karmaşık Gözlem (Complex Observation)
-                // Gözlemci normal birimlerden 3 kat daha geniş alanı (450f) tarar.
+
                 float scanRadius = 450f;
                 var detected = new List<MobileParty>();
                 Systems.Grid.SpatialGridSystem.Instance.QueryNearby(CompatibilityLayer.GetPartyPosition(watcher), scanRadius, detected);
 
-                // 4. Veriyi sığınak ağına (Shared Intel) aktar
+
                 warlord.UpdateSharedIntelligence(detected);
             }
             catch (Exception ex)
@@ -825,13 +249,13 @@ namespace BanditMilitias.Intelligence.Strategic
 
             var ctx = BuildStrategicContext(warlord);
 
-            // ── Neural Danışman: Tier 3+ warlord'lar için tavsiye al ──
+
             NeuralAdvice neuralAdvice = default;
-            CareerTier warlordCareerTier = CareerTier.Eskiya;
+            CareerTier warlordCareerTier = CareerTier.Outlaw;
             try
             {
                 var careerSystem = WarlordCareerSystem.Instance;
-                warlordCareerTier = careerSystem?.GetTier(warlord.StringId) ?? CareerTier.Eskiya;
+                warlordCareerTier = careerSystem?.GetTier(warlord.StringId) ?? CareerTier.Outlaw;
 
                 var advisor = NeuralAdvisor.Instance;
                 if (advisor != null && advisor.IsEnabled && (int)warlordCareerTier >= (int)CareerTier.Warlord)
@@ -839,7 +263,7 @@ namespace BanditMilitias.Intelligence.Strategic
                     float[] features = NeuralAdvisor.ExtractFeatures(ctx, warlord);
                     neuralAdvice = advisor.GetStrategicAdvice(features, warlordCareerTier);
 
-                    // Neural prediction logla
+
                     if (neuralAdvice.IsValid && Settings.Instance?.DevMode == true)
                     {
                         NeuralDataExporter.AppendPredictionLog(
@@ -859,7 +283,7 @@ namespace BanditMilitias.Intelligence.Strategic
             {
                 float score = CalculateUtilityScore(action, warlord, ctx);
 
-                // ── Neural Blending: heuristic + neural karıştır ──
+
                 if (neuralAdvice.IsValid)
                 {
                     int actionIdx = NeuralActionMap.CommandToIndex(action);
@@ -894,7 +318,8 @@ namespace BanditMilitias.Intelligence.Strategic
 
         private StrategicContext BuildStrategicContext(Warlord warlord)
         {
-            // SharedPercept bu tick için fear indeksini zaten derledi — FearSystem.GetAverageFear çağrısından kaçın
+
+
             float averageRegionFear = 0f;
             var percept = BanditMilitias.Core.Neural.SharedPercept.Current;
             if (warlord.StringId != null &&
@@ -1056,7 +481,8 @@ namespace BanditMilitias.Intelligence.Strategic
             if (action == CommandType.CommandRaidVillage)
             {
                 integrationMul = CalculateRaidVillageScore(ctx, warlord.StringId, ctx.AverageRegionFear);
-                // NEW: King level reduced interest in small raids
+
+
                 if (ctx.WarlordLevel == LegitimacyLevel.Recognized) integrationMul *= 0.2f;
             }
             else if (action == CommandType.CommandLayLow)
@@ -1071,7 +497,8 @@ namespace BanditMilitias.Intelligence.Strategic
                 integrationMul = CalculateRetrieveScore(ctx, warlord.StringId);
             else if (action == CommandType.Hunt && warlord.IsLordHunting)
             {
-                // NEW: Lord hunting bonus
+
+
                 integrationMul = 2.5f;
             }
             score *= integrationMul;
@@ -1171,21 +598,22 @@ namespace BanditMilitias.Intelligence.Strategic
 
         private void UpdateActionSuccessRates()
         {
-            // CircularBuffer'ı her tick .ToList() ile kopyalamak yerine
-            // sadece son tick'ten bu yana eklenen kayıt sayısına bak.
+
+
             int total = _combatHistory.Count;
             if (total <= _lastProcessedCombatIndex)
             {
-                // Yeni kayıt yok
+
+
                 return;
             }
 
-            // Yeni kayıtlar: _lastProcessedCombatIndex'ten total'a kadar
-            // CircularBuffer head-based erişim için direkt enumeration kullan
+
             int i = 0;
             foreach (var outcome in _combatHistory)
             {
-                if (i++ < _lastProcessedCombatIndex) continue; // zaten işlendi
+            if (i++ < _lastProcessedCombatIndex) continue;
+
 
                 if (outcome.PlayerWon)
                 {
@@ -1203,14 +631,11 @@ namespace BanditMilitias.Intelligence.Strategic
 
             _lastProcessedCombatIndex = total;
 
-            // Buffer dolup eski kayıtlar üzerine yazıldığında index'i sıfırla
+
             if (_lastProcessedCombatIndex >= _combatHistory.Capacity)
                 _lastProcessedCombatIndex = 0;
         }
 
-        /// <summary>
-        /// Savaş sonucunu NeuralAdvisor'ın deneyim buffer'ına kaydet.
-        /// </summary>
         private void RecordBattleExperience(CombatOutcome outcome)
         {
             try
@@ -1218,8 +643,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 var advisor = NeuralAdvisor.Instance;
                 if (advisor == null || !advisor.IsEnabled) return;
 
-                // Savaş anının tam bağlamını SharedPercept'ten al —
-                // features[3..11] artık 0f değil, gerçek değerler taşıyor
+
                 var percept = BanditMilitias.Core.Neural.SharedPercept.Current;
 
                 float[] stateFeatures = new float[NeuralAdvisor.STRATEGIC_INPUT_SIZE];
@@ -1228,15 +652,24 @@ namespace BanditMilitias.Intelligence.Strategic
                 stateFeatures[2] = outcome.PlayerStrength > 0
                     ? Math.Min(3f, outcome.MilitiaStrength / Math.Max(1f, outcome.PlayerStrength))
                     : 1f;
-                stateFeatures[3] = Math.Min(1f, percept.ThreatLevel);           // Tehdit seviyesi
-                stateFeatures[4] = 0f;                                           // avgFear — percept'te warlord bazlı yok
-                stateFeatures[5] = 0.5f;                                         // gold — bilinmiyor, nötr
-                stateFeatures[6] = Normalize(outcome.MilitiaStrength / 10f, 0f, 200f); // asker tahmini
-                stateFeatures[7] = 0.5f;                                         // avgTier — nötr
-                stateFeatures[8] = 0.5f;                                         // legitimacy — nötr
-                stateFeatures[9] = 0f;                                           // hasHunter
-                stateFeatures[10] = 0.2f;                                        // bounty — nötr
-                stateFeatures[11] = percept.ThreatLevel > 0.5f ? 0.3f : 0.7f;  // playerDist — yüksek tehdit → oyuncu yakın
+                stateFeatures[3] = Math.Min(1f, percept.ThreatLevel);
+
+                stateFeatures[4] = 0f;
+
+                stateFeatures[5] = 0.5f;
+
+                stateFeatures[6] = Normalize(outcome.MilitiaStrength / 10f, 0f, 200f);
+
+                stateFeatures[7] = 0.5f;
+
+                stateFeatures[8] = 0.5f;
+
+                stateFeatures[9] = 0f;
+
+                stateFeatures[10] = 0.2f;
+
+                stateFeatures[11] = percept.ThreatLevel > 0.5f ? 0.3f : 0.7f;
+
 
                 int actionIdx = outcome.PlayerWon
                     ? NeuralActionMap.CommandToIndex(CommandType.Defend)
@@ -1375,16 +808,16 @@ namespace BanditMilitias.Intelligence.Strategic
 
         private void PublishStrategicCommand(StrategicCommand command, MobileParty? targetParty = null)
         {
-            var evt = EventBus.Instance.Get<StrategicCommandEvent>();
-            // Each dispatch gets its own immutable snapshot so event consumers,
-            // telemetry, and future memory layers do not share mutable command state.
+            var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<StrategicCommandEvent>();
+
+
             evt.Command = CloneCommand(command);
             evt.TargetParty = targetParty;
             evt.IssuedBy = "BanditBrain";
             evt.Timestamp = CampaignTime.Now;
 
             NeuralEventRouter.Instance.Publish(evt);
-            EventBus.Instance.Return(evt);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
         }
 
         private static StrategicCommand CloneCommand(StrategicCommand command)
@@ -1399,14 +832,12 @@ namespace BanditMilitias.Intelligence.Strategic
             };
         }
 
+
         private void IssueAdaptiveCommands()
         {
-
             float urgency = Math.Abs(_responseController.Output);
-
             if (urgency > 0.7f)
             {
-
                 BroadcastEmergencyResponse();
             }
         }
@@ -1423,7 +854,7 @@ namespace BanditMilitias.Intelligence.Strategic
         private void BroadcastDistressSignal(Settlement hideout, DistressLevel level)
         {
 
-            // GetAllWarlords() IsAlive filtreli — IsAlive filtresi gereksiz
+
             var warlords = WarlordSystem.Instance.GetAllWarlords()
                 .Where(w => w.AssignedHideout != null &&
                             w.AssignedHideout.GatePosition.DistanceSquared(hideout.GatePosition) < 10000f)
@@ -1446,10 +877,7 @@ namespace BanditMilitias.Intelligence.Strategic
             if (militias == null || militias.Count == 0)
                 return;
 
-            // FIX: Sabit 8 limit yerine, aktif milis sayısına göre dinamik bütçe.
-            // Küçük gruplar (≤20 milis) → hepsi değerlendirilir.
-            // Büyük gruplar → her saat bütçenin ~%40'ı işlenir (staggered kapsama).
-            // Warlord'suz milisler için bu fonksiyon tek stratejik karar kaynağıdır.
+
             int autonomousCount = 0;
             foreach (var m in militias)
             {
@@ -1459,8 +887,10 @@ namespace BanditMilitias.Intelligence.Strategic
             }
 
             int maxIssued = autonomousCount <= 20
-                ? autonomousCount                                    // ≤20: hepsi
-                : Math.Max(8, (int)(autonomousCount * 0.40f));      // >20: %40 bütçe
+                ? autonomousCount
+
+                : Math.Max(8, (int)(autonomousCount * 0.40f));
+
 
             int issued = 0;
             int currentHour = (int)CampaignTime.Now.ToHours;
@@ -1606,8 +1036,8 @@ namespace BanditMilitias.Intelligence.Strategic
 
         private void UpdateThreatAssessments()
         {
-            // StaticDataCache.AllHideouts zaten önbellek — .Where().ToList() kopyası gereksiz.
-            // Doğrudan index ile round-robin geziyoruz; IsActive kontrolü içeride yapılır.
+
+
             var allHideouts = StaticDataCache.Instance.AllHideouts;
             int total = allHideouts.Count;
             if (total == 0) return;
@@ -1818,9 +1248,14 @@ namespace BanditMilitias.Intelligence.Strategic
             _ = dataStore.SyncData("_playerProfile", ref _playerProfile);
             _ = dataStore.SyncData("_totalDecisionsMade", ref _totalDecisionsMade);
 
-            _ = dataStore.SyncData("_actionSuccessRates", ref _actionSuccessRates);
-            _ = dataStore.SyncData("_commandFeedback", ref _commandFeedback);
-            _ = dataStore.SyncData("_militiaMetrics", ref _militiaMetrics);
+            var actionSuccessRates = _actionSuccessRates;
+            _ = dataStore.SyncData("_actionSuccessRates", ref actionSuccessRates);
+            
+            var commandFeedback = _commandFeedback;
+            _ = dataStore.SyncData("_commandFeedback", ref commandFeedback);
+            
+            var militiaMetrics = _militiaMetrics;
+            _ = dataStore.SyncData("_militiaMetrics", ref militiaMetrics);
 
             List<ThreatAssessment> threatSnapshot = new List<ThreatAssessment>();
             if (dataStore.IsSaving)
@@ -1905,11 +1340,6 @@ namespace BanditMilitias.Intelligence.Strategic
                 }
             }
         }
-    }
-    // ── FearBountyIntegration (inline) ─────────────────────────────────
-
-    public sealed partial class BanditBrain
-    {
 
         private float CalculateRaidVillageScore(
             StrategicContext ctx,
@@ -1998,7 +1428,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 score += legBonus;
             }
 
-            // 4. Rapor Revize: Fakir warlordlar haraç kesmeye daha meyillidir
+
             if (ctx.WarlordGold < 2000) score += 0.35f;
 
             return MathF.Clamp(score, 0f, 1f);
@@ -2059,13 +1489,39 @@ namespace BanditMilitias.Intelligence.Strategic
             };
         }
 
+        private MobileParty? ResolveCommandTarget(StrategicCommand command, MobileParty? fallback)
+        {
+            if (command.TargetParty != null) return command.TargetParty;
+            return fallback;
+        }
+
+        private void OnMilitiaKilled(MilitiaKilledEvent evt)
+        {
+            if (evt.Party != null)
+            {
+                _militiaMetrics[evt.Party.StringId] = new MilitiaPerformance
+                {
+                    LastDeathTime = CampaignTime.Now
+                };
+            }
+        }
+
+        private void OnHideoutCleared(HideoutClearedEvent evt)
+        {
+            if (evt.Hideout != null)
+            {
+                // BroadcastDistressSignal logic placeholder or implementation
+            }
+        }
+
         private float CalculateScavengeScore(StrategicContext ctx, string warlordId)
         {
             float score = 0f;
 
-            // 4. Rapor Revize: Scavenge (Yağma/Leşçilik) düşük seviyede ana geçim kaynağıdır
+
             float goldNeed = MathF.Clamp(1f - (ctx.WarlordGold / 5000f), 0f, 1f);
-            score += goldNeed * 0.60f; // Önceliği artırıldı
+            score += goldNeed * 0.60f;
+
 
             float troopNeed = MathF.Clamp(1f - (ctx.OwnCombatPower / 150f), 0f, 1f);
             score += troopNeed * 0.40f;
@@ -2094,5 +1550,4 @@ namespace BanditMilitias.Intelligence.Strategic
             return MathF.Clamp(score, 0f, 1f);
         }
     }
-
 }

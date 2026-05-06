@@ -17,7 +17,13 @@ namespace BanditMilitias.Infrastructure
             public DateTime LastSeen = DateTime.Now;
             public string LastType = "Exception";
             public string LastMessage = "n/a";
+            public int BurstCount;
+            public DateTime BurstWindowStart = DateTime.Now;
+            public bool IsBurstThrottled;
         }
+
+        private const int BURST_THRESHOLD = 10;
+        private const double BURST_WINDOW_SECONDS = 60.0;
 
         private static readonly object _lock = new object();
         private static readonly Dictionary<string, Record> _records =
@@ -49,14 +55,25 @@ namespace BanditMilitias.Infrastructure
                     {
                         if (Settings.Instance?.TestingMode == true)
                         {
-                            // TEST MODE: Dump to file and reset to capture everything without leaking memory
+
+
                             DumpToRollFile();
                             _records.Clear();
                         }
                         else
                         {
-                            // PROD MODE: Simple eviction to save memory
-                            var oldestKey = _records.OrderBy(r => r.Value.LastSeen).FirstOrDefault().Key;
+
+
+                            string? oldestKey = null;
+                            DateTime oldestTime = DateTime.MaxValue;
+                            foreach (var kvp in _records)
+                            {
+                                if (kvp.Value.LastSeen < oldestTime)
+                                {
+                                    oldestTime = kvp.Value.LastSeen;
+                                    oldestKey = kvp.Key;
+                                }
+                            }
                             if (oldestKey != null) _records.Remove(oldestKey);
                         }
                     }
@@ -70,6 +87,33 @@ namespace BanditMilitias.Infrastructure
                 record.LastType = type;
                 record.LastMessage = message;
                 count = record.Count;
+
+                // Burst detection: track rapid-fire errors from same context
+                double elapsed = (DateTime.Now - record.BurstWindowStart).TotalSeconds;
+                if (elapsed > BURST_WINDOW_SECONDS)
+                {
+                    record.BurstCount = 1;
+                    record.BurstWindowStart = DateTime.Now;
+                    record.IsBurstThrottled = false;
+                }
+                else
+                {
+                    record.BurstCount++;
+                    if (record.BurstCount > BURST_THRESHOLD && !record.IsBurstThrottled)
+                    {
+                        record.IsBurstThrottled = true;
+                        try
+                        {
+                            FileLogger.Log($"[BURST-THROTTLE] Context '{context}' exceeded {BURST_THRESHOLD} errors in {BURST_WINDOW_SECONDS}s. Throttling further logs.");
+                        }
+                        catch { }
+                    }
+                }
+
+                if (record.IsBurstThrottled)
+                {
+                    return;
+                }
             }
 
             if (Settings.Instance?.EnableFileLogging == true)
@@ -139,7 +183,7 @@ namespace BanditMilitias.Infrastructure
                 return sb.ToString();
             }
         }
-        
+
         public static void Reset()
         {
             lock (_lock)
@@ -156,8 +200,8 @@ namespace BanditMilitias.Infrastructure
                 string report = GetReport(500);
                 string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 FileLogger.Log($"[DUMP] Exception batch reached limit. Dumping to exception_dump_{timestamp}.log");
-                // Not: FileLogger normal log dosyasına yazar. Eğer ayrı dosya istenirse burası genişletilebilir.
-                // Şimdilik ana loga "DUMP" etiketiyle basıyoruz ki veriler kaybolmasın.
+
+
                 FileLogger.Log(report);
             }
             catch { }

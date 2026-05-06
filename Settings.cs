@@ -59,7 +59,7 @@ namespace BanditMilitias
 
         [SettingPropertyBool("{=BMS_HardcoreHideout}Hardcore Dynamic Hideouts", Order = 1, RequireRestart = false,
             HintText = "{=BMS_HardcoreHideout_H}EXPERIMENTAL: Dynamically injects completely new hideout settlements into the map mid-game. Warning: Can cause save instability.")]
-        [SettingPropertyGroup("{=BMSG_DynHideout}1. Spawning & Population/Dynamic Hideouts")]
+        [SettingPropertyGroup("{=BMSG_DynHideout}1. Spawning & Population/Dynamic Hideouts", GroupOrder = 1)]
         public bool EnableHardcoreDynamicHideouts { get; set; } = true;
 
         [SettingPropertyInteger("{=BMS_MinParties}Min Parties for Formation", 2, 20, "0 parties", Order = 1, RequireRestart = false,
@@ -287,6 +287,41 @@ namespace BanditMilitias
         [SettingPropertyGroup("{=BMSG_Tactical}5. World & Environment/Tactical Modifiers")]
         public float AggressivePatrolThreshold { get; set; } = 1.5f;
 
+        [SettingPropertyBool("{=BMMarkers}Militia Map Markers", Order = 0, RequireRestart = false,
+            HintText = "{=BMMarkersDesc}Have omniscient view of Bandit Militias.")]
+        [SettingPropertyGroup("{=BMMarkers}5. World & Environment/Map Markers", GroupOrder = 2)]
+        public bool MilitiaMarkers { get; set; } = false;
+
+        [SettingPropertyInteger("{=BMTrackSize}Min HM Size to Track", 10, 500, "0 troops", Order = 1, RequireRestart = false,
+            HintText = "{=BMTrackSizeDesc}Smaller Bandit Militias will not be tracked on the map.")]
+        [SettingPropertyGroup("{=BMMarkers}5. World & Environment/Map Markers")]
+        public int TrackSize { get; set; } = 50;
+
+        [SettingPropertyBool("{=BMBanners}Random Banners", Order = 0, RequireRestart = false,
+            HintText = "{=BMBannersDesc}Bandit Militias will have unique banners or use base bandit clan banners.")]
+        [SettingPropertyGroup("{=BMBanners}5. World & Environment/Visuals & Notifications", GroupOrder = 3)]
+        public bool EnableBanners { get; set; } = true;
+
+        [SettingPropertyBool("{=BMRaidNotices}Village Raid Notices", Order = 1, RequireRestart = false,
+            HintText = "{=BMRaidNoticesDesc}You will see a banner message when your properties are being raided.")]
+        [SettingPropertyGroup("{=BMBanners}5. World & Environment/Visuals & Notifications")]
+        public bool EnableRaidNotices { get; set; } = true;
+
+        [SettingPropertyBool("{=BMRemovePrisonerMessages}Remove Prisoner Messages", Order = 2, RequireRestart = false,
+            HintText = "{=BMRemovePrisonerMessagesDesc}Removes messages about Bandit Militia Heroes being taken prisoner or released.")]
+        [SettingPropertyGroup("{=BMBanners}5. World & Environment/Visuals & Notifications")]
+        public bool RemovePrisonerMessages { get; set; } = false;
+
+        [SettingPropertyBool("{=BMCheckVoiceGender}Check Voice Gender", Order = 0, RequireRestart = false,
+            HintText = "{=BMCheckVoiceGenderDesc}Double check if bandit voice lines match gender. Some official lines don't specify gender, so female leaders might use male voices if off.")]
+        [SettingPropertyGroup("{=BMCheckVoiceGender}2. Warlords & AI/Voice & Gender", GroupOrder = 4)]
+        public bool CheckVoiceGender { get; set; } = true;
+
+        [SettingPropertyInteger("{=BMGenderSlider}Leader Gender Ratio", 0, 100, "0%", Order = 1, RequireRestart = false,
+            HintText = "{=BMGenderSliderDesc}Chance for Bandit Militia leaders to be female. 0 is all male, 100 is all female.")]
+        [SettingPropertyGroup("{=BMCheckVoiceGender}2. Warlords & AI/Voice & Gender")]
+        public int GenderRatio { get; set; } = 20;
+
         [SettingPropertyBool("{=BMS_FearSystem}Fear System", Order = 0, RequireRestart = false,
             HintText = "{=BMS_FearSystem_H}Villages pay tribute or betray warlords based on accumulated fear.")]
         [SettingPropertyGroup("{=BMSG_Powers}6. Warlord Powers")]
@@ -400,12 +435,11 @@ namespace BanditMilitias
         [SettingPropertyBool("{=BMS_AutoPrune}Auto-Prune Q-Table", Order = 4, RequireRestart = false,
             HintText = "{=BMS_AutoPrune_H}Automatically removes low-value entries from the Q-Table to conserve memory.")]
         [SettingPropertyGroup("{=BMSG_AdvML}7. Machine Learning/Advanced ML")]
-        // FIX-2: AutoPruneQTable default true — aksi halde QTable sınırsız büyür.
+
+
         public bool AutoPruneQTable { get; set; } = true;
 
-        // FIX-2: Default 1000→3238 (log verisinden ölçülen gerçek ihtiyaç).
-        // Üst sınır 5000→10000: güçlü donanımlarda daha zengin Q-Table desteklenir.
-        // Ayar MCM'de kullanıcı tarafından hâlâ değiştirilebilir.
+
         [SettingPropertyInteger("{=BMS_MaxQTable}Max Q-Table Size", 100, 10000, "0 entries", Order = 5, RequireRestart = false,
             HintText = "{=BMS_MaxQTable_H}Maximum state-action pairs stored in the AI's memory. Higher values allow richer learning but use more RAM. (Default: 3238)")]
         [SettingPropertyGroup("{=BMSG_AdvML}7. Machine Learning/Advanced ML")]
@@ -419,7 +453,8 @@ namespace BanditMilitias
         [SettingPropertyBool("{=BMS_DevMode}Developer Data Collection", Order = 2, RequireRestart = false,
             HintText = "{=BMS_DevMode_H}DEVELOPER ONLY: Collects all test data to Documents/BanditMilitias_Dev/. Zero overhead when disabled. Disable before distributing the mod.")]
         [SettingPropertyGroup("{=BMSG_Debug}8. Technical & Debug")]
-        // FIX-2: Shipping default false — DevMode=true olursa DevDataCollector saatlik 9.66ms harcar.
+
+
         public bool DevMode { get; set; } = false;
 
         [SettingPropertyInteger("{=BMS_AutoReport}Auto Diagnostic Interval (Hours)", 0, 168, "0 h", Order = 3, RequireRestart = false,
@@ -467,22 +502,27 @@ namespace BanditMilitias
         [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical")]
         public int MaxAITasksPerTick { get; set; } = 100;
 
-        [SettingPropertyBool("{=BMS_AsyncAI}Allow Async AI (Experimental)", Order = 6, RequireRestart = false,
+        [SettingPropertyInteger("{=BMS_MaxSpawnEvals}Max Spawn Evaluations Per Tick", 1, 100, "0 tasks", Order = 6, RequireRestart = false,
+            HintText = "{=BMS_MaxSpawnEvals_H}Hourly spawn-evaluation budget used by the scheduler. Lower = smoother FPS, slower hideout processing.")]
+        [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical")]
+        public int MaxSpawnEvaluationsPerTick { get; set; } = 30;
+
+        [SettingPropertyBool("{=BMS_AsyncAI}Allow Async AI (Experimental)", Order = 7, RequireRestart = false,
             HintText = "{=BMS_AsyncAI_H}Experimental: offloads non-critical AI tasks to background threads. May cause rare race conditions.")]
         [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical")]
         public bool AllowAsyncAIProcessing { get; set; } = false;
 
-        [SettingPropertyBool("{=BMS_SpatialAI}Spatial Awareness", Order = 7, RequireRestart = false,
+        [SettingPropertyBool("{=BMS_SpatialAI}Spatial Awareness", Order = 8, RequireRestart = false,
             HintText = "{=BMS_SpatialAI_H}AI factors in territory control, battle history, and proximity when making decisions.")]
         [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical")]
         public bool EnableSpatialAwareness { get; set; } = true;
 
-        [SettingPropertyInteger("{=BMS_AIRecruit}AI Recruit Count", 1, 50, "0 men", Order = 8, RequireRestart = false,
+        [SettingPropertyInteger("{=BMS_AIRecruit}AI Recruit Count", 1, 50, "0 men", Order = 9, RequireRestart = false,
             HintText = "{=BMS_AIRecruit_H}Troops recruited by AI per reinforcement cycle.")]
         [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical")]
         public int RecruitCount { get; set; } = 5;
 
-        [SettingPropertyInteger("{=BMS_UpgradeXp}Upgrade XP Requirement", 100, 5000, "0 XP", Order = 9, RequireRestart = false,
+        [SettingPropertyInteger("{=BMS_UpgradeXp}Upgrade XP Requirement", 100, 5000, "0 XP", Order = 10, RequireRestart = false,
             HintText = "{=BMS_UpgradeXp_H}XP accumulated before a militia can upgrade its troops.")]
         [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical")]
         public int UpgradeXp { get; set; } = 1000;
@@ -519,6 +559,7 @@ namespace BanditMilitias
             HideoutCooldownDays = (int)MathF.Clamp(HideoutCooldownDays, 1, 30);
             MaxTotalMilitias = (int)MathF.Clamp(MaxTotalMilitias, 10, 500);
             GlobalPerformancePartyLimit = (int)MathF.Clamp(GlobalPerformancePartyLimit, 1000, 10000);
+            // Keep this aligned with ResetToDefaults(): runtime validation intentionally enforces a 2-day minimum.
             ActivationDelay = (int)MathF.Clamp(ActivationDelay, 2, 30);
             HideoutFormationCooldown = (int)MathF.Clamp(HideoutFormationCooldown, 1, 90);
             MaxPatrolDensityForHideout = MathF.Clamp(MaxPatrolDensityForHideout, 0f, 5f);
@@ -530,7 +571,6 @@ namespace BanditMilitias
             WarlordMinBattlesWon = (int)MathF.Clamp(WarlordMinBattlesWon, 1, 20);
             FamousBanditFallbackDays = (int)MathF.Clamp(FamousBanditFallbackDays, 30, 250);
             WarlordFallbackDays = (int)MathF.Clamp(WarlordFallbackDays, 60, 500);
-            MaxWarlordCount = (int)MathF.Clamp(MaxWarlordCount, 0, 50);
             AdaptiveDoctrineLearningRate = MathF.Clamp(AdaptiveDoctrineLearningRate, 0.05f, 1.00f);
             AdaptiveDoctrineSwitchCooldownHours = (int)MathF.Clamp(AdaptiveDoctrineSwitchCooldownHours, 6, 120);
             AdaptiveDoctrineAggressionBias = MathF.Clamp(AdaptiveDoctrineAggressionBias, -0.50f, 0.50f);
@@ -584,6 +624,7 @@ namespace BanditMilitias
             StrongThreshold = (int)MathF.Clamp(StrongThreshold, 10, 200);
             WealthyThreshold = (int)MathF.Clamp(WealthyThreshold, 100, 5000);
             MaxAITasksPerTick = (int)MathF.Clamp(MaxAITasksPerTick, 1, 100);
+            MaxSpawnEvaluationsPerTick = (int)MathF.Clamp(MaxSpawnEvaluationsPerTick, 1, 100);
 
             if (WarlordFallbackDays < FamousBanditFallbackDays)
                 WarlordFallbackDays = FamousBanditFallbackDays;
@@ -594,7 +635,6 @@ namespace BanditMilitias
 
         public void ResetToDefaults()
         {
-            // Spawning
             MilitiaSpawn = true;
             MaxTotalMilitias = 200;
             GlobalPerformancePartyLimit = 4000;
@@ -609,7 +649,6 @@ namespace BanditMilitias
             MaxPatrolDensityForHideout = 1.0f;
             HideoutReplenishChance = 0.05f;
 
-            // Warlords & AI
             EnableWarlords = true;
             EnableCustomAI = true;
             EnableWarlordRegeneration = true;
@@ -625,7 +664,6 @@ namespace BanditMilitias
             AdaptiveDoctrineSwitchCooldownHours = 36;
             AdaptiveDoctrineAggressionBias = 0.00f;
 
-            // Politics
             EnableBanditPolitics = true;
             EnablePropaganda = true;
             EnableBlackMarket = true;
@@ -635,7 +673,6 @@ namespace BanditMilitias
             PoliticsBetrayalThreshold = -55;
             PoliticsDailyDrift = 0.04f;
 
-            // Combat & Loot
             EnhancedBandits = true;
             BanditSkillBoost = 30;
             EquipmentQuality = 2;
@@ -647,7 +684,6 @@ namespace BanditMilitias
             BountyGoldPerTroop = 25;
             HeroItemRewards = true;
 
-            // World
             BanditDensityMultiplier = 1.5f;
             BanditSizeMultiplier = 1.2f;
             WarSpawnMultiplier = 1.5f;
@@ -656,7 +692,6 @@ namespace BanditMilitias
             TerrainAdvantageBonus = 10f;
             AggressivePatrolThreshold = 1.5f;
 
-            // Powers
             EnableFearSystem = true;
             EnableWarlordLegacy = true;
             EnableCrisisEvents = true;
@@ -668,7 +703,6 @@ namespace BanditMilitias
             EnableWarlordLogistics = true;
             AutoDiagnosticReportInterval = 24;
 
-            // ML
             EnableMachineLearning = true;
             EnableMLDataCollection = true;
             MLObservationMode = false;
@@ -680,6 +714,7 @@ namespace BanditMilitias
             MaxQTableSize = 3238;
             UpgradeXp = 1000;
             RecruitCount = 5;
+            MaxSpawnEvaluationsPerTick = 30;
             WeakThreshold = 20;
             PoorThreshold = 300;
             StrongThreshold = 40;
@@ -725,16 +760,10 @@ namespace BanditMilitias
     }
 
 
-    // ── DynamicDifficulty ─────────────────────────────────────────
-    /// <summary>
-    /// Dinamik zorluk ayarlama sistemi
-    /// Oyuncu gücüne göre otomatik spawn ayarları
-    /// </summary>
     public static class DynamicDifficulty
     {
-        /// <summary>
-        /// Oyuncu gücüne göre spawn çarpanını hesapla
-        /// </summary>
+
+
         public static float CalculateSpawnMultiplier()
         {
             var playerStrength = MobileParty.MainParty != null
@@ -744,20 +773,19 @@ namespace BanditMilitias
 
             if (avgMilitiaStrength <= 0) return 1.0f;
 
-            // Oyuncu güçlüyse daha güçlü militia spawn et
-            if (playerStrength > avgMilitiaStrength * 2f)
-                return 1.5f; // +50% güç
 
-            // Oyuncu zayıfsa zayıf militia spawn et
+            if (playerStrength > avgMilitiaStrength * 2f)
+                return 1.5f;
+
+
             if (playerStrength < avgMilitiaStrength * 0.5f)
-                return 0.7f; // -30% güç
+                return 0.7f;
+
 
             return 1.0f;
         }
 
-        /// <summary>
-        /// Oyuncu seviyesine ve dünya durumuna göre optimal militia sayısı
-        /// </summary>
+
         public static int CalculateOptimalMilitiaCount()
         {
             if (Settings.Instance == null) return 30;
@@ -766,10 +794,10 @@ namespace BanditMilitias
             var settlementCount = BanditMilitias.Infrastructure.ModuleManager.Instance.TownCache.Count;
             var activeKingdoms = Kingdom.All?.Count(k => k?.IsEliminated == false) ?? 0;
 
-            // Formül: 10 + (seviye/4) + (şehir_sayısı/2) + (krallık)
+
             var baseCount = 10 + (playerLevel / 4) + (settlementCount / 2) + activeKingdoms;
 
-            // Min/max sınırları uygula
+
             if (baseCount < 20) baseCount = 20;
             if (baseCount > Settings.Instance.MaxTotalMilitias)
                 baseCount = Settings.Instance.MaxTotalMilitias;
@@ -777,21 +805,19 @@ namespace BanditMilitias
             return baseCount;
         }
 
-        /// <summary>
-        /// Günlük spawn şansını dinamik ayarla
-        /// </summary>
+
         public static float CalculateAdjustedSpawnChance(float baseChance)
         {
             var currentCount = Infrastructure.ModuleManager.Instance?.GetMilitiaCount() ?? 0;
             var optimalCount = CalculateOptimalMilitiaCount();
 
-            // Optimal sayının %80'i altındaysa spawn şansını artır
+
             if (currentCount < optimalCount * 0.8f)
             {
                 return baseChance * 1.3f;
             }
 
-            // Optimal sayının %120'si üzerindeyse spawn şansını azalt
+
             if (currentCount > optimalCount * 1.2f)
             {
                 return baseChance * 0.5f;
@@ -800,9 +826,7 @@ namespace BanditMilitias
             return baseChance;
         }
 
-        /// <summary>
-        /// Militia güç çarpanını hesapla (troop sayısı ve kalitesi için)
-        /// </summary>
+
         public static float CalculateMilitiaPowerMultiplier()
         {
             var playerStrength = MobileParty.MainParty != null
@@ -812,17 +836,17 @@ namespace BanditMilitias
 
             float multiplier = Settings.Instance?.BanditSizeMultiplier ?? 1.0f;
 
-            // Oyuncu partisi büyükse daha büyük militia'lar spawn et
+
             if (playerPartySize > 100)
                 multiplier += 0.2f;
             if (playerPartySize > 200)
                 multiplier += 0.3f;
 
-            // Oyuncu güçlüyse daha kaliteli troop'lar
+
             if (playerStrength > 150)
                 multiplier += 0.2f;
 
-            // YENİ: Erken oyunda (ilk 20 gün) partiler kısıtlı olsun
+
             float elapsedDays = 0f;
             if (Campaign.Current != null)
             {
@@ -832,20 +856,20 @@ namespace BanditMilitias
             }
             if (elapsedDays < 20f)
             {
-                return multiplier > 0.8f ? 0.8f : multiplier; // İlk 20 gün %80 parti gücü (%80 sayı/tier)
+                return multiplier > 0.8f ? 0.8f : multiplier;
+
             }
             else if (elapsedDays < 50f)
             {
-                return multiplier > 1.2f ? 1.2f : multiplier; // 20-50 gün arası normalize
+                return multiplier > 1.2f ? 1.2f : multiplier;
+
             }
 
-            // Max 2.0f
+
             return multiplier > 2.0f ? 2.0f : multiplier;
         }
 
-        /// <summary>
-        /// Ortalama militia gücünü hesapla
-        /// </summary>
+
         private static float CalculateAverageMilitiaStrength()
         {
             try
@@ -863,17 +887,15 @@ namespace BanditMilitias
             }
         }
 
-        /// <summary>
-        /// Savaş durumuna göre spawn multiplier'ı
-        /// </summary>
+
         public static float CalculateWarMultiplier(Settlement hideout)
         {
             if (Settings.Instance == null) return 1.0f;
 
             try
             {
-                // FIX: Hideout'ların OwnerClan'ı bandit klanıdır → Kingdom yok.
-                // Bunun yerine en yakın şehir/kale'nin krallığını bul.
+
+
                 Kingdom? kingdom = hideout?.OwnerClan?.Kingdom;
 
                 if (kingdom == null && hideout != null)
@@ -883,7 +905,8 @@ namespace BanditMilitias
                     {
                         float bestDist = float.MaxValue;
                         var mm = Infrastructure.ModuleManager.Instance;
-                        // Settlement.All yerine TownCache + CastleCache
+
+
                         foreach (var s in mm.TownCache.Cast<TaleWorlds.CampaignSystem.Settlements.Settlement>()
                             .Concat(mm.CastleCache))
                         {
@@ -904,7 +927,7 @@ namespace BanditMilitias
 
                 if (kingdom == null) return 1.0f;
 
-                // Krallık savaşta mı?
+
                 bool isAtWar = Kingdom.All != null && Kingdom.All.Any(k =>
                     k != null && k != kingdom && kingdom.IsAtWarWith(k));
                 return isAtWar ? Settings.Instance.WarSpawnMultiplier : 1.0f;
@@ -915,16 +938,15 @@ namespace BanditMilitias
             }
         }
 
-        /// <summary>
-        /// Ticaret rotasına göre spawn multiplier'ı
-        /// </summary>
+
         public static float CalculateTradeRouteMultiplier(Settlement hideout)
         {
             if (Settings.Instance == null) return 1.0f;
 
             try
             {
-                // Etraftaki caravan sayısını kontrol et
+
+
                 var hideoutPos = Infrastructure.CompatibilityLayer.GetSettlementPosition(hideout);
                 if (!hideoutPos.IsValid) return 1.0f;
 

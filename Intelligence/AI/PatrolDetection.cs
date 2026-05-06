@@ -1,4 +1,4 @@
-﻿using BanditMilitias.Components;
+using BanditMilitias.Components;
 using System;
 using System.Collections.Generic;
 using TaleWorlds.CampaignSystem;

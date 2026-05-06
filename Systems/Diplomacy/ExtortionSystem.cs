@@ -3,10 +3,12 @@ using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Core.Neural;
+using BanditMilitias.Systems.WarlordLegitimacy;
 using System;
 using System.Collections.Generic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Actions;
+using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
@@ -53,7 +55,7 @@ namespace BanditMilitias.Systems.Diplomacy
 
         public bool CanExtort(Settlement settlement)
         {
-            if (!Infrastructure.CompatibilityLayer.IsGameplayActivationSwitchClosed())
+            if (!Infrastructure.ModActivationManager.IsGameplayActivationSwitchClosed())
                 return false;
 
             if (settlement == null) return false;
@@ -92,7 +94,7 @@ namespace BanditMilitias.Systems.Diplomacy
         public bool WillYield(Hero warlordHero, Settlement targetVillage)
         {
             if (warlordHero == null || targetVillage == null) return false;
-            
+
             float intimidation = CalculateIntimidation(warlordHero, targetVillage);
             float resistance = CalculateResistance(targetVillage);
 
@@ -108,7 +110,7 @@ namespace BanditMilitias.Systems.Diplomacy
             if (warlordHero == null || targetVillage == null || targetVillage.Village == null) return 0;
 
             int demand = CalculateTributeAmount(targetVillage, warlordHero);
-            
+
             int cityGold = targetVillage.Village.Bound?.Town?.Gold ?? 0;
             int payment = Math.Min(cityGold > 0 ? cityGold : demand, demand);
 
@@ -125,7 +127,7 @@ namespace BanditMilitias.Systems.Diplomacy
                 var warlord = WarlordSystem.Instance.GetWarlordForHero(warlordHero);
                 if (warlord != null)
                 {
-                    BanditMilitias.Systems.Progression.WarlordLegitimacySystem.Instance.OnSuccessfulExtortion(warlord, targetVillage);
+                    WarlordLegitimacySystem.Instance.OnSuccessfulExtortion(warlord, targetVillage);
                 }
             }
             catch (Exception ex)
@@ -135,18 +137,20 @@ namespace BanditMilitias.Systems.Diplomacy
 
             _extortionCooldowns[targetVillage.StringId] = CampaignTime.DaysFromNow(7f);
 
-            // Haraç başarılı → TributeCollectedEvent
+
             try
             {
-                var tribEvt = EventBus.Instance.Get<BanditMilitias.Core.Events.TributeCollectedEvent>();
+                var tribEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<BanditMilitias.Core.Events.TributeCollectedEvent>();
                 if (tribEvt != null)
                 {
                     var tw = WarlordSystem.Instance.GetWarlordForHero(warlordHero);
                     tribEvt.WarlordId = tw?.StringId;
                     tribEvt.Village = targetVillage;
                     tribEvt.Amount = payment;
-                    NeuralEventRouter.Instance.Publish(tribEvt);
-                    EventBus.Instance.Return(tribEvt);
+                    // Use try/finally so Return is guaranteed even if Publish throws.
+                    // Without this, the event object leaks out of the pool permanently.
+                    try { NeuralEventRouter.Instance.Publish(tribEvt); }
+                    finally { BanditMilitias.Core.Events.EventBus.Instance.Return(tribEvt); }
                 }
             }
             catch (Exception ex)

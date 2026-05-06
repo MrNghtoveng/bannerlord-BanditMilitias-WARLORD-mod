@@ -1,4 +1,4 @@
-﻿#if !MCM_PRESENT
+#if !MCM_PRESENT
 using System;
 
 namespace MCM.Abstractions.Base.Global

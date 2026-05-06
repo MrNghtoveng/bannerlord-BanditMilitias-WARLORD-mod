@@ -14,44 +14,44 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void Stage1_SubModule_RegistersSpawningSystem()
         {
-            string src = Read("SubModule.cs");
-            StringAssert.Contains(src, "new Systems.Spawning.MilitiaSpawningSystem()",
-                "SubModule must register MilitiaSpawningSystem with ModuleManager.");
+            string src = Read("Systems/Spawning/MilitiaSpawningSystem.cs");
+            StringAssert.Contains(src, "[BanditMilitias.Core.Components.AutoRegister",
+                "MilitiaSpawningSystem must have the [AutoRegister] attribute for automated discovery.");
         }
 
         [TestMethod]
         public void Stage1_SubModule_RegistersMilitiaBehavior()
         {
-            string src = Read("SubModule.cs");
+            string src = Read("Boot/SystemInitCoordinator.cs");
             StringAssert.Contains(src, "new Behaviors.MilitiaBehavior()",
                 "SubModule must add MilitiaBehavior as a CampaignBehavior so daily ticks reach SpawningSystem.");
-            StringAssert.Contains(src, "RegisterCampaignBehaviors(gameStarter)",
+            StringAssert.Contains(src, "RegisterCampaignBehaviors(IGameStarter gameStarter)",
                 "SubModule must always route behavior registration through the shared helper for Campaign and Sandbox starters.");
         }
 
         [TestMethod]
         public void Stage1_SubModule_CallsModuleManagerInitializeAll()
         {
-            string src = Read("SubModule.cs");
-            StringAssert.Contains(src, "Infrastructure.ModuleManager.Instance.InitializeAll()",
-                "SubModule must call ModuleManager.InitializeAll() so all modules are started.");
+            string src = Read("Lifecycle/ModLifecycleManager.cs");
+            StringAssert.Contains(src, "ModuleManager.Instance.InitializeAll()",
+                "ModLifecycleManager must call ModuleManager.InitializeAll() so all modules are started.");
         }
 
         [TestMethod]
         public void Stage1_SubModule_ClearsEventBusBeforeRegisteringModules()
         {
-            string src = Read("SubModule.cs");
-            int clearIndex = src.IndexOf("Core.Events.EventBus.Instance.Clear();", StringComparison.Ordinal);
-            int registerIndex = src.IndexOf("RegisterModules();", StringComparison.Ordinal);
+            string src = Read("Lifecycle/ModLifecycleManager.cs");
+            int initSystemsIndex = src.IndexOf("ISystemInitiable systems: initialized", StringComparison.Ordinal);
+            int registerIndex = src.IndexOf("_moduleRegistrar.RegisterAll();", StringComparison.Ordinal);
 
-            Assert.IsTrue(clearIndex >= 0 && registerIndex >= 0 && clearIndex < registerIndex,
-                "SubModule must clear EventBus before module registration so singleton resolution cannot leave stale subscriptions behind.");
+            Assert.IsTrue(initSystemsIndex >= 0 && registerIndex >= 0 && initSystemsIndex < registerIndex,
+                "SubModule must initialize ISystemInitiable systems (including EventBus) before module registration.");
         }
 
         [TestMethod]
         public void Stage1_SubModule_ValidatesSettingsBeforeInit()
         {
-            string src = Read("SubModule.cs");
+            string src = Read("Lifecycle/ModLifecycleManager.cs");
             StringAssert.Contains(src, "Settings.Instance?.ValidateAndClampSettings()",
                 "SubModule must validate settings before initializing infrastructure.");
             StringAssert.Contains(src, "ConfigureTestMode()",
@@ -148,7 +148,7 @@ namespace BanditMilitias.Tests
         public void Stage2_MilitiaBehavior_UsesGameplayActivationSwitch()
         {
             string src = Read("Behaviors/MilitiaBehavior.cs");
-            StringAssert.Contains(src, "CompatibilityLayer.IsGameplayActivationSwitchClosed()",
+            StringAssert.Contains(src, "ModActivationManager.IsGameplayActivationSwitchClosed()",
                 "MilitiaBehavior must drive delayed startup through the shared gameplay activation switch.");
         }
 
@@ -180,7 +180,7 @@ namespace BanditMilitias.Tests
         public void Stage3_ModuleManager_UsesGameplayActivationSwitch()
         {
             string src = Read("Infrastructure/ModuleManager.cs");
-            StringAssert.Contains(src, "CompatibilityLayer.IsGameplayActivationSwitchClosed()",
+            StringAssert.Contains(src, "ModActivationManager.IsGameplayActivationSwitchClosed()",
                 "ModuleManager must use the shared gameplay activation switch before dispatching module ticks.");
         }
 
@@ -199,9 +199,9 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void Stage3_CompatibilityLayer_StartsActivationDelayOnMapState()
         {
-            string src = Read("Infrastructure/CompatibilityLayer.cs");
-            StringAssert.Contains(src, "TryStartActivationDelayClock()",
-                "CompatibilityLayer must expose a shared activation-delay clock.");
+            string src = Read("Infrastructure/ModActivationManager.cs");
+            StringAssert.Contains(src, "public static bool TryStartActivationDelayClock()",
+                "ModActivationManager must expose a shared activation-delay clock.");
             StringAssert.Contains(src, "ActiveState is TaleWorlds.CampaignSystem.GameState.MapState",
                 "Activation-delay clock must start when the campaign map becomes active.");
         }
@@ -209,13 +209,13 @@ namespace BanditMilitias.Tests
         [TestMethod]
         public void Stage3_CompatibilityLayer_ExposesGameplayActivationGate()
         {
-            string src = Read("Infrastructure/CompatibilityLayer.cs");
+            string src = Read("Infrastructure/ModActivationManager.cs");
             StringAssert.Contains(src, "public static bool IsGameplayActivationSwitchClosed()",
-                "CompatibilityLayer must expose a central gameplay switch so all startup gating runs through one circuit.");
+                "ModActivationManager must expose a central gameplay switch so all startup gating runs through one circuit.");
             StringAssert.Contains(src, "public static bool TryCloseGameplayActivationSwitch()",
-                "CompatibilityLayer must own the moment when the activation switch closes and gameplay current starts.");
+                "ModActivationManager must own the moment when the activation switch closes and gameplay current starts.");
             StringAssert.Contains(src, "public static bool IsGameplayActivationDelayed()",
-                "CompatibilityLayer must expose a shared gameplay gate so event-driven systems honor the same startup delay.");
+                "ModActivationManager must expose a shared gameplay gate so event-driven systems honor the same startup delay.");
             StringAssert.Contains(src, "return !IsGameplayActivationSwitchClosed();",
                 "GameplayActivationDelayed must delegate to the central activation switch.");
         }
@@ -224,7 +224,7 @@ namespace BanditMilitias.Tests
         public void Stage4_SpawningSystem_DelegatesActivationCheckToModuleManager()
         {
             string src = Read("Systems/Spawning/MilitiaSpawningSystem.cs");
-            Assert.IsFalse(src.Contains("if (!CompatibilityLayer.IsGameplayActivationSwitchClosed())"),
+            Assert.IsFalse(src.Contains("if (!ModActivationManager.IsGameplayActivationSwitchClosed())"),
                 "SpawningSystem should delegate activation gating to ModuleManager to avoid redundant checks.");
         }
 

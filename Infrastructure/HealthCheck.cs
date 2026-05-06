@@ -1,4 +1,4 @@
-ï»¿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
@@ -7,9 +7,8 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Infrastructure
 {
-    /// <summary>
-    /// Comprehensive health check system for mod diagnostics
-    /// </summary>
+
+
     public static class HealthCheck
     {
         public enum Severity { Info, Warning, Critical }
@@ -53,9 +52,9 @@ namespace BanditMilitias.Infrastructure
                 {
                     var icon = issue.Severity switch
                     {
-                        Severity.Critical => "ðŸ”´",
-                        Severity.Warning => "ðŸŸ¡",
-                        _ => "ðŸŸ¢"
+                        Severity.Critical => "??",
+                        Severity.Warning => "??",
+                        _ => "??"
                     };
                     var fixedText = issue.AutoFixed ? " [AUTO-FIXED]" : "";
                     lines.Add($"{icon} [{issue.Component}] {issue.Description}{fixedText}");
@@ -65,35 +64,33 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        /// <summary>
-        /// Run full diagnostics and return report
-        /// </summary>
+
         public static HealthReport RunDiagnostics(bool autoFix = true)
         {
             var report = new HealthReport();
 
-            // 1. Globals Check
+
             CheckGlobals(report, autoFix);
 
-            // 2. ClanCache Check
+
             CheckClanCache(report, autoFix);
 
-            // 3. Settings Validation
+
             CheckSettings(report, autoFix);
 
-            // 4. Dependencies Check
+
             CheckDependencies(report);
 
-            // 5. Module Manager Check
+
             CheckModuleManager(report);
 
-            // 6. Module Registry Check
+
             CheckModuleRegistry(report);
 
-            // 7. Game State Check
+
             CheckGameState(report);
 
-            // 8. Memory Check
+
             CheckMemory(report);
 
             return report;
@@ -107,28 +104,34 @@ namespace BanditMilitias.Infrastructure
                 {
                     if (autoFix)
                     {
-                        Core.Config.Globals.Initialize(force: true);
+                        if (Core.Config.Globals.InitAttempts < 3)
+                        {
+                            Core.Config.Globals.Initialize(force: true);
+                        }
 
                         if (Core.Config.Globals.BasicInfantry.Count > 0)
                         {
-                            report.AddIssue("Globals", "BasicInfantry boÅŸtu, initialize edildi",
+                            report.AddIssue("Globals", "BasicInfantry boþtu, initialize edildi",
                                 Severity.Warning, true);
                         }
                         else
                         {
-                            report.AddIssue("Globals", "BasicInfantry boÅŸ ve initialize baÅŸarÄ±sÄ±z!",
+                            string suffix = Core.Config.Globals.InitAttempts >= 3
+                                ? " (yeniden deneme limiti dolu)"
+                                : string.Empty;
+                            report.AddIssue("Globals", "BasicInfantry boþ ve initialize baþarýsýz!" + suffix,
                                 Severity.Critical);
                         }
                     }
                     else
                     {
-                        report.AddIssue("Globals", "BasicInfantry boÅŸ", Severity.Critical);
+                        report.AddIssue("Globals", "BasicInfantry boþ", Severity.Critical);
                     }
                 }
 
                 if (!Core.Config.Globals.IsInitialized)
                 {
-                    report.AddIssue("Globals", "Globals tam olarak initialize edilmemiÅŸ", Severity.Warning);
+                    report.AddIssue("Globals", "Globals tam olarak initialize edilmemiþ", Severity.Warning);
                 }
             }
             catch (Exception ex)
@@ -146,12 +149,12 @@ namespace BanditMilitias.Infrastructure
                     if (autoFix)
                     {
                         ClanCache.Initialize();
-                        report.AddIssue("ClanCache", "BaÅŸlatÄ±lmamÄ±ÅŸtÄ±, initialize edildi",
+                        report.AddIssue("ClanCache", "Baþlatýlmamýþtý, initialize edildi",
                             Severity.Warning, true);
                     }
                     else
                     {
-                        report.AddIssue("ClanCache", "BaÅŸlatÄ±lmamÄ±ÅŸ", Severity.Critical);
+                        report.AddIssue("ClanCache", "Baþlatýlmamýþ", Severity.Critical);
                     }
                 }
 
@@ -160,7 +163,7 @@ namespace BanditMilitias.Infrastructure
 
                 if (lootersClan == null && fallbackClan == null)
                 {
-                    report.AddIssue("ClanCache", "HiÃ§ bandit klanÄ± bulunamadÄ±!", Severity.Critical);
+                    report.AddIssue("ClanCache", "Hiç bandit klaný bulunamadý!", Severity.Critical);
                 }
             }
             catch (Exception ex)
@@ -179,24 +182,24 @@ namespace BanditMilitias.Infrastructure
                     return;
                 }
 
-                // Validate settings
+
                 if (autoFix)
                 {
                     var beforeCount = report.IssueCount;
                     Settings.Instance.ValidateAndClampSettings();
 
-                    // Check if any values were changed
+
                     if (report.IssueCount > beforeCount)
                     {
-                        report.AddIssue("Settings", "GeÃ§ersiz deÄŸerler otomatik dÃ¼zeltildi",
+                        report.AddIssue("Settings", "Geçersiz deðerler otomatik düzeltildi",
                             Severity.Warning, true);
                     }
                 }
 
-                // Check specific values
+
                 if (Settings.Instance.MaxTotalMilitias < 1)
                 {
-                    report.AddIssue("Settings", "MaxTotalMilitias geÃ§ersiz", Severity.Critical);
+                    report.AddIssue("Settings", "MaxTotalMilitias geçersiz", Severity.Critical);
                 }
 
                 if (Settings.Instance.ActivationDelay < 0)
@@ -212,17 +215,18 @@ namespace BanditMilitias.Infrastructure
 
         private static void CheckDependencies(HealthReport report)
         {
-            // Check MCM
+
+
             bool mcmLoaded = AppDomain.CurrentDomain.GetAssemblies()
                 .Any(a => a.GetName().Name?.Contains("MCM") == true);
 
             if (!mcmLoaded)
             {
-                report.AddIssue("Dependencies", "MCM (Mod Configuration Menu) yÃ¼klenmemiÅŸ",
+                report.AddIssue("Dependencies", "MCM (Mod Configuration Menu) yüklenmemiþ",
                     Severity.Warning);
             }
 
-            // Check TaleWorlds assemblies
+
             var requiredAssemblies = new[] { "TaleWorlds.CampaignSystem", "TaleWorlds.Core", "TaleWorlds.Library" };
             foreach (var asm in requiredAssemblies)
             {
@@ -230,7 +234,7 @@ namespace BanditMilitias.Infrastructure
                     .Any(a => a.GetName().Name == asm);
                 if (!loaded)
                 {
-                    report.AddIssue("Dependencies", $"{asm} yÃ¼klenmemiÅŸ!", Severity.Critical);
+                    report.AddIssue("Dependencies", $"{asm} yüklenmemiþ!", Severity.Critical);
                 }
             }
         }
@@ -249,14 +253,14 @@ namespace BanditMilitias.Infrastructure
                 var militiaCount = mm.GetMilitiaCount();
                 if (militiaCount < 0)
                 {
-                    report.AddIssue("ModuleManager", "GetMilitiaCount() geÃ§ersiz deÄŸer dÃ¶ndÃ¼rdÃ¼",
+                    report.AddIssue("ModuleManager", "GetMilitiaCount() geçersiz deðer döndürdü",
                         Severity.Warning);
                 }
 
-                // Check for too many militias
+
                 if (Settings.Instance != null && militiaCount > Settings.Instance.MaxTotalMilitias * 2)
                 {
-                    report.AddIssue("ModuleManager", $"Militia sayÄ±sÄ± Ã§ok yÃ¼ksek: {militiaCount}",
+                    report.AddIssue("ModuleManager", $"Militia sayýsý çok yüksek: {militiaCount}",
                         Severity.Warning);
                 }
             }
@@ -304,11 +308,11 @@ namespace BanditMilitias.Infrastructure
                     report.AddIssue("GameState", "MobileParty.MainParty null", Severity.Warning);
                 }
 
-                // Check campaign time
+
                 var elapsedDays = GetElapsedDays();
                 if (elapsedDays < 0)
                 {
-                    report.AddIssue("GameState", "Campaign zamanÄ± geÃ§ersiz", Severity.Warning);
+                    report.AddIssue("GameState", "Campaign zamaný geçersiz", Severity.Warning);
                 }
             }
             catch (Exception ex)
@@ -324,16 +328,17 @@ namespace BanditMilitias.Infrastructure
                 var proc = System.Diagnostics.Process.GetCurrentProcess();
                 var memMB = proc.WorkingSet64 / (1024 * 1024);
 
-                if (memMB > 4096) // 4GB
+                if (memMB > 4096)
+
                 {
-                    report.AddIssue("Memory", $"YÃ¼ksek bellek kullanÄ±mÄ±: {memMB} MB", Severity.Warning);
+                    report.AddIssue("Memory", $"Yüksek bellek kullanýmý: {memMB} MB", Severity.Warning);
                 }
 
-                // Check object pool stats
+
                 var poolStats = TroopRosterPool.GetDiagnostics();
                 if (TroopRosterPool.Created > 10000)
                 {
-                    report.AddIssue("Memory", $"Ã‡ok fazla TroopRoster oluÅŸturuldu: {poolStats}",
+                    report.AddIssue("Memory", $"Çok fazla TroopRoster oluþturuldu: {poolStats}",
                         Severity.Warning);
                 }
             }
@@ -343,28 +348,29 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        /// <summary>
-        /// Display health report in-game
-        /// </summary>
+
         public static void DisplayReport(HealthReport report)
         {
             if (report.HasCriticalIssues)
             {
-                InformationManager.DisplayMessage(new InformationMessage(
-                    "[BanditMilitias] KRÄ°TÄ°K: Mod dÃ¼zgÃ¼n baÅŸlatÄ±lamadÄ±! Detaylar iÃ§in loglarÄ± kontrol edin.",
-                    Colors.Red));
+                UiNotifier.TryShow(
+                    "[BanditMilitias] KRÝTÝK: Mod düzgün baþlatýlamadý! Detaylar için loglarý kontrol edin.",
+                    Colors.Red,
+                    "HealthCheck");
             }
             else if (report.HasWarnings)
             {
-                InformationManager.DisplayMessage(new InformationMessage(
-                    $"[BanditMilitias] UyarÄ±: {report.IssueCount} sorun tespit edildi, bazÄ±larÄ± otomatik dÃ¼zeltildi.",
-                    Colors.Yellow));
+                UiNotifier.TryShow(
+                    $"[BanditMilitias] Uyarý: {report.IssueCount} sorun tespit edildi, bazýlarý otomatik düzeltildi.",
+                    Colors.Yellow,
+                    "HealthCheck");
             }
             else if (Settings.Instance?.TestingMode == true)
             {
-                InformationManager.DisplayMessage(new InformationMessage(
-                    "[BanditMilitias] TÃ¼m sistemler normal Ã§alÄ±ÅŸÄ±yor âœ“",
-                    Colors.Green));
+                UiNotifier.TryShow(
+                    "[BanditMilitias] Tüm sistemler normal çalýþýyor ?",
+                    Colors.Green,
+                    "HealthCheck");
             }
         }
 

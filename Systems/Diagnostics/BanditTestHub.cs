@@ -52,28 +52,27 @@ namespace BanditMilitias.Systems.Diagnostics
         private readonly object _sync = new();
         private DateTime _lastRunUtc = DateTime.MinValue;
 
-        // ── Deterministic seed desteği ────────────────────────────
+
         public static int CurrentSeed { get; private set; } = 0;
 
         public static void ApplyDeterministicSeed(int seed)
         {
             CurrentSeed = seed;
-            // MBRandom'un seed'ini ayarla — Bannerlord native rastgelelik motoru
-            try { _ = TaleWorlds.Core.MBRandom.RandomFloat; } catch { } // warm-up
-            // TaleWorlds.Core.MBRandom doğrudan seed almaz; System.Random ile sarıyoruz
+
+
+            try { _ = TaleWorlds.Core.MBRandom.RandomFloat; } catch { }
+
+
             _deterministicRng = new System.Random(seed);
         }
 
         private static System.Random? _deterministicRng;
 
-        /// <summary>
-        /// Deterministic seed ayarlıysa seed'li RNG'den, değilse MBRandom'dan değer döner.
-        /// Test kodunda MBRandom.RandomFloat yerine bu çağrılır.
-        /// </summary>
+
         public static float DeterministicFloat =>
             _deterministicRng != null ? (float)_deterministicRng.NextDouble() : TaleWorlds.Core.MBRandom.RandomFloat;
 
-        // ── Test başarı eşikleri ──────────────────────────────────
+
         private static readonly Dictionary<string, float> _thresholds = new(StringComparer.OrdinalIgnoreCase)
         {
             ["militia_count"] = 300f,
@@ -90,7 +89,8 @@ namespace BanditMilitias.Systems.Diagnostics
         public static bool CheckThreshold(string metric, float actual)
         {
             if (!_thresholds.TryGetValue(metric, out float limit)) return true;
-            // fps_min: actual >= limit olmalı; diğerleri: actual <= limit
+
+
             if (metric == "fps_min") return actual >= limit;
             return actual <= limit;
         }
@@ -174,7 +174,7 @@ namespace BanditMilitias.Systems.Diagnostics
 
             if (snapshot.Count == 0)
             {
-                return "BanditTestHub: Henüz sonuç yok. `bandit.test_run all` veya `bandit.test_run <name>` kullan.";
+                return "BanditTestHub: No results yet. Use `bandit.test_run all` or `bandit.test_run <name>`.";
             }
 
             int passed = snapshot.Count(x => x.Passed);
@@ -217,15 +217,15 @@ namespace BanditMilitias.Systems.Diagnostics
 
         private void RegisterChecks()
         {
-            Register("test_mode_state", "TestingMode ve ShowTestMessages senkronu", CheckTestModeState);
-            Register("module_registry_health", "Ghost, dead, stale ve cold module denetimi", CheckModuleRegistryHealth);
-            Register("spawn_pipeline_wiring", "ModuleManager ve spawn sistemi kablo kontrolu", CheckSpawnPipelineWiring);
-            Register("hideout_cache_readiness", "Hideout cache dolulugu ve aktif sayi", CheckHideoutCacheReadiness);
-            Register("activation_delay_gate", "Activation delay gate tutarliligi", CheckActivationDelayGate);
-            Register("warlord_fallback_rule", "Iki fazli warlord fallback kurali", CheckWarlordFallbackRule);
-            Register("verify_contract_bridge", "Mevcut bandit.verify_contract kopru durumu", CheckVerifyContractBridge);
-            Register("verify_warlord_economy_bridge", "Mevcut bandit.verify_warlord_economy kopru durumu", CheckVerifyWarlordEconomyBridge);
-            Register("verify_integration_bridge", "Mevcut bandit.verify_integration kopru durumu", CheckVerifyIntegrationBridge);
+            Register("test_mode_state", "TestingMode and ShowTestMessages synchronization", CheckTestModeState);
+            Register("module_registry_health", "Ghost, dead, stale and cold module audit", CheckModuleRegistryHealth);
+            Register("spawn_pipeline_wiring", "ModuleManager and spawn system wiring check", CheckSpawnPipelineWiring);
+            Register("hideout_cache_readiness", "Hideout cache fullness and active count", CheckHideoutCacheReadiness);
+            Register("activation_delay_gate", "Activation delay gate consistency", CheckActivationDelayGate);
+            Register("warlord_fallback_rule", "Two-phase warlord fallback rule", CheckWarlordFallbackRule);
+            Register("verify_contract_bridge", "Current bandit.verify_contract bridge status", CheckVerifyContractBridge);
+            Register("verify_warlord_economy_bridge", "Current bandit.verify_warlord_economy bridge status", CheckVerifyWarlordEconomyBridge);
+            Register("verify_integration_bridge", "Current bandit.verify_integration bridge status", CheckVerifyIntegrationBridge);
         }
 
         private void Register(string name, string description, Func<BanditRuntimeTestResult> run)
@@ -271,15 +271,15 @@ namespace BanditMilitias.Systems.Diagnostics
         {
             if (Settings.Instance == null)
             {
-                return Fail("test_mode_state", "TestingMode ve ShowTestMessages senkronu", "Settings.Instance null", "Settings henüz yüklenmedi.");
+                return Fail("test_mode_state", "TestingMode and ShowTestMessages synchronization", "Settings.Instance null", "Settings not loaded yet.");
             }
 
             bool aligned = !Settings.Instance.TestingMode || Settings.Instance.ShowTestMessages;
             string summary = $"TestingMode={Settings.Instance.TestingMode}, ShowTestMessages={Settings.Instance.ShowTestMessages}";
 
             return aligned
-                ? Pass("test_mode_state", "TestingMode ve ShowTestMessages senkronu", summary)
-                : Fail("test_mode_state", "TestingMode ve ShowTestMessages senkronu", summary, "TestingMode açıkken ShowTestMessages da açık olmalı.");
+                ? Pass("test_mode_state", "TestingMode and ShowTestMessages synchronization", summary)
+                : Fail("test_mode_state", "TestingMode and ShowTestMessages synchronization", summary, "ShowTestMessages must be enabled when TestingMode is enabled.");
         }
 
         private static BanditRuntimeTestResult CheckSpawnPipelineWiring()
@@ -293,8 +293,8 @@ namespace BanditMilitias.Systems.Diagnostics
             bool passed = hasCampaign && hasModuleManager && hasSpawner;
 
             return passed
-                ? Pass("spawn_pipeline_wiring", "ModuleManager ve spawn sistemi kablo kontrolu", summary)
-                : Fail("spawn_pipeline_wiring", "ModuleManager ve spawn sistemi kablo kontrolu", summary, "Campaign, ModuleManager ve MilitiaSpawningSystem ayni anda hazir olmali.");
+                ? Pass("spawn_pipeline_wiring", "ModuleManager and spawn system wiring check", summary)
+                : Fail("spawn_pipeline_wiring", "ModuleManager and spawn system wiring check", summary, "Campaign, ModuleManager and MilitiaSpawningSystem must be ready at the same time.");
         }
 
         private static BanditRuntimeTestResult CheckModuleRegistryHealth()
@@ -303,8 +303,8 @@ namespace BanditMilitias.Systems.Diagnostics
             string details = snapshot.BuildDetails();
 
             return !snapshot.HasProblems
-                ? Pass("module_registry_health", "Ghost, dead, stale ve cold module denetimi", snapshot.Summary, string.IsNullOrWhiteSpace(details) ? "No registry health issues detected." : details)
-                : Fail("module_registry_health", "Ghost, dead, stale ve cold module denetimi", snapshot.Summary, details);
+                ? Pass("module_registry_health", "Ghost, dead, stale and cold module audit", snapshot.Summary, string.IsNullOrWhiteSpace(details) ? "No registry health issues detected." : details)
+                : Fail("module_registry_health", "Ghost, dead, stale and cold module audit", snapshot.Summary, details);
         }
 
         private static BanditRuntimeTestResult CheckHideoutCacheReadiness()
@@ -314,23 +314,23 @@ namespace BanditMilitias.Systems.Diagnostics
             string summary = $"HideoutCache total={total}, active={active}";
 
             return total > 0 && active >= 0
-                ? Pass("hideout_cache_readiness", "Hideout cache dolulugu ve aktif sayi", summary)
-                : Fail("hideout_cache_readiness", "Hideout cache dolulugu ve aktif sayi", summary, "Hideout cache boş veya erişilemiyor.");
+                ? Pass("hideout_cache_readiness", "Hideout cache fullness and active count", summary)
+                : Fail("hideout_cache_readiness", "Hideout cache fullness and active count", summary, "Hideout cache is empty or inaccessible.");
         }
 
         private static BanditRuntimeTestResult CheckActivationDelayGate()
         {
-            bool switchClosed = CompatibilityLayer.IsGameplayActivationSwitchClosed();
-            bool delayed = CompatibilityLayer.IsGameplayActivationDelayed();
-            float elapsedDays = CompatibilityLayer.GetActivationDelayElapsedDays();
-            bool initialized = CompatibilityLayer.IsGameFullyInitialized();
+            bool switchClosed = ModActivationManager.IsGameplayActivationSwitchClosed();
+            bool delayed = ModActivationManager.IsGameplayActivationDelayed();
+            float elapsedDays = ModActivationManager.GetActivationDelayElapsedDays();
+            bool initialized = ModActivationManager.IsGameFullyInitialized();
 
             bool consistent = !(switchClosed && delayed);
             string summary = $"SwitchClosed={switchClosed}, Delayed={delayed}, ElapsedDays={elapsedDays:F2}, Initialized={initialized}";
 
             return consistent
-                ? Pass("activation_delay_gate", "Activation delay gate tutarliligi", summary)
-                : Fail("activation_delay_gate", "Activation delay gate tutarliligi", summary, "Gameplay activation switch kapalıyken sistem hala delayed dönüyor.");
+                ? Pass("activation_delay_gate", "Activation delay gate consistency", summary)
+                : Fail("activation_delay_gate", "Activation delay gate consistency", summary, "System still returns delayed while gameplay activation switch is closed.");
         }
 
         private static BanditRuntimeTestResult CheckWarlordFallbackRule()
@@ -345,28 +345,28 @@ namespace BanditMilitias.Systems.Diagnostics
             string summary = $"earlySeed={earlySeed}, singleBlocked={earlyBlockedSingle}, lateEscalation={lateEscalation}, zeroBlockedLate={lateNoZeroFallback}, limitGuard={limitGuard}";
 
             return passed
-                ? Pass("warlord_fallback_rule", "Iki fazli warlord fallback kurali", summary)
-                : Fail("warlord_fallback_rule", "Iki fazli warlord fallback kurali", summary, "Fallback helper beklenen iki fazlı davranışı üretmiyor.");
+                ? Pass("warlord_fallback_rule", "Two-phase warlord fallback rule", summary)
+                : Fail("warlord_fallback_rule", "Two-phase warlord fallback rule", summary, "Fallback helper does not produce the expected two-phase behavior.");
         }
 
         private static BanditRuntimeTestResult CheckVerifyContractBridge()
             => RunBridgeCheck(
                 "verify_contract_bridge",
-                "Mevcut bandit.verify_contract kopru durumu",
+                "Current bandit.verify_contract bridge status",
                 () => BanditMilitias.Debug.VerificationCommands.VerifyContract(new List<string>()),
                 result => result.IndexOf("PASS", StringComparison.OrdinalIgnoreCase) >= 0);
 
         private static BanditRuntimeTestResult CheckVerifyWarlordEconomyBridge()
             => RunBridgeCheck(
                 "verify_warlord_economy_bridge",
-                "Mevcut bandit.verify_warlord_economy kopru durumu",
+                "Current bandit.verify_warlord_economy bridge status",
                 () => BanditMilitias.Debug.VerificationCommands.VerifyWarlordEconomy(new List<string>()),
                 result => result.IndexOf("Spawn: SUCCESS", StringComparison.OrdinalIgnoreCase) >= 0);
 
         private static BanditRuntimeTestResult CheckVerifyIntegrationBridge()
             => RunBridgeCheck(
                 "verify_integration_bridge",
-                "Mevcut bandit.verify_integration kopru durumu",
+                "Current bandit.verify_integration bridge status",
                 () => BanditMilitias.Debug.VerificationCommands.VerifyIntegration(new List<string>()),
                 result =>
                     result.IndexOf("FAIL", StringComparison.OrdinalIgnoreCase) < 0 &&
@@ -433,55 +433,46 @@ namespace BanditMilitias.Systems.Diagnostics
             return "BanditTestHub state reset. Use bandit.test_run all to collect fresh results.";
         }
 
-        /// <summary>
-        /// bandit.test_seed [N] — Deterministic test seed'i ayarlar.
-        /// Aynı seed → MBRandom'un aynı sequenceını üretir → aynı sonuç.
-        /// Kullanım: bandit.test_seed 42
-        ///           bandit.test_seed (argümansız → mevcut seed'i gösterir)
-        /// </summary>
+
         [CommandLineFunctionality.CommandLineArgumentFunction("test_seed", "bandit")]
         public static string TestSeed(List<string> args)
         {
             if (args == null || args.Count == 0)
             {
-                return $"[BanditMilitias] Mevcut test seed: {BanditTestHub.CurrentSeed}\n" +
-                       $"Kullanım: bandit.test_seed [sayı]   (örn: bandit.test_seed 42)";
+                return $"[BanditMilitias] Current test seed: {BanditTestHub.CurrentSeed}\n" +
+                       $"Usage: bandit.test_seed [number]   (e.g. bandit.test_seed 42)";
             }
 
             if (!int.TryParse(args[0].Trim(), out int seed))
-                return $"[BanditMilitias] Geçersiz seed: '{args[0]}'. Tam sayı girin.";
+                return $"[BanditMilitias] Invalid seed: '{args[0]}'. Please enter an integer.";
 
             BanditTestHub.ApplyDeterministicSeed(seed);
-            return $"[BanditMilitias] Deterministic seed uygulandı: {seed}\n" +
-                   $"Şimdi bandit.test_run ile aynı seed'i kullanarak tutarlı sonuçlar alabilirsiniz.";
+            return $"[BanditMilitias] Deterministic seed applied: {seed}\n" +
+                   $"Now you can get consistent results by using the same seed with bandit.test_run.";
         }
 
-        /// <summary>
-        /// bandit.test_threshold [metrik] [değer] — Test başarı eşiği tanımlar.
-        /// Kullanım: bandit.test_threshold militia_count 200
-        ///           bandit.test_threshold fps_min 25
-        /// </summary>
+
         [CommandLineFunctionality.CommandLineArgumentFunction("test_threshold", "bandit")]
         public static string TestThreshold(List<string> args)
         {
             if (args == null || args.Count < 2)
             {
-                return "[BanditMilitias] Kullanım: bandit.test_threshold [metrik] [değer]\n" +
-                       "Desteklenen metrikler:\n" +
-                       "  militia_count [max]   → Milis sayısı bu değeri aşarsa test FAIL\n" +
-                       "  fps_min [min]         → FPS bu değerin altına düşerse test FAIL\n" +
-                       "  memory_mb [max]       → RAM bu değeri aşarsa test FAIL\n" +
-                       "  drop_events [max]     → EventBus drop sayısı bu değeri aşarsa test FAIL\n\n" +
-                       "Mevcut eşikler:\n" +
+                return "[BanditMilitias] Usage: bandit.test_threshold [metric] [value]\n" +
+                       "Supported metrics:\n" +
+                       "  militia_count [max]   → Test FAILS if militia count exceeds this value\n" +
+                       "  fps_min [min]         → Test FAILS if FPS falls below this value\n" +
+                       "  memory_mb [max]       → Test FAILS if RAM exceeds this value\n" +
+                       "  drop_events [max]     → Test FAILS if EventBus drop count exceeds this value\n\n" +
+                       "Current thresholds:\n" +
                        BanditTestHub.GetThresholdReport();
             }
 
             string metric = args[0].Trim().ToLowerInvariant();
             if (!float.TryParse(args[1].Trim(), out float value))
-                return $"[BanditMilitias] Geçersiz değer: '{args[1]}'.";
+                return $"[BanditMilitias] Invalid value: '{args[1]}'.";
 
             BanditTestHub.SetThreshold(metric, value);
-            return $"[BanditMilitias] Eşik ayarlandı: {metric} = {value}";
+            return $"[BanditMilitias] Threshold set: {metric} = {value}";
         }
     }
 }
