@@ -93,7 +93,7 @@ Yükleme sırası:
 4. `MCMv5` (varsa)
 5. `BanditMilitias`
 
-Detaylı kurulum: [src/BanditMilitias/KURULUM.md](src/BanditMilitias/KURULUM.md)
+Detaylı kurulum: [KURULUM.md](KURULUM.md)
 
 ### Derleme ve Test
 
@@ -113,12 +113,12 @@ Gelişmiş diagnostic test sistemi için mod içerisinden şu konsol komutların
 
 ### Dokümantasyon
 
-- [src/BanditMilitias/Documentation/ProjectHierarchy.md](src/BanditMilitias/Documentation/ProjectHierarchy.md)
-- [src/BanditMilitias/Documentation/ModuleHierarchy.md](src/BanditMilitias/Documentation/ModuleHierarchy.md)
-- [src/BanditMilitias/Documentation/SystemFlowTree.md](src/BanditMilitias/Documentation/SystemFlowTree.md)
-- [src/BanditMilitias/Documentation/InGameTestingGuide.md](src/BanditMilitias/Documentation/InGameTestingGuide.md)
-- [src/BanditMilitias/Documentation/AIArchitecture.md](src/BanditMilitias/Documentation/AIArchitecture.md)
-- [src/BanditMilitias/Documentation/AI_Assisted_Development.md](src/BanditMilitias/Documentation/AI_Assisted_Development.md)
+- [Documentation/ProjectHierarchy.md](Documentation/ProjectHierarchy.md)
+- [Documentation/ModuleHierarchy.md](Documentation/ModuleHierarchy.md)
+- [Documentation/SystemFlowTree.md](Documentation/SystemFlowTree.md)
+- [Documentation/InGameTestingGuide.md](Documentation/InGameTestingGuide.md)
+- [Documentation/AIArchitecture.md](Documentation/AIArchitecture.md)
+- [Documentation/AI_Assisted_Development.md](Documentation/AI_Assisted_Development.md)
 
 ### Karakter Notu
 
@@ -213,7 +213,7 @@ Load order:
 4. `MCMv5` (if installed)
 5. `BanditMilitias`
 
-Detailed installation: [src/BanditMilitias/KURULUM.md](src/BanditMilitias/KURULUM.md)
+Detailed installation: [KURULUM.md](KURULUM.md)
 
 ### Build and Test
 
@@ -233,12 +233,12 @@ You can use the following console commands for advanced diagnostics:
 
 ### Documentation
 
-- [src/BanditMilitias/Documentation/ProjectHierarchy.md](src/BanditMilitias/Documentation/ProjectHierarchy.md)
-- [src/BanditMilitias/Documentation/ModuleHierarchy.md](src/BanditMilitias/Documentation/ModuleHierarchy.md)
-- [src/BanditMilitias/Documentation/SystemFlowTree.md](src/BanditMilitias/Documentation/SystemFlowTree.md)
-- [src/BanditMilitias/Documentation/InGameTestingGuide.md](src/BanditMilitias/Documentation/InGameTestingGuide.md)
-- [src/BanditMilitias/Documentation/AIArchitecture.md](src/BanditMilitias/Documentation/AIArchitecture.md)
-- [src/BanditMilitias/Documentation/AI_Assisted_Development.md](src/BanditMilitias/Documentation/AI_Assisted_Development.md)
+- [Documentation/ProjectHierarchy.md](Documentation/ProjectHierarchy.md)
+- [Documentation/ModuleHierarchy.md](Documentation/ModuleHierarchy.md)
+- [Documentation/SystemFlowTree.md](Documentation/SystemFlowTree.md)
+- [Documentation/InGameTestingGuide.md](Documentation/InGameTestingGuide.md)
+- [Documentation/AIArchitecture.md](Documentation/AIArchitecture.md)
+- [Documentation/AI_Assisted_Development.md](Documentation/AI_Assisted_Development.md)
 
 ### Encoding Note
 
