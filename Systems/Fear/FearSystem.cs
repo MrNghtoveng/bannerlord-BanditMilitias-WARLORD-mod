@@ -52,7 +52,6 @@ namespace BanditMilitias.Systems.Fear
         public string? Reason { get; set; }
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsCritical = true)]
     public class FearSystem : MilitiaModuleBase
     {
 
@@ -100,8 +99,10 @@ namespace BanditMilitias.Systems.Fear
         {
             if (_isInitialized) return;
 
+            // FIX: Settlement.All erişimi kaldırıldı (Sandbox donmasını önlemek için).
+            // Veriler ilk OnHourlyTick / OnDailyTick anında 'EnsureDataPopulated' ile doldurulacak.
 
-            Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
             RebuildControlIndex();
 
             _isInitialized = true;
@@ -112,7 +113,7 @@ namespace BanditMilitias.Systems.Fear
 
         public override void Cleanup()
         {
-            Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+            EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
             _fearStates.Clear();
             _fearControllers.Clear();
             _controlledSettlementCount.Clear();
@@ -173,7 +174,7 @@ namespace BanditMilitias.Systems.Fear
                 }
             }
 
-
+            // HİBRİT AI: Pasif Korku Aurasi Güncellemesi
             UpdatePassiveFearAura();
 
             if (Settings.Instance?.TestingMode == true && betrayalsToday > 0)
@@ -333,23 +334,23 @@ namespace BanditMilitias.Systems.Fear
 
             if (!string.IsNullOrEmpty(state.ControllingWarlordId))
             {
-                var threatEvt = Core.Events.EventBus.Instance.Get<ThreatLevelChangedEvent>();
+                var threatEvt = EventBus.Instance.Get<ThreatLevelChangedEvent>();
                 threatEvt.NewThreatLevel = 0.7f;
                 threatEvt.OldThreatLevel = 0.4f;
                 threatEvt.ThreatDelta = threatEvt.NewThreatLevel - threatEvt.OldThreatLevel;
                 threatEvt.ChangeTime = CampaignTime.Now;
                 threatEvt.Reason = $"Betrayal at {settlement.Name}";
                 NeuralEventRouter.Instance.Publish(threatEvt);
-                Core.Events.EventBus.Instance.Return(threatEvt);
+                EventBus.Instance.Return(threatEvt);
 
                 Warlord? warlord = WarlordSystem.Instance.GetWarlord(state.ControllingWarlordId!);
                 if (warlord != null)
                 {
-                    var betrayalEvt = Core.Events.EventBus.Instance.Get<WarlordBetrayedEvent>();
+                    var betrayalEvt = EventBus.Instance.Get<WarlordBetrayedEvent>();
                     betrayalEvt.VictimWarlord = warlord;
                     betrayalEvt.BetrayingSettlement = settlement;
                     NeuralEventRouter.Instance.Publish(betrayalEvt);
-                    Core.Events.EventBus.Instance.Return(betrayalEvt);
+                    EventBus.Instance.Return(betrayalEvt);
                 }
             }
 
@@ -444,7 +445,7 @@ namespace BanditMilitias.Systems.Fear
         private void EnsureDataPopulated()
         {
             if (_fearStates.Count > 0) return;
-            if (!ModActivationManager.IsGameFullyInitialized()) return;
+            if (!CompatibilityLayer.IsGameFullyInitialized()) return;
 
             try
             {
@@ -468,11 +469,7 @@ namespace BanditMilitias.Systems.Fear
             }
             catch (Exception ex)
             {
-                // Partial populate is worse than empty: _fearStates.Count > 0 would prevent
-                // any future retry, leaving some settlements permanently without fear data.
-                // Clear the partial state so the next call to EnsureDataPopulated rebuilds cleanly.
-                _fearStates.Clear();
-                DebugLogger.Warning("FearSystem", $"Lazy data population failed — state cleared for retry: {ex.Message}");
+                DebugLogger.Warning("FearSystem", $"Lazy data population failed: {ex.Message}");
             }
         }
 
@@ -486,8 +483,7 @@ namespace BanditMilitias.Systems.Fear
 
             try
             {
-
-
+                // 5 ayrı iterasyon yerine tek geçişte tüm metrikler
                 float totalFear = 0f, totalRespect = 0f;
                 int highFear = 0, resisting = 0, controlled = 0;
                 foreach (var s in _fearStates.Values)
@@ -509,8 +505,7 @@ namespace BanditMilitias.Systems.Fear
             }
             catch
             {
-
-
+                // Snapshot sessizce başarısız olabilir, eski değeri koru.
             }
         }
 
@@ -521,6 +516,10 @@ namespace BanditMilitias.Systems.Fear
                    $"  Last Snapshot: {_lastSnapshotTime:HH:mm:ss}";
         }
 
+        /// <summary>
+        /// HİBRİT AI: Haydut varlığından (Tier/Sayı) kaynaklanan pasif korku üretimi.
+        /// Yağma olmasa bile bölgedeki güçlü haydut birlikleri korku saçar.
+        /// </summary>
         public void UpdatePassiveFearAura()
         {
             if (!IsEnabled || !_isInitialized) return;
@@ -539,8 +538,7 @@ namespace BanditMilitias.Systems.Fear
                     if (comp != null && comp.HomeSettlement == hideout)
                     {
                         linkedMilitias++;
-
-
+                        // Asker sayısı + Tier çarpanı (Kalite korkuyu artırır)
                         foreach (var troop in party.MemberRoster.GetTroopRoster())
                         {
                             if (troop.Character != null)
@@ -557,36 +555,33 @@ namespace BanditMilitias.Systems.Fear
                     foreach (var settlement in nearby)
                     {
                         if (settlement == null || (!settlement.IsVillage && !settlement.IsTown)) continue;
-
+                        
                         var state = GetOrCreateState(settlement.StringId);
                         float currentFear = state.Fear;
 
-
+                        // Günlük pasif artış (Logaritmik fren ile)
                         float fearGain = MathF.Clamp(auraPower * 0.003f, 0f, 0.035f);
                         float resistance = 1.0f - (currentFear / 1.0f);
                         float finalGain = fearGain * resistance;
 
                         state.Fear = MathF.Clamp(state.Fear + finalGain, 0f, 1f);
-
+                        
                         if (Settings.Instance?.TestingMode == true && finalGain > 0.001f)
                         {
-                            DebugLogger.TestLog($"[AURA] {hideout.Name} spread {finalGain:P1} passive fear over {settlement.Name}.");
+                            DebugLogger.TestLog($"[AURA] {hideout.Name}, {settlement.Name} üzerine {finalGain:P1} pasif korku yaydı.");
                         }
                     }
 
-
-                    if (auraPower > 50f)
-
+                    // ── TERÖR AURASI: Yakındaki Düşman Ordularının Moralini Bozma ─────────
+                    if (auraPower > 50f) // Sadece güçlü sığınaklar terör yayar
                     {
-                        var nearbyParties = MobileParty.All.Where(p =>
-                            p != null && p.IsActive && !p.IsBandit &&
-                            CompatibilityLayer.GetPartyPosition(p).DistanceSquared(hideoutPos) < 25f * 25f);
-
+                        var nearbyParties = MobileParty.All.Where(p => 
+                            p != null && p.IsActive && !p.IsBandit && 
+                            CompatibilityLayer.GetPartyPosition(p).DistanceSquared(hideoutPos) < 25f * 25f); // 25 birim yarıçap
 
                         foreach (var p in nearbyParties)
                         {
-                            p.RecentEventsMorale -= 10f;
-
+                            p.RecentEventsMorale -= 10f; // Günlük moral cezası
                         }
                     }
                 }
@@ -594,5 +589,3 @@ namespace BanditMilitias.Systems.Fear
         }
     }
 }
-
-

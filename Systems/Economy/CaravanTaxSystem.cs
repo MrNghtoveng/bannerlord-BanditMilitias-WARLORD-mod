@@ -15,7 +15,12 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Economy
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 310, IsCritical = false)]
+    /// <summary>
+    /// Kervan Haracı Sistemi — warlord kontrol ettiği bölgeden geçen kervanları
+    /// tespit eder, haraç keser veya saldırı başlatır.
+    /// FearSystem entegrasyonu: korku oranı haraç tutarını etkiler.
+    /// </summary>
+    [AutoRegister]
     public class CaravanTaxSystem : MilitiaModuleBase
     {
         public override string ModuleName => "CaravanTaxSystem";
@@ -29,22 +34,17 @@ namespace BanditMilitias.Systems.Economy
         private Dictionary<string, CampaignTime> _lastTaxedCaravans = new();
         private Dictionary<string, int> _dailyTaxRevenue = new();
 
-        private const float TAX_RADIUS = 12f;
-
-        private const float BASE_TAX_RATE = 0.08f;
-
-        private const float FEAR_TAX_BONUS = 0.06f;
-
-        private const float COMPLIANCE_THRESHOLD = 0.35f;
-
-        private const int   MIN_TAX_COOLDOWN_DAYS = 2;
-
+        private const float TAX_RADIUS = 12f;           // Haraç bölgesi yarıçapı (harita birimi)
+        private const float BASE_TAX_RATE = 0.08f;      // Kargo değerinin %8'i
+        private const float FEAR_TAX_BONUS = 0.06f;     // Max korku bonusu (%6 ek)
+        private const float COMPLIANCE_THRESHOLD = 0.35f; // Bu seviyenin altındaki korku direnişe yol açar
+        private const int   MIN_TAX_COOLDOWN_DAYS = 2;  // Aynı kervan için minimum bekleme süresi
 
         private CaravanTaxSystem() { }
 
         public override void Initialize()
         {
-            DebugLogger.Info("CaravanTax", "CaravanTaxSystem initialized.");
+            DebugLogger.Info("CaravanTax", "CaravanTaxSystem başlatıldı.");
         }
 
         public override void Cleanup()
@@ -62,12 +62,12 @@ namespace BanditMilitias.Systems.Economy
         public override void OnDailyTick()
         {
             if (!IsEnabled) return;
-            if (ModActivationManager.IsGameplayActivationDelayed()) return;
+            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
 
-
+            // Eski kayıtları temizle (bellek sızıntısı önleme)
             CleanupStaleRecords();
 
-
+            // Tüm aktif warlordlar için yakın kervanları tara
             var warlords = WarlordSystem.Instance.GetAllWarlords();
             foreach (var warlord in warlords)
             {
@@ -78,8 +78,7 @@ namespace BanditMilitias.Systems.Economy
 
         private void ProcessWarlordCaravanTax(Warlord warlord)
         {
-
-
+            // Warlord'un aktif milisyalarından birini referans pozisyon olarak al
             var militias = CompatibilityLayer.GetSafeMobileParties()
                 .Where(p => p.PartyComponent is Components.MilitiaPartyComponent comp
                          && comp.WarlordId == warlord.StringId)
@@ -87,21 +86,20 @@ namespace BanditMilitias.Systems.Economy
 
             if (militias.Count == 0) return;
 
-
+            // Kontrol bölgesini tüm milisyaların ortalama konumundan hesapla
             Vec2 controlCenter = Vec2.Zero;
             foreach (var m in militias)
                 controlCenter += CompatibilityLayer.GetPartyPosition(m);
             controlCenter *= (1f / militias.Count);
 
-
+            // Yakındaki kervanları bul
             var nearbyParties = new List<MobileParty>();
             Systems.Grid.SpatialGridSystem.Instance.QueryNearby(controlCenter, TAX_RADIUS, nearbyParties);
 
             foreach (var caravan in nearbyParties)
             {
                 if (!caravan.IsCaravan) continue;
-                if (caravan.IsMainParty) continue;
-
+                if (caravan.IsMainParty) continue; // Oyuncunun kervanına dokunma
 
                 string caravanId = caravan.StringId;
                 if (WasTaxedRecently(caravanId)) continue;
@@ -112,52 +110,49 @@ namespace BanditMilitias.Systems.Economy
 
         private void TryTaxCaravan(Warlord warlord, MobileParty caravan, Vec2 controlCenter)
         {
-
-
+            // Yakınlık kontrolü: kervan gerçekten bu bölgede mi?
             Vec2 caravanPos = CompatibilityLayer.GetPartyPosition(caravan);
             float dist = caravanPos.Distance(controlCenter);
             if (dist > TAX_RADIUS) return;
 
-
+            // Fear bazlı haraç oranı hesapla
+            // Yakın yerleşimlerin korku ortalamasını kullan
             float avgFear = GetNearbySettlementFear(warlord.StringId, controlCenter);
             float taxRate = BASE_TAX_RATE + avgFear * FEAR_TAX_BONUS;
 
-
+            // Kervan değerini tahmin et (parti büyüklüğü * faktör)
             int caravanValue = EstimateCaravanValue(caravan);
             int taxAmount = (int)(caravanValue * taxRate);
-            taxAmount = Math.Max(taxAmount, 50);
+            taxAmount = Math.Max(taxAmount, 50); // Minimum 50 altın
 
-
+            // Düşük korku = direnç riski
             bool caravanComplies = avgFear >= COMPLIANCE_THRESHOLD
                 || MBRandom.RandomFloat < avgFear * 2f;
 
             if (caravanComplies)
             {
-
-
+                // Kervan boyun eğiyor — haraç ödüyor
                 ApplyCaravanTax(warlord, caravan, taxAmount, avgFear);
             }
             else
             {
-
-
+                // Kervan direniyor — en yakın milisyayı saldırıya yönlendir
                 TriggerCaravanAttack(warlord, caravan, controlCenter);
             }
 
-
+            // Kayıt et
             _lastTaxedCaravans[caravan.StringId] = CampaignTime.Now;
         }
 
         private void ApplyCaravanTax(Warlord warlord, MobileParty caravan, int taxAmount, float fearLevel)
         {
-
-
+            // Altın transferi
             warlord.Gold += taxAmount;
 
-
+            // Yakın yerleşimlere küçük korku etkisi — "warlord haraca bağlıyor" haberi yayılıyor
             ApplyFearRipple(warlord.StringId, CompatibilityLayer.GetPartyPosition(caravan), 0.01f);
 
-
+            // Gün içi gelir kaydı
             if (!_dailyTaxRevenue.ContainsKey(warlord.StringId))
                 _dailyTaxRevenue[warlord.StringId] = 0;
             _dailyTaxRevenue[warlord.StringId] += taxAmount;
@@ -165,23 +160,22 @@ namespace BanditMilitias.Systems.Economy
             if (Settings.Instance?.TestingMode == true)
             {
                 DebugLogger.Info("CaravanTax",
-                    $"[TRIBUTE] {warlord.Name} -> {caravan.Name}: {taxAmount} gold " +
-                    $"(fear={fearLevel:F2}, rate={BASE_TAX_RATE + fearLevel * FEAR_TAX_BONUS:P1})");
+                    $"[HARAÇ] {warlord.Name} → {caravan.Name}: {taxAmount} altın " +
+                    $"(korku={fearLevel:F2}, oran={BASE_TAX_RATE + fearLevel * FEAR_TAX_BONUS:P1})");
             }
 
-
+            // Oyuncuya bildirim (sadece oyuncunun yakınındaki işlemler için)
             if (IsNearPlayer(CompatibilityLayer.GetPartyPosition(caravan), 20f))
             {
                 InformationManager.DisplayMessage(new InformationMessage(
-                    $"[Tribute] {warlord.FullName} has collected {taxAmount} gold tribute from {caravan.Name} caravan.",
+                    $"[Haraç] {warlord.FullName}, {caravan.Name} kervanından {taxAmount} altın haraç kesti.",
                     new Color(0.9f, 0.7f, 0.2f)));
             }
         }
 
         private void TriggerCaravanAttack(Warlord warlord, MobileParty caravan, Vec2 controlCenter)
         {
-
-
+            // En yakın milisyayı saldırıya yönlendir
             var closestMilitia = CompatibilityLayer.GetSafeMobileParties()
                 .Where(p => p.PartyComponent is Components.MilitiaPartyComponent comp
                          && comp.WarlordId == warlord.StringId
@@ -202,7 +196,7 @@ namespace BanditMilitias.Systems.Economy
                 if (Settings.Instance?.TestingMode == true)
                 {
                     DebugLogger.Info("CaravanTax",
-                        $"[ATTACK] {warlord.Name} -> {caravan.Name} resisted, {closestMilitia.Name} directed to attack.");
+                        $"[SALDIRI] {warlord.Name} → {caravan.Name} direndi, {closestMilitia.Name} saldırıya yönlendi.");
                 }
             }
         }
@@ -214,7 +208,7 @@ namespace BanditMilitias.Systems.Economy
             float radiusSq = (TAX_RADIUS * 1.5f) * (TAX_RADIUS * 1.5f);
             var mm = BanditMilitias.Infrastructure.ModuleManager.Instance;
 
-
+            // Settlement.All (tüm harita) yerine önceden hazır cache'ler
             foreach (var settlement in mm.VillageCache)
             {
                 if (CompatibilityLayer.GetSettlementPosition(settlement).DistanceSquared(position) > radiusSq) continue;
@@ -241,7 +235,7 @@ namespace BanditMilitias.Systems.Economy
         {
             var mm = BanditMilitias.Infrastructure.ModuleManager.Instance;
 
-
+            // Köy ve şehirleri ayrı önbellerden tara — Settlement.All yerine
             ApplyFearRippleToCache(warlordId, epicenter, fearDelta, mm.VillageCache);
             ApplyFearRippleToCache(warlordId, epicenter, fearDelta, mm.TownCache);
         }
@@ -261,17 +255,15 @@ namespace BanditMilitias.Systems.Economy
                     warlordId,
                     fearDelta: fearDelta * distanceFactor,
                     respectDelta: 0.005f * distanceFactor,
-                    reason: "Caravan tribute");
+                    reason: "Kervan haracı");
             }
         }
 
         private static int EstimateCaravanValue(MobileParty caravan)
         {
-
-
+            // Parti büyüklüğüne göre kargo değeri tahmini
             int memberCount = caravan.MemberRoster.TotalManCount;
-            return memberCount * 120 + 800;
-
+            return memberCount * 120 + 800; // 800 temel + kişi başı 120
         }
 
         private bool WasTaxedRecently(string caravanId)
@@ -296,7 +288,7 @@ namespace BanditMilitias.Systems.Economy
             foreach (var key in staleKeys)
                 _lastTaxedCaravans.Remove(key);
 
-
+            // Günlük gelir sıfırla (her gün)
             _dailyTaxRevenue.Clear();
         }
 
@@ -309,10 +301,8 @@ namespace BanditMilitias.Systems.Economy
         {
             int totalTracked = _lastTaxedCaravans.Count;
             return $"CaravanTaxSystem:\n" +
-                   $"  Caravans tracked: {totalTracked}\n" +
-                   $"  Active revenue records: {_dailyTaxRevenue.Count}";
+                   $"  Takip edilen kervan: {totalTracked}\n" +
+                   $"  Aktif gelir kayıtları: {_dailyTaxRevenue.Count}";
         }
     }
 }
-
-

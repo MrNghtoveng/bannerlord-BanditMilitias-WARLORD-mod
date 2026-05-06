@@ -1,6 +1,5 @@
 using BanditMilitias.Components;
 using BanditMilitias.Intelligence.Strategic;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using System;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
@@ -10,7 +9,6 @@ using TaleWorlds.CampaignSystem.MapEvents;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Roster;
 using TaleWorlds.CampaignSystem.Settlements;
-using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
 using TaleWorlds.Localization;
@@ -28,7 +26,7 @@ namespace BanditMilitias.Behaviors
 
         private void OnMapEventStarted(MapEvent mapEvent, PartyBase attackerParty, PartyBase defenderParty)
         {
-            if (Infrastructure.ModActivationManager.IsGameplayActivationDelayed()) return;
+            if (Infrastructure.CompatibilityLayer.IsGameplayActivationDelayed()) return;
 
             if (Hero.MainHero?.IsPrisoner == true && Hero.MainHero.PartyBelongedToAsPrisoner != null)
             {
@@ -52,7 +50,7 @@ namespace BanditMilitias.Behaviors
                 }
             }
 
-
+            // YENİ: Oyuncu bir Savaş Lordu ile (Tier 3+) savaşa girdiğinde taktiksel uyarı mesajı
             if (mapEvent != null && mapEvent.IsPlayerMapEvent)
             {
                 var enemySide = mapEvent.PlayerSide == TaleWorlds.Core.BattleSideEnum.Attacker ? TaleWorlds.Core.BattleSideEnum.Defender : TaleWorlds.Core.BattleSideEnum.Attacker;
@@ -63,8 +61,7 @@ namespace BanditMilitias.Behaviors
                 {
                     if (partyTuple.Party?.LeaderHero != null)
                     {
-
-
+                        // O(1) dictionary lookup — GetAllWarlords() LINQ taraması yerine
                         var wLord = WarlordSystem.Instance?.GetWarlord(partyTuple.Party.LeaderHero.StringId);
                         if (wLord != null)
                         {
@@ -77,14 +74,14 @@ namespace BanditMilitias.Behaviors
 
                 if (enemyWarlordParty?.LeaderHero != null && matchedWarlord != null)
                 {
-                    var level = WarlordLegitimacySystem.Instance.GetLevel(matchedWarlord.StringId);
-                    if (level >= LegitimacyLevel.Warlord)
+                    var level = BanditMilitias.Systems.Progression.WarlordLegitimacySystem.Instance.GetLevel(matchedWarlord.StringId);
+                    if (level >= BanditMilitias.Systems.Progression.LegitimacyLevel.Warlord)
                     {
                         string rankInfo = level switch
                         {
-                            LegitimacyLevel.FamousBandit => "ÜNLÜ EŞKIYA",
-                            LegitimacyLevel.Warlord => "SAVAŞ LORDU",
-                            LegitimacyLevel.Recognized => "HÜKÜMDAR",
+                            BanditMilitias.Systems.Progression.LegitimacyLevel.FamousBandit => "ÜNLÜ EŞKIYA",
+                            BanditMilitias.Systems.Progression.LegitimacyLevel.Warlord => "SAVAŞ LORDU",
+                            BanditMilitias.Systems.Progression.LegitimacyLevel.Recognized => "HÜKÜMDAR",
                             _ => "LORD"
                         };
 
@@ -108,15 +105,9 @@ namespace BanditMilitias.Behaviors
 
         public override void SyncData(IDataStore dataStore)
         {
-            try
-            {
-                _ = dataStore.SyncData("_bm_diplo_save_version", ref _saveVersion);
-            }
-            catch (System.Exception ex)
-            {
-                BanditMilitias.Debug.DebugLogger.Warning("MilitiaDiplomacyCampaignBehavior",
-                    $"SyncData error: {ex.Message}");
-            }
+            // BUG-04/05 FIX: Eklenen SyncData altyapısı. Şu an için sadece versiyon tutuyor,
+            // ancak ileride eklenecek diplomasi durumları (ittifaklar, özel kararlar) için hazır.
+            _ = dataStore.SyncData("_bm_diplo_save_version", ref _saveVersion);
         }
         private void OnSessionLaunched(CampaignGameStarter starter)
         {
@@ -157,6 +148,7 @@ namespace BanditMilitias.Behaviors
                 () => IsMilitiaParty() && MobileParty.ConversationParty != null && MobileParty.ConversationParty.MapFaction != null && Hero.MainHero?.MapFaction != null && !MobileParty.ConversationParty.MapFaction.IsAtWarWith(Hero.MainHero.MapFaction),
                 null);
 
+            // NEW: Background info dialogs
             _ = starter.AddPlayerLine("militia_who_are_you", "militia_intro", "militia_background",
                 "{=BM_Dialog_Who}Who are you?",
                 () => IsMilitiaParty(),
@@ -183,9 +175,10 @@ namespace BanditMilitias.Behaviors
                 () =>
                 {
                     int cost = CalculateBribeCost();
-                    GiveGoldAction.ApplyBetweenCharacters(Hero.MainHero, MobileParty.ConversationParty?.LeaderHero, cost, true);
+                    GiveGoldAction.ApplyBetweenCharacters(Hero.MainHero, null, cost, true);
 
                     PlayerEncounter.LeaveEncounter = true;
+
                 });
 
             _ = starter.AddPlayerLine("militia_recruit_offer", "militia_intro", "militia_recruit_result",
@@ -194,8 +187,7 @@ namespace BanditMilitias.Behaviors
                 {
                     int roguery = Hero.MainHero.GetSkillValue(DefaultSkills.Roguery);
                     int leadership = Hero.MainHero.GetSkillValue(DefaultSkills.Leadership);
-
-
+                    // Bannerlord 1.3.15+: Bridged via CompatibilityLayer (LimitedPartySize prioritized)
                     int limit = Infrastructure.CompatibilityLayer.GetPartyMemberSizeLimit(MobileParty.MainParty.Party);
                     int freeSpace = Math.Max(0, limit - MobileParty.MainParty.MemberRoster.TotalManCount);
                     return roguery >= 40 && leadership >= 35 && freeSpace >= 5;
@@ -313,7 +305,7 @@ namespace BanditMilitias.Behaviors
 
         private bool IsMilitiaParty()
         {
-            if (!Infrastructure.ModActivationManager.IsGameplayActivationSwitchClosed())
+            if (!Infrastructure.CompatibilityLayer.IsGameplayActivationSwitchClosed())
                 return false;
 
             return MobileParty.ConversationParty != null &&
@@ -326,11 +318,11 @@ namespace BanditMilitias.Behaviors
             int count = MobileParty.ConversationParty?.MemberRoster.TotalManCount ?? 1;
             int costPerMan = Settings.Instance?.BribeCostPerMan ?? 50;
 
-
+            // Roguery yeteneğine göre indirim (maks %35)
             int roguery = Hero.MainHero.GetSkillValue(DefaultSkills.Roguery);
             float rogueDiscount = 1f - Math.Min(0.35f, roguery / 1000f);
 
-
+            // Prestij çarpanı: Warlord'un LegitimacyLevel'ı rüşvet maliyetini artırır
             float prestigeMultiplier = 1.0f;
             var conversationParty = MobileParty.ConversationParty;
             var warlord = conversationParty == null
@@ -338,15 +330,15 @@ namespace BanditMilitias.Behaviors
                 : WarlordSystem.Instance?.GetWarlordForParty(conversationParty);
             if (warlord != null)
             {
-                var level = WarlordLegitimacySystem.Instance
+                var level = BanditMilitias.Systems.Progression.WarlordLegitimacySystem.Instance
                                 .GetLevel(warlord.StringId);
                 prestigeMultiplier = level switch
                 {
-                    LegitimacyLevel.Outlaw => 1.0f,
-                    LegitimacyLevel.Rebel => 1.3f,
-                    LegitimacyLevel.FamousBandit => 1.6f,
-                    LegitimacyLevel.Warlord => 2.0f,
-                    LegitimacyLevel.Recognized => 2.8f,
+                    BanditMilitias.Systems.Progression.LegitimacyLevel.Outlaw => 1.0f,
+                    BanditMilitias.Systems.Progression.LegitimacyLevel.Rebel => 1.3f,
+                    BanditMilitias.Systems.Progression.LegitimacyLevel.FamousBandit => 1.6f,
+                    BanditMilitias.Systems.Progression.LegitimacyLevel.Warlord => 2.0f,
+                    BanditMilitias.Systems.Progression.LegitimacyLevel.Recognized => 2.8f,
                     _ => 1.0f
                 };
             }
@@ -381,7 +373,7 @@ namespace BanditMilitias.Behaviors
             var party = MobileParty.ConversationParty;
             if (party == null) return;
 
-
+            // Bannerlord 1.3.15+: Bridged via CompatibilityLayer (LimitedPartySize prioritized)
             int limit = Infrastructure.CompatibilityLayer.GetPartyMemberSizeLimit(MobileParty.MainParty.Party);
             int freeSpace = Math.Max(0, limit - MobileParty.MainParty.MemberRoster.TotalManCount);
             if (freeSpace <= 0)
@@ -445,13 +437,14 @@ namespace BanditMilitias.Behaviors
                 var voice = narrative.GetVoice(warlord.Personality);
                 if (voice != null)
                 {
-
-
+                    // Narrative system internally tracks this in _playerKillsPerWarlord, 
+                    // but it's private. However, it reacts to kills.
+                    // For dialog, let's just use the threat/ambient reaction if kills not easily accessible.
+                    
                     string? reaction = voice.GetThreatReaction(warlord);
                     if (!string.IsNullOrEmpty(reaction))
                     {
-
-
+                        // Remove the [Name]: prefix if it exists in the resolved string
                         string cleanReaction = reaction!.Contains("]: ") ? reaction!.Substring(reaction!.IndexOf("]: ") + 3) : reaction!;
                         return new TextObject(cleanReaction);
                     }

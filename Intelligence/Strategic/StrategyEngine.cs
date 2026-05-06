@@ -23,25 +23,20 @@ namespace BanditMilitias.Intelligence.Strategic
 
             var tier = WarlordCareerSystem.Instance.GetTier(warlord.StringId);
 
-
+            // Kural tabanlı karar alma
             CommandType cmdType = DetermineHeuristicCommand(tier, party);
 
-
+            // Rütbeye göre menzil
             float searchRadius = tier switch
             {
-                CareerTier.Outlaw => 20f,
-
-                CareerTier.Rebel => 30f,
-
-                CareerTier.FamousBandit => 50f,
-
-                CareerTier.Warlord => 100f,
-
-                _ => 150f
-
+                CareerTier.Eskiya => 20f,     // Çok yakın — sadece etraftaki fırsatlar
+                CareerTier.Rebel => 30f,      // Biraz daha geniş
+                CareerTier.FamousBandit => 50f, // Bölgesel menzil
+                CareerTier.Warlord => 100f,   // Geniş operasyonel alan
+                _ => 150f                      // Harita geneli (Taninmis/Fatih)
             };
 
-
+            // Hedef bul
             Settlement? target = CampaignGridSystem.FindMostVulnerableTarget(party, searchRadius);
 
             if (target != null && CommandRequiresTarget(cmdType))
@@ -57,8 +52,7 @@ namespace BanditMilitias.Intelligence.Strategic
             }
             else if (cmdType == CommandType.CommandLayLow || cmdType == CommandType.AvoidCrowd)
             {
-
-
+                // Hedefsiz komutlar -> Eve dönüş / Saklanma
                 comp.CurrentOrder = new StrategicCommand
                 {
                     Type = cmdType,
@@ -67,8 +61,7 @@ namespace BanditMilitias.Intelligence.Strategic
             }
             else
             {
-
-
+                // Hedef bulunamadı veya aksiyon hedef gerektirmiyor -> Komutu temizle, vanilya devriye yapsın
                 comp.CurrentOrder = null;
             }
         }
@@ -84,26 +77,36 @@ namespace BanditMilitias.Intelligence.Strategic
         {
             float strength = CompatibilityLayer.GetTotalStrength(party);
             if (strength < 40f) return CommandType.CommandLayLow;
-
+            
             return tier switch
             {
-                CareerTier.Outlaw => CommandType.Hunt,
+                CareerTier.Eskiya => CommandType.Hunt,
                 CareerTier.Rebel => CommandType.Raid,
                 CareerTier.FamousBandit => CommandType.Ambush,
                 CareerTier.Warlord => CommandType.CommandExtort,
-                CareerTier.Recognized => CommandType.Engage,
-                CareerTier.Conqueror => CommandType.Engage,
+                CareerTier.Taninmis => CommandType.Engage,
+                CareerTier.Fatih => CommandType.Engage,
                 _ => CommandType.Patrol
             };
         }
 
-
+        /// <summary>
+        /// HİBRİT AI: Bölgesel Çaresizlik Doktrini (Incubation).
+        /// Eğer sığınağa bağlı toplam haydut gücü kritik eşiğin altındaysa,
+        /// tüm birimlere geri çekilip kuluçkaya yatma (güç toplama) emri verilir.
+        /// </summary>
+        /// <summary>
+        /// Tüm sığınaklara ait Çaresizlik Doktrini değerlendirmesini TEK bir döngüde yapar.
+        /// MilitiaBehavior.OnHourlyTick içindeki "foreach hideout → EvaluateRegionalStrategy"
+        /// kalıbının yerini alır: N hideout × ActiveMilitias.Where() yerine
+        /// milis listesi bir kez bölümlenerek hideout başına gruplandırılır.
+        /// </summary>
         public static void EvaluateAllRegionalStrategies()
         {
             var activeMilitias = ModuleManager.Instance.ActiveMilitias;
             if (activeMilitias.Count == 0) return;
 
-
+            // Milis listesini hideout'a göre bir kerede gruplandır — O(M) tek geçiş
             var byHideout = new Dictionary<Settlement, (List<MobileParty> parties, int troops)>();
             foreach (var party in activeMilitias)
             {
@@ -119,7 +122,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 byHideout[home] = entry;
             }
 
-
+            // Her hideout için doktrin kararı — artık Where/ToList yok
             foreach (var kv in byHideout)
             {
                 var hideout = kv.Key;
@@ -145,12 +148,11 @@ namespace BanditMilitias.Intelligence.Strategic
             }
         }
 
-
+        /// <summary>Tek sığınak için değerlendirme — geriye uyumluluk için korundu.</summary>
         public static void EvaluateRegionalStrategy(Settlement hideout)
         {
             if (hideout == null || !hideout.IsHideout) return;
-
-
+            // Tekil çağrı hâlâ destekleniyor; toplu çağrı için EvaluateAllRegionalStrategies tercih edilmeli.
             var parties = ModuleManager.Instance.ActiveMilitias
                 .Where(p => (p.PartyComponent as MilitiaPartyComponent)?.HomeSettlement == hideout && p.IsActive)
                 .ToList();

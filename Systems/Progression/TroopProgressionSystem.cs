@@ -1,3 +1,12 @@
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+// DEVRE DIÅI â€” MilitiaProgressionSystem.cs ile birleÅŸtirildi
+// Bu dosya [AutoRegister] taÅŸÄ±mÄ±yor; ModuleManager tarafÄ±ndan yÃ¼klenmez.
+// TÃ¼m iÅŸlevsellik MilitiaProgressionSystem iÃ§indedir:
+//   â€¢ PassiveTraining   â†’ MilitiaProgressionSystem.OnDailyTick()
+//   â€¢ DistributeHordeXp â†’ MilitiaProgressionSystem.DistributeHordePool()
+//   â€¢ AddToSharedPool   â†’ MilitiaProgressionSystem.AddToHordePool()
+// â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+
 using BanditMilitias.Core.Components;
 using BanditMilitias.Intelligence.Strategic;
 using System;
@@ -6,7 +15,8 @@ using TaleWorlds.CampaignSystem.Party;
 
 namespace BanditMilitias.Systems.Progression
 {
-    [Obsolete("Use MilitiaProgressionSystem. This class is kept for transitional reference.")]
+    // [AutoRegister] kaldÄ±rÄ±ldÄ± â€” sistem pasif/Ã¶lÃ¼.
+    [Obsolete("MilitiaProgressionSystem kullanÄ±n. Bu sÄ±nÄ±f geÃ§iÅŸ dÃ¶nemi referansÄ± iÃ§in tutulmaktadÄ±r.")]
     public sealed class TroopProgressionSystem : MilitiaModuleBase
     {
         private static readonly Lazy<TroopProgressionSystem> _inst =
@@ -17,15 +27,20 @@ namespace BanditMilitias.Systems.Progression
         public override bool IsEnabled => false;
         public override int Priority => 80;
 
-        [Obsolete("Use MilitiaProgressionSystem.Instance.AddToHordePool.")]
+        /// <summary>
+        /// YÃ¶nlendirme kÃ¶prÃ¼sÃ¼: Eski Ã§aÄŸrÄ± noktalarÄ±nÄ± kÄ±rmadan yeni sisteme yÃ¶nlendirir.
+        /// </summary>
+        [Obsolete("MilitiaProgressionSystem.Instance.AddToHordePool kullanÄ±n.")]
         public void AddToSharedPool(Warlord warlord, int amount)
             => MilitiaProgressionSystem.Instance.AddToHordePool(warlord, amount);
 
         public override void OnDailyTick() { }
         public override void OnTick(float dt) { }
         public override void OnHourlyTick() { }
-        public override string GetDiagnostics() => "TroopProgressionSystem: DEPRECATED";
+        public override string GetDiagnostics() => "TroopProgressionSystem: DEVRE DIÅI";
         public override void SyncData(IDataStore ds) { }
         public override void Cleanup() { }
     }
 }
+
+

@@ -3,7 +3,6 @@ using BanditMilitias.Components;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Systems.Progression;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Economy;
 using System;
@@ -17,8 +16,7 @@ using TaleWorlds.MountAndBlade;
 
 namespace BanditMilitias.Systems.Enhancement
 {
-
-
+    // ── BanditEnhancementSystem ─────────────────────────────────────────
     public class BanditEnhancementSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
 
@@ -46,7 +44,7 @@ namespace BanditMilitias.Systems.Enhancement
             {
                 if (party == null || !party.IsActive || party.MemberRoster == null) continue;
 
-
+                // XP artık MilitiaProgressionSystem tarafından yönetiliyor
                 ApplyHideoutRecovery(party);
             }
         }
@@ -56,17 +54,15 @@ namespace BanditMilitias.Systems.Enhancement
             if (party.PartyComponent is MilitiaPartyComponent mpc && mpc.HomeSettlement != null)
             {
                 float distSq = CompatibilityLayer.GetPartyPosition(party).DistanceSquared(CompatibilityLayer.GetSettlementPosition(mpc.HomeSettlement));
-                if (distSq < 15f * 15f)
-
+                if (distSq < 15f * 15f) // Sığınağa yakınsa (15 birim)
                 {
-
-
+                    // Yaralıları iyileştir
                     int wounded = CompatibilityLayer.GetTotalWoundedTroops(party.MemberRoster);
                     if (wounded > 0)
                     {
                         int healCount = Math.Max(1, wounded / 5);
                         CompatibilityLayer.HealWoundedTroops(party.MemberRoster, healCount);
-
+                        
                         if (Settings.Instance?.TestingMode == true)
                             DebugLogger.TestLog($"[RECOVERY] {party.Name} sığınağa yakın, {healCount} asker iyileşti.");
                     }
@@ -84,17 +80,17 @@ namespace BanditMilitias.Systems.Enhancement
             int qualityLevel = Settings.Instance.EquipmentQuality;
             int totalUpgrades = 1 + qualityLevel;
 
+            // NEW: Nam ve Rol Bazlı Asker Gelişimi
             if (party.PartyComponent is MilitiaPartyComponent mpc)
             {
-                int renownBonus = (int)(mpc.Renown / 40f);
-
+                int renownBonus = (int)(mpc.Renown / 40f); // Her 40 Nam'da +1 gelişim turu
                 totalUpgrades += renownBonus;
 
                 if (mpc.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain)
                     totalUpgrades += 2;
             }
 
-
+            // YENİ: Gelişim kısıtlamaları esnetildi (Eski: 15 gün kilitliydi)
             float elapsedDays = 0f;
             if (Campaign.Current != null)
             {
@@ -102,12 +98,9 @@ namespace BanditMilitias.Systems.Enhancement
                 if (startTime.ToHours > 0.0) elapsedDays = (float)(CampaignTime.Now - startTime).ToDays;
                 if (elapsedDays < 0f) elapsedDays = 0f;
             }
-            if (elapsedDays < 7f) totalUpgrades = Math.Min(totalUpgrades, 1);
-
-            else if (elapsedDays < 15f) totalUpgrades = Math.Min(totalUpgrades, 2);
-
-            else if (elapsedDays < 30f) totalUpgrades = Math.Min(totalUpgrades, 4);
-
+            if (elapsedDays < 7f) totalUpgrades = Math.Min(totalUpgrades, 1); // İlk hafta: Sınırlı gelişim
+            else if (elapsedDays < 15f) totalUpgrades = Math.Min(totalUpgrades, 2); // 7-15 gün: Orta gelişim
+            else if (elapsedDays < 30f) totalUpgrades = Math.Min(totalUpgrades, 4); // 30 gün+ : Normal gelişim
 
             List<(CharacterObject Source, CharacterObject Target, int Count)> upgradeBuffer = new();
 
@@ -117,12 +110,9 @@ namespace BanditMilitias.Systems.Enhancement
             }
 
             int skillBoost = Settings.Instance.BanditSkillBoost;
-            if (elapsedDays < 15f) skillBoost = 0;
-
-            else if (elapsedDays < 30f) skillBoost = (int)(skillBoost * 0.3f);
-
-            else if (elapsedDays < 60f) skillBoost = (int)(skillBoost * 0.6f);
-
+            if (elapsedDays < 15f) skillBoost = 0; // İlk 15 gün ekstra tecrübe yok
+            else if (elapsedDays < 30f) skillBoost = (int)(skillBoost * 0.3f); // %30 bonus
+            else if (elapsedDays < 60f) skillBoost = (int)(skillBoost * 0.6f); // %60 bonus
             if (skillBoost > 0)
             {
                 int count = party.MemberRoster.Count;
@@ -138,6 +128,7 @@ namespace BanditMilitias.Systems.Enhancement
                         int baseXp = Settings.Instance?.UpgradeXp ?? 500;
                         int extraXp = skillBoost * 20;
 
+                        // NEW: Apply Warlord XP multiplier
                         var warlord = WarlordSystem.Instance.GetWarlordForParty(party);
                         if (warlord != null)
                         {
@@ -164,11 +155,11 @@ namespace BanditMilitias.Systems.Enhancement
 
             GiveHorsesAndFood(party);
 
-            if (party.PartyComponent is MilitiaPartyComponent mpc2 &&
+            // NEW: Kaptanlar ve Veteranlar için de lider ekipmanını güncelle
+            if (party.PartyComponent is MilitiaPartyComponent mpc2 && 
                 (mpc2.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain || mpc2.Renown > 100))
             {
-
-
+                // Veteran veya yüksek namlı kaptanlar 'Rebel' seviyesinde ekipman alır
                 UpgradeLeaderEquipment(party, mpc2.Role == MilitiaPartyComponent.MilitiaRole.VeteranCaptain ? LegitimacyLevel.Rebel : LegitimacyLevel.Outlaw);
             }
         }
@@ -198,8 +189,7 @@ namespace BanditMilitias.Systems.Enhancement
 
                 if (horse != null)
                 {
-
-
+                    // User Request: Cavalry focus from Tier 1 (35% start)
                     float cavRatio = 0.35f + (tier * 0.05f);
                     int horsesNeeded = (int)(party.MemberRoster.TotalManCount * cavRatio);
 
@@ -208,10 +198,9 @@ namespace BanditMilitias.Systems.Enhancement
                     {
                         int diff = horsesNeeded - currentHorses;
                         _ = party.ItemRoster.AddToCounts(horse, diff);
-
-                        if (warlord != null)
-                            warlord.Gold -= diff * 20;
-
+                        
+                        if (warlord != null) 
+                            warlord.Gold -= diff * 20; // Nominal logistic cost
                     }
                 }
             }
@@ -298,6 +287,7 @@ namespace BanditMilitias.Systems.Enhancement
                 _ => 1
             };
 
+            // NEW: Budget-based extra iterations (Luxe Spending)
             if (budget > 5000) upgradeIterations += 5;
             if (budget > 15000) upgradeIterations += 10;
 
@@ -315,6 +305,7 @@ namespace BanditMilitias.Systems.Enhancement
                 _ => 0
             };
 
+            // NEW: Apply Warlord XP multiplier (already found warlord above if needed)
             var currentWarlord = WarlordSystem.Instance.GetWarlordForParty(party);
             if (currentWarlord != null)
             {
@@ -347,26 +338,27 @@ namespace BanditMilitias.Systems.Enhancement
 
             if (level >= LegitimacyLevel.FamousBandit)
             {
-
-
+                // Logic already handled in GiveHorsesAndFood loop for all militias
+                // but we gift a few extra high-tier mounts here for elite units
                 string eliteHorseId = level >= LegitimacyLevel.Recognized ? "noble_horse" : "war_horse";
                 var eliteMount = Game.Current?.ObjectManager?.GetObject<ItemObject>(eliteHorseId);
-
+                
                 if (eliteMount != null && party.ItemRoster != null)
                 {
-                    _ = party.ItemRoster.AddToCounts(eliteMount, 5);
-
+                    _ = party.ItemRoster.AddToCounts(eliteMount, 5); // Elite core mounts
                 }
             }
 
+            // NEW: Leader Gear Evolution (User Request)
             if (upgradeLeader)
             {
                 UpgradeLeaderEquipment(party, level);
             }
 
+            // NEW: Special Ammo / Luxe Items (Luxe Spending)
             if (budget > 2500 && party.ItemRoster != null)
             {
-                var specialArrow = Game.Current?.ObjectManager?.GetObject<ItemObject>("bodkin_arrows_b")
+                var specialArrow = Game.Current?.ObjectManager?.GetObject<ItemObject>("bodkin_arrows_b") 
                                 ?? Game.Current?.ObjectManager?.GetObject<ItemObject>("pierced_arrows");
                 if (specialArrow != null)
                 {
@@ -439,6 +431,10 @@ namespace BanditMilitias.Systems.Enhancement
         }
     }
 
+
+
+
+    // ── WarlordTacticsSystem ─────────────────────────────────────────
 
     [BanditMilitias.Core.Components.AutoRegister]
     public class WarlordTacticsSystem : MilitiaModuleBase

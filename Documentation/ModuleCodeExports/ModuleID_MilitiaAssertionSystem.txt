@@ -1,0 +1,655 @@
+﻿Module ID: MilitiaAssertionSystem Class: MilitiaAssertionSystem Category: Systems/Diagnostics Source: C:\Users\firat\Documents\myproject\bannerlord-BanditMilitias-WARLORD-mod-master\BanditMilitias\Systems\Diagnostics\MilitiaAssertionSystem.cs AutoRegister: True Status: Aktif Dependencies: EventBus, MilitiaAssertionSystem, PartyCleanupSystem, WarlordEconomySystem, WarlordSystem RiskFlags: StaticCollection, SilentCatch  ================ SOURCE ================ using BanditMilitias.Components;
+using BanditMilitias.Core.Components;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.Library;
+using BanditMilitias.Systems.Cleanup;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Systems.Economy;
+
+namespace BanditMilitias.Systems.Diagnostics
+{
+    /// <summary>
+    /// ASSERTION VE OTO-DÃœZELTME SÄ°STEMÄ°
+    ///
+    /// Rapor BÃ¶lÃ¼m 9 ve BÃ¶lÃ¼m 4.7 gereksinimleri:
+    ///   - Assert(militiaCount &lt; maxLimit)
+    ///   - Assert(noNullHeroes)
+    ///   - if AI stuck â†’ detect + reset
+    ///   - if memory > threshold â†’ cleanup
+    ///
+    /// Her saatte bir CheckSystems() Ã§aÄŸrÄ±sÄ±yla Ã§alÄ±ÅŸÄ±r.
+    /// Threshold ihlalleri: log + InformationManager uyarÄ±sÄ±.
+    /// Kritik ihlaller: otomatik kÄ±smi temizlik (auto-heal).
+    /// </summary>
+    [AutoRegister]
+    public class MilitiaAssertionSystem : MilitiaModuleBase
+    {
+        private static MilitiaAssertionSystem? _instance;
+        public static MilitiaAssertionSystem Instance =>
+            _instance ??= ModuleManager.Instance.GetModule<MilitiaAssertionSystem>()
+                          ?? new MilitiaAssertionSystem();
+
+        public override string ModuleName => "MilitiaAssertionSystem";
+        public override bool IsEnabled => true;
+        public override int Priority => 85;
+
+        // â”€â”€ EÅŸik deÄŸerleri â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private const int    MILITIA_COUNT_WARNING_RATIO  = 90;  // MaxTotalMilitias'Ä±n %90'Ä±
+        private const int    MILITIA_COUNT_CRITICAL_RATIO = 100; // %100 = limit aÅŸÄ±ldÄ±
+        private const int    NULL_HERO_ALERT_THRESHOLD    = 3;   // 3'ten fazla null hero â†’ uyarÄ±
+        private const float  MEMORY_WARNING_MB            = 800f; // MB cinsinden RAM uyarÄ± eÅŸiÄŸi
+        private const float  MEMORY_CRITICAL_MB           = 1400f;
+        private const int    AI_STAGNATION_SAME_ACTION    = 6;    // AynÄ± aksiyon kaÃ§ kez Ã¼st Ã¼ste?
+        private const int    HOURS_BETWEEN_CHECKS         = 4;    // KaÃ§ saatte bir kontrol?
+
+        // â”€â”€ Ä°Ã§ durum â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private double _lastCheckHour = 0;
+        private int    _totalAssertionViolations = 0;
+        private int    _totalAutoHeals = 0;
+
+        // AI sÄ±kÄ±ÅŸma takibi: party StringId â†’ (son aksiyon, tekrar sayÄ±sÄ±)
+        private readonly Dictionary<string, (string LastAction, int RepeatCount)> _aiStagnationMap
+            = new Dictionary<string, (string, int)>();
+
+        // â”€â”€ Assertion kayÄ±tlarÄ± (son N ihlal) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private readonly Queue<string> _recentViolations = new Queue<string>(50);
+
+        // â”€â”€ Deep Probes Durum Takibi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        private readonly Dictionary<string, (Vec2 Position, double Hour)> _stasisTracker = new();
+        private double _lastLinkIntegrityCheckHour = 0;
+
+        public override void Initialize()
+        {
+            _instance = this;
+            _lastCheckHour = 0;
+            _aiStagnationMap.Clear();
+            _recentViolations.Clear();
+        }
+
+        public override void Cleanup()
+        {
+            _instance = null;
+            _aiStagnationMap.Clear();
+        }
+
+        public override void OnHourlyTick()
+        {
+            if (!IsEnabled) return;
+            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+            if (Campaign.Current == null) return;
+
+            double nowHours = CampaignTime.Now.ToHours;
+            if (nowHours - _lastCheckHour < HOURS_BETWEEN_CHECKS) return;
+            _lastCheckHour = nowHours;
+
+            RunAllAssertions();
+        }
+
+        /// <summary>
+        /// TÃ¼m assertion kontrollerini sÄ±rayla Ã§alÄ±ÅŸtÄ±rÄ±r.
+        /// militia.assert_check komutuyla manuel de tetiklenebilir.
+        /// </summary>
+        public AssertionReport RunAllAssertions()
+        {
+            var report = new AssertionReport();
+
+            AssertMilitiaCount(report);
+            AssertNoNullHeroes(report);
+            AssertMemoryUsage(report);
+            AssertAINotStagnated(report);
+            AssertEventBusHealth(report);
+
+            // Deep Integration Probes
+            ProbeLinkIntegrity(report);
+            ProbeLiquidityBridge(report);
+            ProbeStasisDetection(report);
+
+            // HAFTALIK DERÄ°N TEMÄ°ZLÄ°K: Assertion tetiklendiÄŸinde temizlik sistemini de Ã§alÄ±ÅŸtÄ±rÄ±yoruz
+            // TÃ¼m tespitler (mark for deletion) yapÄ±ldÄ±ktan sonra Ã§alÄ±ÅŸtÄ±rmak daha verimli.
+            PartyCleanupSystem.Instance.PerformDeepClean();
+
+            _totalAssertionViolations += report.ViolationCount;
+
+            if (report.ViolationCount > 0 && Settings.Instance?.TestingMode == true)
+            {
+                DebugLogger.Warning("MilitiaAssertions",
+                    $"Assertion cycle: {report.ViolationCount} ihlal, {report.AutoHealCount} otomatik dÃ¼zeltme.");
+            }
+
+            return report;
+        }
+
+        // â”€â”€ ASSERT 1: Milis sayÄ±sÄ± limiti â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void AssertMilitiaCount(AssertionReport report)
+        {
+            if (Settings.Instance == null) return;
+
+            int maxAllowed  = Settings.Instance.MaxTotalMilitias;
+            int current     = ModuleManager.Instance?.GetMilitiaCount() ?? 0;
+            int warningAt   = maxAllowed * MILITIA_COUNT_WARNING_RATIO / 100;
+
+            if (current > maxAllowed)
+            {
+                string msg = $"[ASSERT FAIL] Milis sayÄ±sÄ± limiti aÅŸÄ±ldÄ±: {current}/{maxAllowed}";
+                RecordViolation(report, msg);
+
+                // Oto-dÃ¼zeltme: en zayÄ±f militialarÄ± temizle
+                int toRemove = current - maxAllowed;
+                AutoHealRemoveWeakestMilitias(toRemove, report);
+            }
+            else if (current > warningAt)
+            {
+                string msg = $"[ASSERT WARN] Milis sayÄ±sÄ± kritik eÅŸiÄŸe yakÄ±n: {current}/{maxAllowed} (%{MILITIA_COUNT_WARNING_RATIO})";
+                report.Warnings.Add(msg);
+                if (Settings.Instance.TestingMode)
+                    DebugLogger.Warning("MilitiaAssertions", msg);
+            }
+        }
+
+        private void AutoHealRemoveWeakestMilitias(int count, AssertionReport report)
+        {
+            try
+            {
+                var weakest = Campaign.Current?.MobileParties
+                    .Where(p => p?.IsActive == true &&
+                                p.PartyComponent is MilitiaPartyComponent &&
+                                p.MemberRoster != null)
+                    .OrderBy(p => p.MemberRoster.TotalManCount)
+                    .Take(count)
+                    .ToList();
+
+                if (weakest == null || weakest.Count == 0) return;
+
+                foreach (var party in weakest)
+                {
+                    try
+                    {
+                        TaleWorlds.CampaignSystem.Actions.DestroyPartyAction.Apply(null, party);
+                        _totalAutoHeals++;
+                        report.AutoHealCount++;
+                    }
+                    catch (Exception ex) 
+                    { 
+                        DebugLogger.Warning("MilitiaAssertions", $"DestroyPartyAction failed in AutoHeal: {ex.Message}");
+                    }
+                }
+
+                string healMsg = $"[AUTO-HEAL] {weakest.Count} zayÄ±f milis temizlendi (limit ihlali giderildi).";
+                report.AutoHeals.Add(healMsg);
+                DebugLogger.Warning("MilitiaAssertions", healMsg);
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning("MilitiaAssertions", $"AutoHeal militia remove failed: {ex.Message}");
+            }
+        }
+
+        // â”€â”€ ASSERT 2: Null hero kontrolÃ¼ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // NOT: Bu metot yalnÄ±zca MilitiaPartyComponent iÃ§eren (modumuza ait)
+        // partileri kontrol eder. Vanilla bandit partileri (lidersiz Deniz YaÄŸmacÄ±larÄ±
+        // vb.) bu Ã¼dÃ¼nÃ¼n kapsamÄ± dÄ±ÅŸÄ±ndadÄ±r ve AgentCrashGuard tarafÄ±ndan raporlanÄ±r.
+
+        private void AssertNoNullHeroes(AssertionReport report)
+        {
+            if (Campaign.Current == null) return;
+
+            int nullHeroCount = 0;
+            var orphanParties = new List<MobileParty>();
+
+            foreach (var party in Campaign.Current.MobileParties)
+            {
+                if (party == null || !party.IsActive) continue;
+                // âœ… YalnÄ±zca modumuzun milisleri kontrol edilir, vanilla partiler hiÃ§ dokunulmaz
+                if (party.PartyComponent is not MilitiaPartyComponent) continue;
+
+                // Lider hero null veya Ã¶lÃ¼ mÃ¼?
+                if (party.LeaderHero == null || !party.LeaderHero.IsAlive)
+                {
+                    nullHeroCount++;
+                    orphanParties.Add(party);
+                }
+            }
+
+            if (nullHeroCount >= NULL_HERO_ALERT_THRESHOLD)
+            {
+                string msg = $"[ASSERT FAIL] {nullHeroCount} milis partisinin lideri null/Ã¶lÃ¼.";
+                RecordViolation(report, msg);
+
+                // Oto-dÃ¼zeltme: sahipsiz partiyi registry'den Ã§Ä±kar VE dÃ¼nyadan sil (zombi bÄ±rakma Ã¶nlenir)
+                foreach (var orphan in orphanParties)
+                {
+                    try
+                    {
+                        ModuleManager.Instance?.UnregisterMilitia(orphan);
+                        // Partiyi fiziksel olarak oyundan sil
+                        TaleWorlds.CampaignSystem.Actions.DestroyPartyAction.Apply(null, orphan);
+                        _totalAutoHeals++;
+                        report.AutoHealCount++;
+                    }
+                    catch (Exception ex)
+                    { 
+                         DebugLogger.Warning("MilitiaAssertions", $"Failed to clean up orphan militia {orphan.StringId}: {ex.Message}");
+                    }
+                }
+
+                if (orphanParties.Count > 0)
+                    report.AutoHeals.Add($"[AUTO-HEAL] {orphanParties.Count} sahipsiz milis kayÄ±t ve parti silindi.");
+            }
+            else if (nullHeroCount > 0)
+            {
+                report.Warnings.Add($"[ASSERT WARN] {nullHeroCount} milis partisinin lideri null/Ã¶lÃ¼ (eÅŸik altÄ±, izleniyor).");
+            }
+        }
+
+        // â”€â”€ ASSERT 3: Bellek kullanÄ±mÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void AssertMemoryUsage(AssertionReport report)
+        {
+            try
+            {
+                long memBytes   = GC.GetTotalMemory(forceFullCollection: false);
+                float memMB     = memBytes / (1024f * 1024f);
+
+                if (memMB > MEMORY_CRITICAL_MB)
+                {
+                    string msg = $"[ASSERT FAIL] RAM kullanÄ±mÄ± kritik: {memMB:F0} MB (eÅŸik: {MEMORY_CRITICAL_MB} MB)";
+                    RecordViolation(report, msg);
+
+                    // Oto-dÃ¼zeltme: GC toplamayÄ± zorla
+                    GC.Collect(1, GCCollectionMode.Optimized, blocking: false);
+                    report.AutoHeals.Add($"[AUTO-HEAL] GC.Collect(1) tetiklendi â€” RAM baskÄ±sÄ± azaltÄ±ldÄ±.");
+                    _totalAutoHeals++;
+                    report.AutoHealCount++;
+                }
+                else if (memMB > MEMORY_WARNING_MB)
+                {
+                    report.Warnings.Add($"[ASSERT WARN] RAM kullanÄ±mÄ± yÃ¼ksek: {memMB:F0} MB (uyarÄ± eÅŸiÄŸi: {MEMORY_WARNING_MB} MB)");
+                }
+
+                // DiagnosticsSystem'a da metrik olarak ver
+                DiagnosticsSystem.SetMetric("MilitiaAssertions.MemoryMB", memMB);
+            }
+            catch (Exception ex)
+            { 
+                DebugLogger.Warning("MilitiaAssertions", $"GC stats check failed: {ex.Message}");
+            }
+        }
+
+        // â”€â”€ ASSERT 4: AI sÄ±kÄ±ÅŸma tespiti â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void AssertAINotStagnated(AssertionReport report)
+        {
+            if (Campaign.Current == null) return;
+
+            var stagnatedParties = new List<string>();
+
+            foreach (var party in Campaign.Current.MobileParties)
+            {
+                if (party == null || !party.IsActive) continue;
+                if (party.PartyComponent is not MilitiaPartyComponent comp) continue;
+
+                string partyId   = party.StringId;
+                string curAction = comp.CurrentOrder?.TargetParty?.Name?.ToString()
+                                   ?? comp.CurrentOrder?.Type.ToString()
+                                   ?? "Idle";
+
+                if (_aiStagnationMap.TryGetValue(partyId, out var prev))
+                {
+                    if (prev.LastAction == curAction)
+                    {
+                        int newCount = prev.RepeatCount + 1;
+                        _aiStagnationMap[partyId] = (curAction, newCount);
+
+                        if (newCount >= AI_STAGNATION_SAME_ACTION)
+                        {
+                            stagnatedParties.Add(partyId);
+                        }
+                    }
+                    else
+                    {
+                        _aiStagnationMap[partyId] = (curAction, 1);
+                    }
+                }
+                else
+                {
+                    _aiStagnationMap[partyId] = (curAction, 1);
+                }
+            }
+
+            // SÄ±kÄ±ÅŸmÄ±ÅŸ partiyi registry'den de temizle ki mevcut olmayan partiler birikmesin
+            // âŒ ESKi: O(NÃ—M) FirstOrDefault(p => p.StringId == id) â€” Ã§ok maliyetli
+            // âœ… YENi: Ã–nce O(N) ile aktif ID'leri HashSet'e al, sonra O(1) lookup
+            var activeIdSet = new HashSet<string>(
+                Campaign.Current?.MobileParties
+                    .Where(p => p?.IsActive == true)
+                    .Select(p => p.StringId)
+                ?? Enumerable.Empty<string>());
+
+            var toRemove = _aiStagnationMap.Keys
+                .Where(id => !activeIdSet.Contains(id))
+                .ToList();
+            foreach (var id in toRemove) _aiStagnationMap.Remove(id);
+
+            if (stagnatedParties.Count > 0)
+            {
+                string msg = $"[ASSERT WARN] {stagnatedParties.Count} milis partisi AI sÄ±kÄ±ÅŸmasÄ± belirtisi gÃ¶steriyor " +
+                             $"({AI_STAGNATION_SAME_ACTION}+ ardÄ±ÅŸÄ±k aynÄ± aksiyon).";
+                report.Warnings.Add(msg);
+
+                if (Settings.Instance?.TestingMode == true)
+                    DebugLogger.Warning("MilitiaAssertions", msg + " IDs: " + string.Join(", ", stagnatedParties.Take(5)));
+
+                // Oto-dÃ¼zeltme: Stagnasyon geÃ§miÅŸini temizle ki farklÄ± eylemler deneyebilsinler.
+                foreach (var pid in stagnatedParties)
+                {
+                    var party = Campaign.Current?.MobileParties.FirstOrDefault(p => p.StringId == pid);
+                    if (party != null)
+                    {
+                        _aiStagnationMap[pid] = ("Reset", 0);
+                        if (party.PartyComponent is MilitiaPartyComponent comp)
+                        {
+                            comp.CurrentOrder = null;
+                        }
+                    }
+                }
+                report.AutoHeals.Add($"[AUTO-HEAL] {stagnatedParties.Count} sÄ±kÄ±ÅŸmÄ±ÅŸ milis iÃ§in stagnasyon durumu sÄ±fÄ±rlandÄ±.");
+                _totalAutoHeals++;
+                report.AutoHealCount++;
+            }
+        }
+
+        // â”€â”€ ASSERT 5: EventBus saÄŸlÄ±ÄŸÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void AssertEventBusHealth(AssertionReport report)
+        {
+            try
+            {
+                var bus = Core.Events.EventBus.Instance;
+                if (bus == null) return;
+
+                string diag = bus.GetQueueDiagnostics();
+                // "Queue=X/5000, Dropped=Y" formatÄ±nÄ± parse et
+                int dropped = 0;
+                int queueSize = 0;
+
+                int qIdx = diag.IndexOf("Queue=", StringComparison.Ordinal);
+                int dIdx = diag.IndexOf("Dropped=", StringComparison.Ordinal);
+
+                if (qIdx >= 0)
+                {
+                    string after = diag.Substring(qIdx + 6);
+                    int slash = after.IndexOf('/');
+                    if (slash >= 0 && int.TryParse(after.Substring(0, slash), out int q))
+                        queueSize = q;
+                }
+
+                if (dIdx >= 0)
+                {
+                    string after = diag.Substring(dIdx + 8);
+                    int end = after.IndexOfAny(new[] { ',', ' ', '\n' });
+                    string numStr = end >= 0 ? after.Substring(0, end) : after;
+                    int.TryParse(numStr.Trim(), out dropped);
+                }
+
+                DiagnosticsSystem.SetMetric("EventBus.QueueSize", queueSize);
+                DiagnosticsSystem.SetMetric("EventBus.DroppedEvents", dropped);
+
+                if (dropped > 500)
+                {
+                    string msg = $"[ASSERT FAIL] EventBus {dropped} olay dÃ¼ÅŸÃ¼rdÃ¼ (drop). " +
+                                 $"Kuyruk: {queueSize}/5000. Sim hÄ±zÄ±nÄ± dÃ¼ÅŸÃ¼rÃ¼n veya MaxAITasksPerTick'i azaltÄ±n.";
+                    RecordViolation(report, msg);
+                }
+                else if (dropped > 100)
+                {
+                    report.Warnings.Add($"[ASSERT WARN] EventBus {dropped} olay dÃ¼ÅŸÃ¼rdÃ¼. YÃ¼k yÃ¼ksek izleniyor.");
+                }
+            }
+            catch { }
+        }
+
+        // â”€â”€ DEEP PROBE 1: Link Integrity (BaÄŸ SaÄŸlÄ±ÄŸÄ±) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void ProbeLinkIntegrity(AssertionReport report)
+        {
+            if (WarlordSystem.Instance == null) return;
+
+            var allWarlords = WarlordSystem.Instance.GetAllWarlords();
+            int brokenLinks = 0;
+
+            foreach (var warlord in allWarlords)
+            {
+                // Warlord -> Hero Link
+                if (warlord.LinkedHero == null || !warlord.LinkedHero.IsAlive)
+                {
+                    brokenLinks++;
+                    if (Settings.Instance?.TestingMode == true)
+                        DebugLogger.Warning("DeepProbe", $"Broken Link: Warlord {warlord.Name} has null or dead LinkedHero.");
+                }
+
+                // Warlord -> Party Link
+                var staleParties = warlord.CommandedMilitias.Where(p => p == null || !p.IsActive).ToList();
+                if (staleParties.Count > 0)
+                {
+                    brokenLinks += staleParties.Count;
+                    foreach (var p in staleParties)
+                    {
+                        warlord.ReleaseMilitia(p);
+                        if (Settings.Instance?.TestingMode == true)
+                            DebugLogger.Warning("DeepProbe", $"Auto-Fixed: Removed stale party link for Warlord {warlord.Name}");
+                    }
+                }
+            }
+
+            if (brokenLinks > 0)
+            {
+                string msg = $"[PROBE FAIL] Link Integrity: {brokenLinks} adet kopuk baÄŸ tespit edildi ve temizlendi.";
+                RecordViolation(report, msg);
+            }
+        }
+
+        // â”€â”€ DEEP PROBE 2: Liquidity Check (AltÄ±n KÃ¶prÃ¼sÃ¼) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void ProbeLiquidityBridge(AssertionReport report)
+        {
+            if (WarlordEconomySystem.Instance == null) return;
+
+            var lastSync = WarlordEconomySystem.Instance.LastGoldSyncTime;
+            if (lastSync == CampaignTime.Zero) return; // HenÃ¼z hiÃ§ senkronizasyon olmadÄ±
+
+            double hoursSinceLastSync = (CampaignTime.Now - lastSync).ToHours;
+            
+            // EÄŸer 24 saattir altÄ±n transferi olmadÄ±ysa ve Warlordlar zenginse bir sorun olabilir
+            if (hoursSinceLastSync > 24)
+            {
+                var wealthyWarlord = WarlordSystem.Instance.GetAllWarlords().FirstOrDefault(w => w.Gold > 10000);
+                if (wealthyWarlord != null)
+                {
+                    string msg = $"[PROBE WARN] Liquidity Bridge: {hoursSinceLastSync:F1} saattir altÄ±n transferi yapÄ±lmadÄ± (Potansiyel tÄ±kanÄ±klÄ±k).";
+                    report.Warnings.Add(msg);
+                }
+            }
+        }
+
+        // â”€â”€ DEEP PROBE 3: Stasis Detection (Donma Tespiti) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void ProbeStasisDetection(AssertionReport report)
+        {
+            if (Campaign.Current == null) return;
+
+            double now = CampaignTime.Now.ToHours;
+            int stasisCount = 0;
+
+            foreach (var party in Campaign.Current.MobileParties)
+            {
+                if (party == null || !party.IsActive || party.PartyComponent is not MilitiaPartyComponent) continue;
+
+                string id = party.StringId;
+                Vec2 currentPos = party.Position2D;
+
+                if (_stasisTracker.TryGetValue(id, out var prev))
+                {
+                    double hoursPassed = now - prev.Hour;
+                    if (hoursPassed >= 12) // 12 saatlik gÃ¶zlem
+                    {
+                        float dist = currentPos.Distance(prev.Position);
+                        if (dist < 0.5f) // 12 saatte yarÄ±m birimden az hareket
+                        {
+                            stasisCount++;
+                            if (Settings.Instance?.TestingMode == true)
+                                DebugLogger.Warning("DeepProbe", $"Stasis Detected: Party {party.Name} (ID: {id}) hasn't moved for 12h. Dist: {dist:F2}");
+                            
+                            // Oto-dÃ¼zeltme: AI'yÄ± resetle
+                            if (party.PartyComponent is MilitiaPartyComponent comp)
+                            {
+                                comp.CurrentOrder = null;
+                                if (party.Ai != null) party.Ai.SetDoNotMakeNewDecisions(false);
+                            }
+                        }
+                        // GÃ¶zlem penceresini gÃ¼ncelle
+                        _stasisTracker[id] = (currentPos, now);
+                    }
+                }
+                else
+                {
+                    _stasisTracker[id] = (currentPos, now);
+                }
+            }
+
+            // Temizlik: ArtÄ±k var olmayan partileri tracker'dan Ã§Ä±kar
+            if (now % 24 < 1) // GÃ¼nde bir kez temizlik
+            {
+                var activeIds = new HashSet<string>(Campaign.Current.MobileParties.Select(p => p.StringId));
+                var staleKeys = _stasisTracker.Keys.Where(k => !activeIds.Contains(k)).ToList();
+                foreach (var k in staleKeys) _stasisTracker.Remove(k);
+            }
+
+            if (stasisCount > 0)
+            {
+                string msg = $"[PROBE FAIL] Stasis Detection: {stasisCount} adet donmuÅŸ (stuck) parti tespit edildi ve AI resetlendi.";
+                RecordViolation(report, msg);
+            }
+        }
+
+        // â”€â”€ YardÄ±mcÄ± metotlar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        private void RecordViolation(AssertionReport report, string message)
+        {
+            report.Violations.Add(message);
+            report.ViolationCount++;
+
+            if (_recentViolations.Count >= 50) _recentViolations.Dequeue();
+            _recentViolations.Enqueue($"[{CampaignTime.Now.ToHours:F0}h] {message}");
+
+            DebugLogger.Error("MilitiaAssertions", message);
+
+            if (Settings.Instance?.TestingMode == true)
+            {
+                InformationManager.DisplayMessage(new InformationMessage(
+                    $"[BM Assert] {message}", Colors.Red));
+            }
+        }
+
+        public string GetAssertionSummary()
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== MilitiaAssertionSystem Raporu ===");
+            sb.AppendLine($"Toplam ihlal (oturum): {_totalAssertionViolations}");
+            sb.AppendLine($"Toplam oto-dÃ¼zeltme  : {_totalAutoHeals}");
+            sb.AppendLine($"Son kontrol saati    : {_lastCheckHour:F0}h");
+            sb.AppendLine($"AI sÄ±kÄ±ÅŸma takibi    : {_aiStagnationMap.Count} parti");
+            sb.AppendLine($"\nSon ihlaller ({_recentViolations.Count}):");
+            foreach (var v in _recentViolations.Reverse())
+                sb.AppendLine($"  {v}");
+            return sb.ToString();
+        }
+
+        // â”€â”€ Konsol komutlarÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+        /// <summary>
+        /// militia.assert_check â€” TÃ¼m assertion'larÄ± manuel tetikler ve rapor dÃ¶ner.
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("assert_check", "militia")]
+        public static string CommandAssertCheck(List<string> args)
+        {
+            if (Campaign.Current == null)
+                return "[BanditMilitias] Kampanya aktif deÄŸil.";
+
+            var inst = ModuleManager.Instance.GetModule<MilitiaAssertionSystem>();
+            if (inst == null)
+                return "[BanditMilitias] MilitiaAssertionSystem bulunamadÄ±.";
+
+            var report = inst.RunAllAssertions();
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"[BanditMilitias] Assertion KontrolÃ¼ TamamlandÄ±");
+            sb.AppendLine($"  Ä°hlal: {report.ViolationCount}  UyarÄ±: {report.Warnings.Count}  Oto-dÃ¼zeltme: {report.AutoHealCount}");
+
+            if (report.Violations.Count > 0)
+            {
+                sb.AppendLine("\nÄ°HLALLER:");
+                foreach (var v in report.Violations) sb.AppendLine($"  âŒ {v}");
+            }
+
+            if (report.Warnings.Count > 0)
+            {
+                sb.AppendLine("\nUYARILAR:");
+                foreach (var w in report.Warnings) sb.AppendLine($"  âš  {w}");
+            }
+
+            if (report.AutoHeals.Count > 0)
+            {
+                sb.AppendLine("\nOTO-DÃœZELTMELer:");
+                foreach (var h in report.AutoHeals) sb.AppendLine($"  âœ” {h}");
+            }
+
+            if (report.ViolationCount == 0 && report.Warnings.Count == 0)
+                sb.AppendLine("  âœ… TÃ¼m assertion'lar baÅŸarÄ±lÄ±. Sistem saÄŸlÄ±klÄ±.");
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// militia.assert_summary â€” Oturum genelindeki assertion Ã¶zeti.
+        /// </summary>
+        [CommandLineFunctionality.CommandLineArgumentFunction("assert_summary", "militia")]
+        public static string CommandAssertSummary(List<string> args)
+        {
+            var inst = ModuleManager.Instance.GetModule<MilitiaAssertionSystem>();
+            if (inst == null) return "[BanditMilitias] MilitiaAssertionSystem bulunamadÄ±.";
+            return inst.GetAssertionSummary();
+        }
+
+        public override void OnDailyTick()
+        {
+            // GÃ¼nlÃ¼k metrik sÄ±fÄ±rlama (stagnasyon haritasÄ±nÄ± temizle â€” eski partiler birikmesin)
+            if (Campaign.Current == null) return;
+
+            var activeIds = new HashSet<string>(
+                Campaign.Current.MobileParties
+                    .Where(p => p?.IsActive == true && p.PartyComponent is MilitiaPartyComponent)
+                    .Select(p => p.StringId));
+
+            var staleKeys = _aiStagnationMap.Keys.Where(k => !activeIds.Contains(k)).ToList();
+            foreach (var k in staleKeys) _aiStagnationMap.Remove(k);
+        }
+    }
+
+    /// <summary>Bir assertion Ã§alÄ±ÅŸmasÄ±nÄ±n Ã¶zet sonucu.</summary>
+    public class AssertionReport
+    {
+        public int ViolationCount { get; set; }
+        public int AutoHealCount  { get; set; }
+        public List<string> Violations { get; } = new List<string>();
+        public List<string> Warnings   { get; } = new List<string>();
+        public List<string> AutoHeals  { get; } = new List<string>();
+    }
+}
+

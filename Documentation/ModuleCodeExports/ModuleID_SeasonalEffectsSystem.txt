@@ -1,0 +1,238 @@
+﻿Module ID: SeasonalEffectsSystem Class: SeasonalEffectsSystem Category: Systems/Seasonal Source: C:\Users\firat\Documents\myproject\bannerlord-BanditMilitias-WARLORD-mod-master\BanditMilitias\Systems\Seasonal\SeasonalEffectsSystem.cs AutoRegister: True Status: Aktif Dependencies:  RiskFlags:   ================ SOURCE ================ using BanditMilitias.Core.Components;
+using BanditMilitias.Debug;
+using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Strategic;
+using BanditMilitias.Systems.Fear;
+using System;
+using System.Linq;
+using TaleWorlds.CampaignSystem;
+using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.Core;
+using TaleWorlds.Library;
+
+namespace BanditMilitias.Systems.Seasonal
+{
+    public enum MilitiaSeason
+    {
+        Spring,  // Ä°lkbahar â€” normal
+        Summer,  // Yaz â€” hÄ±z +%15, morali yÃ¼ksek
+        Autumn,  // Sonbahar â€” baskÄ±n altÄ±n +%25 (hasat dolu kÃ¶yler)
+        Winter   // KÄ±ÅŸ â€” asker Ã¶lÃ¼mÃ¼ riski, korku azalmasÄ±
+    }
+
+    /// <summary>
+    /// Mevsimsel Etkiler Sistemi
+    /// Bannerlord yÄ±lÄ± 84 gÃ¼ndÃ¼r; her mevsim 21 gÃ¼n.
+    /// Sonbahar: baskÄ±n geliri +%25 (hasat mevsimi)
+    /// KÄ±ÅŸ: gÃ¼nlÃ¼k asker kaybÄ± riski, FearSystem zayÄ±flamasÄ±
+    /// Yaz: milisya hÄ±z bonusu +%15
+    /// Ä°lkbahar: toparlanma, normal parametreler
+    /// </summary>
+    [AutoRegister]
+    public class SeasonalEffectsSystem : MilitiaModuleBase
+    {
+        public override string ModuleName => "SeasonalEffectsSystem";
+        public override bool IsEnabled => Settings.Instance?.EnableWarlords ?? true;
+        public override int Priority => 20; // Erken baÅŸlasÄ±n, diÄŸer sistemler Ã§arpanÄ± alsÄ±n
+
+        private static readonly Lazy<SeasonalEffectsSystem> _instance =
+            new Lazy<SeasonalEffectsSystem>(() => new SeasonalEffectsSystem());
+        public static SeasonalEffectsSystem Instance => _instance.Value;
+
+        private MilitiaSeason _currentSeason = MilitiaSeason.Spring;
+        private int _lastSeasonDay = -1;
+
+        // Mevsim parametreleri
+        public float RaidLootMultiplier { get; private set; } = 1.0f;
+        public float SpeedMultiplier { get; private set; } = 1.0f;
+        public float WinterAttritionRisk { get; private set; } = 0f;
+        public float FearDecayBonus { get; private set; } = 0f; // KÄ±ÅŸ: korku daha hÄ±zlÄ± dÃ¼ÅŸer
+
+        public MilitiaSeason CurrentSeason => _currentSeason;
+
+        private SeasonalEffectsSystem() { }
+
+        public override void Initialize()
+        {
+            UpdateSeason();
+            DebugLogger.Info("Seasonal", $"SeasonalEffectsSystem baÅŸlatÄ±ldÄ±. Mevsim: {_currentSeason}");
+        }
+
+        public override void Cleanup() { }
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            // Mevsim CampaignTime'dan hesaplanÄ±r, kaydetmeye gerek yok
+        }
+
+        public override void OnDailyTick()
+        {
+            if (!IsEnabled) return;
+            if (CompatibilityLayer.IsGameplayActivationDelayed()) return;
+
+            UpdateSeason();
+
+            if (_currentSeason == MilitiaSeason.Winter)
+                ProcessWinterAttrition();
+        }
+
+        private void UpdateSeason()
+        {
+            int dayOfYear = GetDayOfYear();
+            if (dayOfYear == _lastSeasonDay) return;
+            _lastSeasonDay = dayOfYear;
+
+            // Bannerlord yÄ±lÄ± = 84 gÃ¼n, her mevsim = 21 gÃ¼n
+            int seasonIndex = (dayOfYear / 21) % 4;
+            var newSeason = (MilitiaSeason)seasonIndex;
+
+            if (newSeason != _currentSeason)
+            {
+                var old = _currentSeason;
+                _currentSeason = newSeason;
+                ApplySeasonParameters(newSeason);
+                OnSeasonChanged(old, newSeason);
+            }
+            else if (_lastSeasonDay == 0)
+            {
+                // Ä°lk baÅŸlatma
+                ApplySeasonParameters(_currentSeason);
+            }
+        }
+
+        private void ApplySeasonParameters(MilitiaSeason season)
+        {
+            switch (season)
+            {
+                case MilitiaSeason.Spring:
+                    RaidLootMultiplier = 1.0f;
+                    SpeedMultiplier = 1.0f;
+                    WinterAttritionRisk = 0f;
+                    FearDecayBonus = 0f;
+                    break;
+
+                case MilitiaSeason.Summer:
+                    RaidLootMultiplier = 0.9f;      // KÃ¶yler henÃ¼z hasat yapmadÄ±
+                    SpeedMultiplier = 1.15f;         // SÄ±cak yollar, hÄ±zlÄ± hareket
+                    WinterAttritionRisk = 0f;
+                    FearDecayBonus = 0f;
+                    break;
+
+                case MilitiaSeason.Autumn:
+                    RaidLootMultiplier = 1.25f;      // Hasat dolu ambarlar
+                    SpeedMultiplier = 1.0f;
+                    WinterAttritionRisk = 0f;
+                    FearDecayBonus = 0f;
+                    break;
+
+                case MilitiaSeason.Winter:
+                    RaidLootMultiplier = 0.7f;       // Kar yollarÄ±, az ganimet
+                    SpeedMultiplier = 0.88f;         // AÄŸÄ±r kÄ±ÅŸ koÅŸullarÄ±
+                    WinterAttritionRisk = 0.03f;     // GÃ¼nde %3 asker kaybÄ± riski
+                    FearDecayBonus = 0.01f;          // Halk kÄ±ÅŸta daha az korkuyor (yurt iÃ§i meÅŸgul)
+                    break;
+            }
+        }
+
+        private void OnSeasonChanged(MilitiaSeason old, MilitiaSeason newSeason)
+        {
+            string message = newSeason switch
+            {
+                MilitiaSeason.Spring  => "â˜€ Ä°lkbahar geldi â€” milisyalar toparlanÄ±yor.",
+                MilitiaSeason.Summer  => "â˜€ Yaz baÅŸladÄ± â€” milisyalar daha hÄ±zlÄ± hareket ediyor.",
+                MilitiaSeason.Autumn  => "ğŸ‚ Sonbahar â€” kÃ¶yler hasat dolu, baskÄ±n sezonu aÃ§Ä±ldÄ±!",
+                MilitiaSeason.Winter  => "â„ KÄ±ÅŸ bastÄ±rdÄ± â€” milisyalar iÃ§in zorlu dÃ¶nem baÅŸlÄ±yor.",
+                _ => ""
+            };
+
+            if (!string.IsNullOrEmpty(message))
+            {
+                InformationManager.DisplayMessage(new InformationMessage(
+                    $"[Mevsim] {message}",
+                    newSeason == MilitiaSeason.Winter ? Colors.White : new Color(0.8f, 0.9f, 0.4f)));
+            }
+
+            DebugLogger.Info("Seasonal", $"Mevsim deÄŸiÅŸti: {old} â†’ {newSeason}. " +
+                $"BaskÄ±n={RaidLootMultiplier:F2}, HÄ±z={SpeedMultiplier:F2}, KÄ±ÅŸ={WinterAttritionRisk:F2}");
+        }
+
+        private void ProcessWinterAttrition()
+        {
+            // KÄ±ÅŸ aÅŸÄ±nmasÄ±: her milisya gÃ¼nde %3 oranÄ±nda asker kaybedebilir
+            foreach (var party in Infrastructure.CompatibilityLayer.GetSafeMobileParties())
+            {
+                if (party.PartyComponent is not Components.MilitiaPartyComponent comp) continue;
+
+                int total = party.MemberRoster.TotalManCount;
+                if (total < 5) continue;
+
+                if (MBRandom.RandomFloat < WinterAttritionRisk)
+                {
+                    int loss = Math.Max(1, (int)(total * 0.02f));
+                    try
+                    {
+                        // En dÃ¼ÅŸÃ¼k tier askerlerden kayÄ±p ver
+                        var troopToKill = party.MemberRoster.GetTroopRoster()
+                            .Where(e => !e.Character.IsHero && e.Number > 0)
+                            .OrderBy(e => e.Character.Tier)
+                            .FirstOrDefault();
+
+                        if (troopToKill.Character != null)
+                        {
+                            int actualLoss = Math.Min(loss, troopToKill.Number);
+                            party.MemberRoster.AddToCounts(troopToKill.Character, -actualLoss);
+
+                            if (Settings.Instance?.TestingMode == true)
+                            {
+                                DebugLogger.Info("Seasonal",
+                                    $"[KÄ±ÅŸ AÅŸÄ±nmasÄ±] {party.Name}: {actualLoss} asker dondu.");
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Warning("Seasonal", $"KÄ±ÅŸ aÅŸÄ±nmasÄ± hatasÄ±: {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Bannerlord'da yÄ±l 84 gÃ¼ndÃ¼r. CampaignTime.Now.ToDays'ten gÃ¼nÃ¼ hesaplÄ±yoruz.
+        /// </summary>
+        private static int GetDayOfYear()
+        {
+            try
+            {
+                double totalDays = CampaignTime.Now.ToDays;
+                return (int)(totalDays % 84);
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        public string GetSeasonDescription()
+        {
+            return _currentSeason switch
+            {
+                MilitiaSeason.Spring => "Ä°lkbahar â€” Normal koÅŸullar",
+                MilitiaSeason.Summer => $"Yaz â€” HÄ±z +%{(SpeedMultiplier - 1f) * 100:F0}",
+                MilitiaSeason.Autumn => $"Sonbahar â€” BaskÄ±n geliri +%{(RaidLootMultiplier - 1f) * 100:F0}",
+                MilitiaSeason.Winter => "KÄ±ÅŸ â€” Asker kaybÄ± riski, yavaÅŸ hareket",
+                _ => "Bilinmeyen"
+            };
+        }
+
+        public override string GetDiagnostics()
+        {
+            return $"SeasonalEffects:\n" +
+                   $"  Mevsim: {_currentSeason} ({GetSeasonDescription()})\n" +
+                   $"  RaidÃ‡arpan: {RaidLootMultiplier:F2}\n" +
+                   $"  HÄ±zÃ‡arpan: {SpeedMultiplier:F2}\n" +
+                   $"  KÄ±ÅŸAÅŸÄ±nma: {WinterAttritionRisk:P0}";
+        }
+    }
+}
+

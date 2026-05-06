@@ -2,8 +2,6 @@ using BanditMilitias.Core.Components;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Progression;
-using BanditMilitias.Systems.WarlordLegitimacy;
-using BanditMilitias.Systems.Legacy;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -23,8 +21,7 @@ namespace BanditMilitias.Intelligence.Narrative
         string? GetThreatReaction(Warlord warlord);
         string? GetRetreatReaction(Warlord warlord);
     }
-
-
+    // ── WarlordNarrativeSystem ─────────────────────────────────────────
     [AutoRegister]
     public class WarlordNarrativeSystem : MilitiaModuleBase
     {
@@ -82,21 +79,21 @@ namespace BanditMilitias.Intelligence.Narrative
             {
                 if (_isInitialized) return;
 
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnRaidCompleted);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordLevelChangedEvent>(OnLevelChanged);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordAllianceFormedEvent>(OnAllianceFormed);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<AllianceOfferEvent>(OnAllianceOffer);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordRivalryEscalatedEvent>(OnRivalryEscalated);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordBackstabEvent>(OnBackstab);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordBountyThresholdReachedEvent>(OnBountyThreshold);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<AdaptiveDoctrineShiftedEvent>(OnDoctrineShifted);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordFallenEvent>(OnWarlordFallen);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<BanditMilitias.Core.Events.CrisisStartedEvent>(OnCrisisStarted);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<BanditMilitias.Core.Events.TributeCollectedEvent>(OnTributeCollected);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<BanditMilitias.Core.Events.VillageResistanceEvent>(OnVillageResistance);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<BanditMilitias.Core.Events.LegacyEchoActivatedEvent>(OnLegacyEcho);
+                EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+                EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnRaidCompleted);
+                EventBus.Instance.Subscribe<WarlordLevelChangedEvent>(OnLevelChanged);
+                EventBus.Instance.Subscribe<WarlordAllianceFormedEvent>(OnAllianceFormed);
+                EventBus.Instance.Subscribe<AllianceOfferEvent>(OnAllianceOffer);
+                EventBus.Instance.Subscribe<WarlordRivalryEscalatedEvent>(OnRivalryEscalated);
+                EventBus.Instance.Subscribe<WarlordBackstabEvent>(OnBackstab);
+                EventBus.Instance.Subscribe<WarlordBountyThresholdReachedEvent>(OnBountyThreshold);
+                EventBus.Instance.Subscribe<AdaptiveDoctrineShiftedEvent>(OnDoctrineShifted);
+                EventBus.Instance.Subscribe<WarlordFallenEvent>(OnWarlordFallen);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.CrisisStartedEvent>(OnCrisisStarted);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.TributeCollectedEvent>(OnTributeCollected);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.VillageResistanceEvent>(OnVillageResistance);
+                EventBus.Instance.Subscribe<BanditMilitias.Core.Events.LegacyEchoActivatedEvent>(OnLegacyEcho);
 
                 _isInitialized = true;
             }
@@ -106,21 +103,21 @@ namespace BanditMilitias.Intelligence.Narrative
         {
             lock (_initLock)
             {
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnRaidCompleted);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordLevelChangedEvent>(OnLevelChanged);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordAllianceFormedEvent>(OnAllianceFormed);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<AllianceOfferEvent>(OnAllianceOffer);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordRivalryEscalatedEvent>(OnRivalryEscalated);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordBackstabEvent>(OnBackstab);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordBountyThresholdReachedEvent>(OnBountyThreshold);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<AdaptiveDoctrineShiftedEvent>(OnDoctrineShifted);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordFallenEvent>(OnWarlordFallen);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.CrisisStartedEvent>(OnCrisisStarted);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.TributeCollectedEvent>(OnTributeCollected);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.VillageResistanceEvent>(OnVillageResistance);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.LegacyEchoActivatedEvent>(OnLegacyEcho);
+                EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+                EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnRaidCompleted);
+                EventBus.Instance.Unsubscribe<WarlordLevelChangedEvent>(OnLevelChanged);
+                EventBus.Instance.Unsubscribe<WarlordAllianceFormedEvent>(OnAllianceFormed);
+                EventBus.Instance.Unsubscribe<AllianceOfferEvent>(OnAllianceOffer);
+                EventBus.Instance.Unsubscribe<WarlordRivalryEscalatedEvent>(OnRivalryEscalated);
+                EventBus.Instance.Unsubscribe<WarlordBackstabEvent>(OnBackstab);
+                EventBus.Instance.Unsubscribe<WarlordBountyThresholdReachedEvent>(OnBountyThreshold);
+                EventBus.Instance.Unsubscribe<AdaptiveDoctrineShiftedEvent>(OnDoctrineShifted);
+                EventBus.Instance.Unsubscribe<WarlordFallenEvent>(OnWarlordFallen);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.CrisisStartedEvent>(OnCrisisStarted);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.TributeCollectedEvent>(OnTributeCollected);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.VillageResistanceEvent>(OnVillageResistance);
+                EventBus.Instance.Unsubscribe<BanditMilitias.Core.Events.LegacyEchoActivatedEvent>(OnLegacyEcho);
 
                 _playerKillsPerWarlord.Clear();
                 _isInitialized = false;
@@ -238,19 +235,17 @@ namespace BanditMilitias.Intelligence.Narrative
                 {
                     var mem = GetOrCreateMemory(w.StringId);
 
-
+                    // Tension escalation check
                     if (mem.ShouldEscalate())
                     {
                         mem.EscalateTension();
-
-
+                        // When tension rises, always generate rumor
                         string tensionMsg = WorldVoiceSynthesizer.GenerateAmbientLine(w, mem);
                         NarrativePresenter.ShowAmbient(tensionMsg);
                     }
                     else if (MBRandom.RandomFloat < 0.12f)
                     {
-
-
+                        // Normal daily organic message chance
                         string msg = WorldVoiceSynthesizer.GenerateAmbientLine(w, mem);
                         NarrativePresenter.ShowAmbient(msg);
                     }
@@ -382,7 +377,7 @@ namespace BanditMilitias.Intelligence.Narrative
             => _voices.TryGetValue(personality, out var v) ? v : null;
     }
 
-
+    // ── NarrativeMemory ─────────────────────────────────────────
     public class NarrativeMemory
     {
         private readonly Dictionary<string, int> _templateFatigue = new();
@@ -390,9 +385,9 @@ namespace BanditMilitias.Intelligence.Narrative
         private const int MAX_RECENT_MEMORY = 8;
 
         public int DaysSinceEscalation { get; private set; } = 0;
-        public int TensionLevel { get; private set; } = 0;
+        public int TensionLevel { get; private set; } = 0; // 0-5
 
-
+        // Yeni bir olay kaydedildiğinde
         public void RecordEvent(string templateKey, int currentDay)
         {
             if (_templateFatigue.TryGetValue(templateKey, out int count))
@@ -404,11 +399,11 @@ namespace BanditMilitias.Intelligence.Narrative
             if (_recentEvents.Count > MAX_RECENT_MEMORY)
                 _ = _recentEvents.Dequeue();
 
-
+            // Her olay tansiyonu sıfırlar veya hafifletir
             DaysSinceEscalation++;
         }
 
-
+        // Bir şablonun "yorgunluk" (ne kadar kullanıldı) skorunu getirir. Max %90
         public float GetFatigue(string templateKey)
         {
             if (!_templateFatigue.TryGetValue(templateKey, out int count))
@@ -417,7 +412,7 @@ namespace BanditMilitias.Intelligence.Narrative
             return Math.Min(0.9f, count * 0.15f);
         }
 
-
+        // Son 3 olayda geçip geçmediğini kontrol eder
         public bool IsRecentlyUsed(string templateKey)
         {
             return _recentEvents.Reverse().Take(3).Contains(templateKey);
@@ -437,7 +432,7 @@ namespace BanditMilitias.Intelligence.Narrative
             DaysSinceEscalation = 0;
         }
 
-
+        // Ağırlıklı rastgele seçim motoru (Yorulmuş cümleleri cezalandırarak en tazesini seçer)
         public T WeightedPick<T>(IEnumerable<T> candidates, Func<T, string> keySelector)
         {
             var pool = new List<T>();
@@ -449,8 +444,7 @@ namespace BanditMilitias.Intelligence.Narrative
 
                 int baseWeight = 4;
                 int recentPenalty = isRecent ? -3 : 0;
-                int fatiguePenalty = (int)(fatigue * 4);
-
+                int fatiguePenalty = (int)(fatigue * 4); // max -3
 
                 int finalWeight = Math.Max(1, baseWeight + recentPenalty - fatiguePenalty);
 
@@ -463,7 +457,7 @@ namespace BanditMilitias.Intelligence.Narrative
         }
     }
 
-
+    // ── NarrativePresenter ─────────────────────────────────────────
     public static class NarrativePresenter
     {
         public static void Show(string message, PersonalityType personality, int intensity = 1)
@@ -523,16 +517,15 @@ namespace BanditMilitias.Intelligence.Narrative
         }
     }
 
-
+    // ── PersonalityVoices ─────────────────────────────────────────
     public static class VoiceResolver
     {
         public static string ResolveNarrative(string baseId, Warlord warlord, string extraParam1 = "", string extraParam2 = "")
         {
-
-
+            // Find current warlord level (0 = Outlaw, 1 = Rebel, 2 = FamousBandit, 3 = Warlord, 4 = Recognized)
             int level = (int)WarlordLegitimacySystem.Instance.GetLevel(warlord.StringId);
 
-
+            // 1. Try Kill-Count specific ID: e.g. {=BM_Nar_Agg_Kill10_1}
             if (baseId.EndsWith("_Kill") && int.TryParse(extraParam2, out int kills))
             {
                 int[] thresholds = { 10, 3, 1 };
@@ -540,8 +533,7 @@ namespace BanditMilitias.Intelligence.Narrative
                 {
                     if (kills >= t)
                     {
-
-
+                        // Try variants 1, 2, 3
                         for (int v = 1; v <= 3; v++)
                         {
                             string killId = $"{baseId}{t}_{v}";
@@ -556,23 +548,23 @@ namespace BanditMilitias.Intelligence.Narrative
                 }
             }
 
-
+            // 2. Try pulling from XML: e.g. {=BM_Nar_Agg_Kill_Lvl2}
             string idWithLevel = $"{baseId}_Lvl{level}";
             var textObjWithLevel = new TextObject("{=" + idWithLevel + "}");
             string resolvedWithLevel = textObjWithLevel.ToString();
 
-
+            // If level-specific ID not found, try fallback (no level)
             if (string.IsNullOrEmpty(resolvedWithLevel) || resolvedWithLevel == idWithLevel || resolvedWithLevel.Contains(baseId))
             {
                 var fallbackTextObj = new TextObject("{=" + baseId + "}FALLBACK");
                 resolvedWithLevel = fallbackTextObj.ToString();
 
-
+                // If XML fallback also missing, return C# hardcoded strings
                 if (resolvedWithLevel == "FALLBACK")
                     return GetHardcodedFallback(baseId, warlord, level, extraParam1, extraParam2);
             }
 
-
+            // Fill variables
             resolvedWithLevel = resolvedWithLevel
                 .Replace("{WARLORD}", warlord.Name)
                 .Replace("{PLAYER}", extraParam1)
@@ -583,8 +575,7 @@ namespace BanditMilitias.Intelligence.Narrative
 
         private static string GetHardcodedFallback(string baseId, Warlord warlord, int level, string param1, string param2)
         {
-
-
+            // If no text found in XML either, return these backup texts. (COMBO MATRIX)
             if (baseId.Contains("Agg_Kill"))
             {
                 if (level >= 3) return $"[{warlord.Name}]: My entire army hunts {param1}. Nowhere to hide!";
@@ -693,7 +684,7 @@ namespace BanditMilitias.Intelligence.Narrative
             => VoiceResolver.ResolveNarrative("BM_Nar_Ven_Retreat", warlord);
     }
 
-
+    // ── WorldVoiceSynthesizer ─────────────────────────────────────────
     public enum NpcVoiceType
     {
         Merchant,
@@ -706,8 +697,7 @@ namespace BanditMilitias.Intelligence.Narrative
 
     public static class WorldVoiceSynthesizer
     {
-
-
+        // Dynamic lists (populated from XML at game load)
         private static readonly Dictionary<NpcVoiceType, List<string>> _prefixes = new();
         private static readonly List<string> _idioms = new();
         private static readonly List<string> _fallbackCors = new();
@@ -717,7 +707,7 @@ namespace BanditMilitias.Intelligence.Narrative
         {
             if (_isInitialized) return;
 
-
+            // Pull unlimited sentences from XML for 6 different NPC types
             var types = (NpcVoiceType[])Enum.GetValues(typeof(NpcVoiceType));
             foreach (var type in types)
             {
@@ -727,29 +717,28 @@ namespace BanditMilitias.Intelligence.Narrative
 
                 while (true)
                 {
-
-
+                    // e.g.: {=bm_npc_merchant_1}
                     string id = $"{{=bm_npc_{typeKey}_{index}}}";
                     var textObj = new TaleWorlds.Localization.TextObject(id);
                     string localized = textObj.ToString();
 
-
+                    // If no such ID exists in XML, Bannerlord returns the ID itself.
+                    // Or returns empty. This tells us the array ended in XML!
                     if (string.IsNullOrEmpty(localized) || localized == id || localized.Contains($"bm_npc_{typeKey}"))
-                        break;
-
+                        break; // Break loop, array ended!
 
                     _prefixes[type].Add(localized);
                     index++;
                 }
 
-
+                // If XML is missing (fallback) prevent crash
                 if (_prefixes[type].Count == 0)
                 {
                     _prefixes[type].Add(new TaleWorlds.Localization.TextObject($"{{=bm_npc_fallback_{typeKey}}}I'm just a villager, I don't know anything.").ToString());
                 }
             }
 
-
+            // Bard sayings / proverbs from XML
             int idiomIndex = 1;
             while (true)
             {
@@ -763,7 +752,7 @@ namespace BanditMilitias.Intelligence.Narrative
                 idiomIndex++;
             }
 
-
+            // Core events (will be shaped further with Combo_Matrix)
             int coreIndex = 1;
             while (true)
             {
@@ -791,7 +780,7 @@ namespace BanditMilitias.Intelligence.Narrative
             string core = GetCoreEvent(warlord, memory);
             string idiom = GetIdiom(memory);
 
-
+            // Random idiom addition (30%)
             bool addIdiom = MBRandom.RandomFloat < 0.3f && !memory.IsRecentlyUsed(idiom);
 
             string finalMessage = $"{GetTypeLabel(type)}: \"{prefix} {core}";

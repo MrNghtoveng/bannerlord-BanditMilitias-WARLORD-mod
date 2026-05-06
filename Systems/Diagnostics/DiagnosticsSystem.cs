@@ -30,8 +30,7 @@ namespace BanditMilitias.Systems.Diagnostics
         public static bool IsHighLoad { get; private set; } = false;
         private static int _loadCheckThrottle = 0;
         private static float _auditTimer = 0f;
-        private const float AUDIT_INTERVAL_SEC = 1800f;
-
+        private const float AUDIT_INTERVAL_SEC = 1800f; // 30 minutes
 
         private static bool _initialAuditDone = false;
         private static readonly List<string> EmptyArgs = new List<string>();
@@ -45,14 +44,13 @@ namespace BanditMilitias.Systems.Diagnostics
                 return;
             }
 
-
+            // AUTO-START: Run once at session beginning if in testing mode
             if (!_initialAuditDone)
             {
                 _initialAuditDone = true;
                 Infrastructure.FileLogger.Log("[AUTO-AUDIT] Starting initial session audit automatically.");
                 CommandAudit(EmptyArgs);
-                _auditTimer = 0f;
-
+                _auditTimer = 0f; // Reset periodic timer
                 return;
             }
 
@@ -71,8 +69,7 @@ namespace BanditMilitias.Systems.Diagnostics
             _customMetrics.Clear();
             _initialAuditDone = false;
             _auditTimer = 0f;
-
-
+            // Not: _averageTimes ve _callCounts'u temizlemiyoruz çünkü modül sağlık metrikleri kalıcı olmalı.
         }
 
         [Conditional("DEBUG"), Conditional("RELEASE")]
@@ -92,7 +89,7 @@ namespace BanditMilitias.Systems.Diagnostics
                 _averageTimes.AddOrUpdate(scopeName, elapsedMs, (_, oldAvg) => (oldAvg * 0.95) + (elapsedMs * 0.05));
                 _callCounts.AddOrUpdate(scopeName, 1L, (_, oldCount) => oldCount + 1);
 
-
+                // OPTIMIZATION: Her scope bittiğinde yük kontrolü yapma (overhead azaltma)
                 if (System.Threading.Interlocked.Increment(ref _loadCheckThrottle) % 10 == 0)
                 {
                     CheckSystemLoad();
@@ -102,8 +99,10 @@ namespace BanditMilitias.Systems.Diagnostics
 
         private static void CheckSystemLoad()
         {
-
-
+            // FIX: Önceden "AI" scope'una bakılıyordu — bu scope hiç kaydedilmiyordu
+            // (MilitiaBehavior "Militia.HourlyTick" ve "Militia.DailyTick" kullanıyor),
+            // dolayısıyla IsHighLoad her zaman false kalıyordu ve yük kısıtlaması hiç
+            // devreye girmiyordu. Doğru scope isimleri ile kontrol ediyoruz.
             double hourly = _averageTimes.TryGetValue("Militia.HourlyTick", out var h) ? h : 0;
             double daily  = _averageTimes.TryGetValue("Militia.DailyTick",  out var d) ? d : 0;
             double total  = hourly + daily;
@@ -163,11 +162,11 @@ namespace BanditMilitias.Systems.Diagnostics
             sb.AppendLine($"   Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             sb.AppendLine("==================================================================");
 
-
+            // 1. Core SubModule & Initialization State
             sb.AppendLine("\n[SECTION 1: CORE INFRASTRUCTURE]");
             sb.AppendLine(SubModule.GetDiagnostics());
 
-
+            // 2. Module Manager & Global Registry
             sb.AppendLine("\n[SECTION 2: MODULE REGISTRY & HEALTH]");
             if (ModuleManager.Instance != null)
             {
@@ -180,15 +179,15 @@ namespace BanditMilitias.Systems.Diagnostics
                 }
             }
 
-
+            // 3. Simulation & Spawning Data
             sb.AppendLine("\n[SECTION 3: SIMULATION & POPULATION]");
             sb.AppendLine(CommandFullSimReport(EmptyArgs));
 
-
+            // 4. Performance & Metrics
             sb.AppendLine("\n[SECTION 4: PERFORMANCE METRICS]");
             sb.AppendLine(GenerateReport());
 
-
+            // 5. AI & Neural Systems
             sb.AppendLine("\n[SECTION 5: AI & NEURAL INTELLIGENCE]");
             var doctrineSys = ModuleManager.Instance?.GetModule<AdaptiveAIDoctrineSystem>();
             if (doctrineSys != null)
@@ -204,7 +203,7 @@ namespace BanditMilitias.Systems.Diagnostics
                 sb.AppendLine(neuralAdvisor.GetDiagnostics());
             }
 
-
+            // 6. Suppressed Exceptions & Health
             sb.AppendLine("\n[SECTION 6: STABILITY & EXCEPTIONS]");
             sb.AppendLine(Infrastructure.ExceptionMonitor.GetReport(50));
 
@@ -215,7 +214,7 @@ namespace BanditMilitias.Systems.Diagnostics
             string finalReport = sb.ToString();
             string filename = $"Audit_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
             SaveReportToFile(finalReport, filename);
-
+            
             return finalReport + $"\n\n>>> AUDIT COMPLETE. Saved to: Warlord_Logs/BanditMilitias/Diagnostics/{filename}\n" +
                                  $">>> AI Logs: Warlord_Logs/BanditMilitias/AI/AIDecisions.log\n" +
                                  $">>> Neural Exports: Warlord_Logs/BanditMilitias/AI/exports/";
@@ -225,41 +224,41 @@ namespace BanditMilitias.Systems.Diagnostics
         public static string CommandHelp(List<string> args)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("=== BANDIT MILITIAS CONSOLE COMMANDS ===");
-            sb.AppendLine("You can use the following commands as 'militia.[command]':");
-            sb.AppendLine("  help              - Shows this help menu.");
-            sb.AppendLine("  help_ux           - UX commands guide (recommended for beginners).");
-            sb.AppendLine("  list_parties      - Lists all active militias with their IDs and positions.");
-            sb.AppendLine("  list_parties [x]  - Lists only militias containing 'x'.");
-            sb.AppendLine("  reset_safe        - Safe reset with confirmation mechanism.");
-            sb.AppendLine("  reset_safe confirm- Confirmed reset (all militia data will be deleted!).");
-            sb.AppendLine("  dev_export_path   - Shows the current export directory.");
-            sb.AppendLine("  dev_export_path [path] - Redirects export output to a custom directory.");
-            sb.AppendLine("  module_status     - Lists the health status and errors of modules.");
-            sb.AppendLine("  full_sim_test     - Provides a detailed status report of all systems.");
-            sb.AppendLine("  full_sim_test once- Runs a one-time integration test.");
-            sb.AppendLine("  diag_report       - Generates a performance and metrics report.");
-            sb.AppendLine("  audit             - Collects ALL systems (Infrastructure, AI, Neural Network, Errors) into a single report and saves it to a file.");
-            sb.AppendLine("  watchdog_status   - Shows the status of the system watchdog.");
+            sb.AppendLine("=== BANDİT MİLİTİAS KONSOL KOMUTLARI ===");
+            sb.AppendLine("Aşağıdaki komutları 'militia.[komut]' şeklinde kullanabilirsiniz:");
+            sb.AppendLine("  help              - Bu yardım menüsünü gösterir.");
+            sb.AppendLine("  help_ux           - UX komutları rehberi (önerilen yeni başlangıç).");
+            sb.AppendLine("  list_parties      - Aktif tüm milisleri ID ve konumlarıyla listeler.");
+            sb.AppendLine("  list_parties [x]  - Sadece 'x' içeren milisleri listeler.");
+            sb.AppendLine("  reset_safe        - Onay mekanizmalı güvenli reset.");
+            sb.AppendLine("  reset_safe confirm- Onaylı reset (tüm milis verisi silinir!).");
+            sb.AppendLine("  dev_export_path   - Mevcut export dizinini gösterir.");
+            sb.AppendLine("  dev_export_path [yol] - Export çıktısını özel dizine yönlendirir.");
+            sb.AppendLine("  module_status     - Modüllerin sağlık durumunu ve hataları listeler.");
+            sb.AppendLine("  full_sim_test     - Tüm sistemlerin detaylı durum raporunu verir.");
+            sb.AppendLine("  full_sim_test once- Tek seferlik entegrasyon testi çalıştırır.");
+            sb.AppendLine("  diag_report       - Performans ve metrik raporu oluşturur.");
+            sb.AppendLine("  audit             - TÜM sistemleri (Altyapı, AI, Sinir Ağı, Hatalar) tek raporda toplar ve dosyaya kaydeder.");
+            sb.AppendLine("  watchdog_status   - Sistem nöbetçisi (watchdog) durumunu gösterir.");
 
-            sb.AppendLine("  runtime_diag      - Live runtime diagnostic report.");
-            sb.AppendLine("  dev_export        - Take a snapshot and export to DevDataCollector.");
-            sb.AppendLine("  dev_status        - DevDataCollector session summary.");
-            sb.AppendLine("  bandit.test_list  - Lists the runtime test hub check catalog.");
-            sb.AppendLine("  bandit.test_run   - Runs the runtime test hub checks.");
-            sb.AppendLine("  bandit.test_report- Shows the latest runtime test report.");
-            sb.AppendLine("\nOther prefixes (Legacy commands):");
-            sb.AppendLine("  bandit_militias.spawn_swarm - Starts a large bandit swarm.");
-            sb.AppendLine("  bandit_militias.debug_hideout - Shows hideout data.");
+            sb.AppendLine("  runtime_diag      - Canlı runtime tanılama raporu.");
+            sb.AppendLine("  dev_export        - Snapshot al ve DevDataCollector'a aktar.");
+            sb.AppendLine("  dev_status        - DevDataCollector oturum özeti.");
+            sb.AppendLine("  bandit.test_list  - Runtime test hub check kataloğunu listeler.");
+            sb.AppendLine("  bandit.test_run   - Runtime test hub check'lerini çalıştırır.");
+            sb.AppendLine("  bandit.test_report- Son runtime test raporunu gösterir.");
+            sb.AppendLine("\nDiğer ön ekler (Eski komutlar):");
+            sb.AppendLine("  bandit_militias.spawn_swarm - Büyük bir haydut akını başlatır.");
+            sb.AppendLine("  bandit_militias.debug_hideout - Sığınak verilerini gösterir.");
             sb.AppendLine("========================================");
-            sb.AppendLine("NOTE: This mod is single-player only. It does not work in multiplayer.");
+            sb.AppendLine("NOT: Bu mod single-player only'dir. Multiplayer'da çalışmaz.");
             return sb.ToString();
         }
 
         [CommandLineFunctionality.CommandLineArgumentFunction("module_status", "militia")]
         public static string CommandModuleStatus(List<string> args)
         {
-            if (ModuleManager.Instance == null) return "ModuleManager could not be initialized.";
+            if (ModuleManager.Instance == null) return "ModuleManager başlatılamadı.";
             return ModuleManager.Instance.GetFailedModulesReport();
         }
 
@@ -268,46 +267,47 @@ namespace BanditMilitias.Systems.Diagnostics
         {
             var sb = new StringBuilder();
             sb.AppendLine("========================================");
-            sb.AppendLine("   BANDIT MILITIAS: FULL SIMULATION REPORT");
-            sb.AppendLine($"   Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+            sb.AppendLine("   BANDIT MILITIAS: TAM SİMÜLASYON RAPORU");
+            sb.AppendLine($"   Tarih: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
             sb.AppendLine("========================================");
 
-
-            sb.AppendLine("--- Deployment Readiness ---");
-            float worldAge = ModActivationManager.GetActivationDelayElapsedDays();
+            // 1. Deployment Readiness (Absolute Time & Limits)
+            sb.AppendLine("--- Yayılım Hazırlığı ---");
+            float worldAge = CompatibilityLayer.GetActivationDelayElapsedDays();
             int requiredDays = Settings.Instance?.ActivationDelay ?? 2;
-            bool isDelayed = ModActivationManager.IsGameplayActivationDelayed();
+            bool isDelayed = CompatibilityLayer.IsGameplayActivationDelayed();
             int totalParties = Campaign.Current?.MobileParties?.Count ?? 0;
             int globalLimit = Settings.Instance?.GlobalPerformancePartyLimit ?? 3000;
             float partyFillPct = globalLimit > 0 ? (totalParties / (float)globalLimit) * 100f : 0f;
 
             string tierAccess = worldAge switch
             {
-                < 10f  => "Tier 1-2 Only [Early Game — first ~3 weeks]",
-                < 100f => "Tier 1-3        [Early-Mid — under ~1.2 years]",
-                < 300f => "Tier 1-4+       [Mid Game — 1-3.5 years]",
-                _      => "Tier 1-6 ELITE   [Late Game — 3.5+ years]"
+                < 10f  => "Sadece Tier 1-2 [Erken Oyun — ilk ~3 hafta]",
+                < 100f => "Tier 1-3        [Orta-Erken — ~1.2 yıl altı]",
+                < 300f => "Tier 1-4+       [Orta Oyun  — 1-3.5 yıl]",
+                _      => "Tier 1-6 ELİT   [Geç Oyun   — 3.5+ yıl]"
             };
 
-            sb.AppendLine($"  World Age        : {worldAge:F1} days (Required: {requiredDays} days)");
-            sb.AppendLine($"  Activation       : {(isDelayed ? "PENDING (Passive)" : "ACTIVE (Live)")}");
-            sb.AppendLine($"  Game Readiness   : {(ModActivationManager.IsGameFullyInitialized() ? "READY" : "WAITING")}");
-            sb.AppendLine($"  Global Parties   : {totalParties} / {globalLimit} ({partyFillPct:F1}%) [{(totalParties > globalLimit ? "SUSPENDED" : "OK")}]");
-
+            sb.AppendLine($"  Dünya Yaşı       : {worldAge:F1} gün  (Gereken: {requiredDays} gün)");
+            sb.AppendLine($"  Aktivasyon       : {(isDelayed ? "BEKLEMEDE (Pasif)" : "AKTİF (Canlı)")}");
+            sb.AppendLine($"  Oyun Hazırlığı   : {(CompatibilityLayer.IsGameFullyInitialized() ? "HAZIR" : "BEKLENİYOR")}");
+            sb.AppendLine($"  Küresel Partiler : {totalParties} / {globalLimit} (%{partyFillPct:F1}) [{(totalParties > globalLimit ? "ASKIYA ALINDI" : "TAMAM")}]");
+            
+            // YENİ: Spawn Status Özeti
             bool isPopCritical = (ModuleManager.Instance?.GetMilitiaCount() ?? 0) < 10;
-            string spawnStatus = (totalParties > globalLimit)
-                ? (isPopCritical ? "CRITICAL_RECOVERY (Limit exceeded but population low)" : "BLOCKED (Limit exceeded)")
-                : "HEALTHY";
-            sb.AppendLine($"  Spawn Status     : {spawnStatus}");
-            sb.AppendLine($"  Troop Levels     : {tierAccess}");
+            string spawnStatus = (totalParties > globalLimit) 
+                ? (isPopCritical ? "KRİTİK_KURTARMA (Limit aşıldı ama popülasyon düşük)" : "BLOKE EDİLDİ (Limit aşıldı)")
+                : "SAĞLIKLI";
+            sb.AppendLine($"  Spawn Durumu     : {spawnStatus}");
+            sb.AppendLine($"  Asker Seviyesi   : {tierAccess}");
             if (isDelayed)
             {
                 float daysLeft = requiredDays - worldAge;
-                sb.AppendLine($"  Time to Start    : {Math.Max(0f, daysLeft):F1} days");
+                sb.AppendLine($"  Başlangıca Kalan : {Math.Max(0f, daysLeft):F1} gün");
             }
             sb.AppendLine("");
 
-            sb.AppendLine("--- World Party Health ---");
+            sb.AppendLine("--- Dünya Parti Sağlığı ---");
             try
             {
                 int zombieParties = 0;
@@ -362,7 +362,7 @@ namespace BanditMilitias.Systems.Diagnostics
             }
             sb.AppendLine("");
 
-
+            // 1b. Tier Dağılımı — aktif milisyalardaki asker kalitesi
             sb.AppendLine("--- Tier Distribution (Active Militias) ---");
             try
             {
@@ -400,13 +400,13 @@ namespace BanditMilitias.Systems.Diagnostics
             catch (Exception ex) { sb.AppendLine($"  [ERROR] {ex.Message}"); }
             sb.AppendLine("");
 
-
+            // 2. Diagnostics (Performance)
             sb.AppendLine(GenerateReport());
 
-
+            // 2. System Watchdog (Health)
             sb.AppendLine(SystemWatchdog.Instance.GetStatusReport());
 
-
+            // 3. Module Status
             if (ModuleManager.Instance != null)
             {
                 sb.AppendLine("--- Population ---");
@@ -415,6 +415,7 @@ namespace BanditMilitias.Systems.Diagnostics
             }
 
 
+            // 5. Warlord Strategic Status
             var ws = BanditMilitias.Intelligence.Strategic.WarlordSystem.Instance;
             if (ws != null)
             {
@@ -430,11 +431,11 @@ namespace BanditMilitias.Systems.Diagnostics
             sb.AppendLine(BanditTestHub.Instance.BuildSummaryLine());
             sb.AppendLine("  Commands         : bandit.test_list | bandit.test_run all | bandit.test_report");
 
-
+            // 6. Yeni Sistemler Durumu
             sb.AppendLine("");
             sb.AppendLine("--- New Systems Status ---");
 
-
+            // Seasonal
             try
             {
                 var seasonal = BanditMilitias.Systems.Seasonal.SeasonalEffectsSystem.Instance;
@@ -443,7 +444,7 @@ namespace BanditMilitias.Systems.Diagnostics
             }
             catch { sb.AppendLine("  [Seasonal] Not initialized."); }
 
-
+            // Morale
             try
             {
                 var morale = BanditMilitias.Systems.Combat.MilitiaMoraleSystem.Instance;
@@ -451,7 +452,7 @@ namespace BanditMilitias.Systems.Diagnostics
             }
             catch { sb.AppendLine("  [Morale] Not initialized."); }
 
-
+            // CaravanTax
             try
             {
                 var tax = BanditMilitias.Systems.Economy.CaravanTaxSystem.Instance;
@@ -459,7 +460,7 @@ namespace BanditMilitias.Systems.Diagnostics
             }
             catch { sb.AppendLine("  [CaravanTax] Not initialized."); }
 
-
+            // Succession
             try
             {
                 var succession = BanditMilitias.Systems.Progression.WarlordSuccessionSystem.Instance;
@@ -467,7 +468,7 @@ namespace BanditMilitias.Systems.Diagnostics
             }
             catch { sb.AppendLine("  [Succession] Not initialized."); }
 
-
+            // Workshop
             try
             {
                 var workshop = BanditMilitias.Systems.Workshop.WarlordWorkshopSystem.Instance;
@@ -477,7 +478,7 @@ namespace BanditMilitias.Systems.Diagnostics
 
             string fullReport = sb.ToString();
             SaveReportToFile(fullReport, "BanditMilitias_FullSim.txt");
-
+            
             return fullReport + "\n\n[SUCCESS] Full simulation state exported to Warlord_Logs/BanditMilitias/Diagnostics/BanditMilitias_FullSim.txt";
         }
 
@@ -485,9 +486,9 @@ namespace BanditMilitias.Systems.Diagnostics
         {
             try
             {
-                string logDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
+                string logDir = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), 
                     "Mount and Blade II Bannerlord", "Warlord_Logs", "BanditMilitias", "Diagnostics");
-
+                
                 if (!System.IO.Directory.Exists(logDir))
                     System.IO.Directory.CreateDirectory(logDir);
 
@@ -502,6 +503,7 @@ namespace BanditMilitias.Systems.Diagnostics
     }
 
 
+    // ── SystemWatchdog ─────────────────────────────────────────
     public class SystemWatchdog
     {
         private static SystemWatchdog? _instance;
@@ -516,8 +518,7 @@ namespace BanditMilitias.Systems.Diagnostics
             public CampaignTime LastHeartbeat;
             public Action? RestartAction;
             public int RestartCount;
-
-
+            // FIX #1: Kampanya hazır mı bayrağı - CampaignTime.Now'u erken çağırmamak için
             public bool IsActivated;
         }
 
@@ -525,20 +526,24 @@ namespace BanditMilitias.Systems.Diagnostics
 
         private SystemWatchdog() { }
 
-
+        /// <summary>
+        /// Bileşeni kaydeder. CampaignTime.Now ÇAĞIRILMAZ — kampanya henüz hazır olmayabilir.
+        /// Saat damgası ilk ReportHeartbeat() veya CheckSystems() çağrısında set edilir.
+        /// </summary>
         public void RegisterComponent(string name, Action? restartAction)
         {
-
-
+            // FIX #1: CampaignTime.Now yerine CampaignTime.Zero kullan.
+            // OnGameStart / InitializeAll sırasında CampaignTime.Now TaleWorlds native
+            // zamanlayıcısına erişir ve kampanya tam hazır değilken AccessViolationException
+            // ya da NullReferenceException fırlatır. LastHeartbeat'i sıfır bırakıp
+            // ilk CheckSystems() çağrısında güvenli şekilde set ediyoruz.
             _monitoredSystems[name] = new MonitoredSystem
             {
                 Name = name,
-                LastHeartbeat = CampaignTime.Zero,
-
+                LastHeartbeat = CampaignTime.Zero,   // ← güvenli: native çağrı yok
                 RestartAction = restartAction,
                 RestartCount = 0,
-                IsActivated = false
-
+                IsActivated = false                   // ← ilk heartbeat gelince true olacak
             };
 
             TaleWorlds.Library.Debug.Print($"[Watchdog] Registered: {name} (heartbeat pending)");
@@ -546,13 +551,11 @@ namespace BanditMilitias.Systems.Diagnostics
 
         public void ReportHeartbeat(string name)
         {
-            if (Campaign.Current == null) return;
-
+            if (Campaign.Current == null) return; // kampanya yoksa dokunma
 
             if (_monitoredSystems.TryGetValue(name, out var sys))
             {
-                sys.LastHeartbeat = CampaignTime.Now;
-
+                sys.LastHeartbeat = CampaignTime.Now; // artık kampanya hazır
                 sys.IsActivated = true;
                 _monitoredSystems[name] = sys;
             }
@@ -566,7 +569,8 @@ namespace BanditMilitias.Systems.Diagnostics
             {
                 if (!_monitoredSystems.TryGetValue(key, out var sys)) continue;
 
-
+                // FIX #1: Henüz heartbeat almamış bileşenleri ilk geçişte aktive et,
+                // timeout sayacını şimdiden başlat — erken alarm verme
                 if (!sys.IsActivated)
                 {
                     sys.LastHeartbeat = CampaignTime.Now;
@@ -622,7 +626,8 @@ namespace BanditMilitias.Systems.Diagnostics
             }
         }
 
-
+        // FIX #3: OnGameEnd'de çağrılmalı — bir sonraki oturumda eski CampaignTime
+        // değerleri kalmasın, sahte timeout alarmı tetiklenmesin
         public void Clear()
         {
             _monitoredSystems.Clear();

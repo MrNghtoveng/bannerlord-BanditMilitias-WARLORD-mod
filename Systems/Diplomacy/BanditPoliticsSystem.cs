@@ -69,7 +69,7 @@ namespace BanditMilitias.Systems.Diplomacy
         public CampaignTime LastUpdated { get; set; } = CampaignTime.Zero;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 220, IsCritical = false)]
+    [AutoRegister]
     public class BanditPoliticsSystem : MilitiaModuleBase
     {
         public override string ModuleName => "BanditPoliticsSystem";
@@ -100,10 +100,10 @@ namespace BanditMilitias.Systems.Diplomacy
                 if (_isInitialized)
                     return;
 
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnMilitiaRaidCompleted);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
-                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<WarlordLevelChangedEvent>(OnWarlordLevelChanged);
+                EventBus.Instance.Subscribe<MilitiaRaidCompletedEvent>(OnMilitiaRaidCompleted);
+                EventBus.Instance.Subscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+                EventBus.Instance.Subscribe<WarlordLevelChangedEvent>(OnWarlordLevelChanged);
 
                 _isInitialized = true;
             }
@@ -113,10 +113,10 @@ namespace BanditMilitias.Systems.Diplomacy
         {
             lock (_stateLock)
             {
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnMilitiaRaidCompleted);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
-                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<WarlordLevelChangedEvent>(OnWarlordLevelChanged);
+                EventBus.Instance.Unsubscribe<MilitiaRaidCompletedEvent>(OnMilitiaRaidCompleted);
+                EventBus.Instance.Unsubscribe<MilitiaKilledEvent>(OnMilitiaKilled);
+                EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+                EventBus.Instance.Unsubscribe<WarlordLevelChangedEvent>(OnWarlordLevelChanged);
 
                 _profiles.Clear();
                 _relations.Clear();
@@ -134,8 +134,7 @@ namespace BanditMilitias.Systems.Diplomacy
 
             lock (_stateLock)
             {
-
-
+                // GetAllWarlords() IsAlive filtreli — Where(IsAlive) gereksiz
                 var warlords = WarlordSystem.Instance.GetAllWarlords();
 
                 EnsureProfilesAndRelations(warlords);
@@ -263,7 +262,7 @@ namespace BanditMilitias.Systems.Diplomacy
             _alliancesFormed++;
             PublishAllianceEvent(first, second, relation.Score);
 
-
+            // Oyuncuya görünür bildirim — yakın warlordlar ittifak kurdu
             try
             {
                 InformationManager.DisplayMessage(new InformationMessage(
@@ -301,7 +300,7 @@ namespace BanditMilitias.Systems.Diplomacy
             _rivalriesDeclared++;
             PublishRivalryEvent(first, second, relation.Score);
 
-
+            // Oyuncuya görünür bildirim — rekabet ilan edildi
             try
             {
                 InformationManager.DisplayMessage(new InformationMessage(
@@ -428,8 +427,7 @@ namespace BanditMilitias.Systems.Diplomacy
 
                 foreach (var other in WarlordSystem.Instance.GetAllWarlords())
                 {
-
-
+                    // GetAllWarlords() IsAlive filtreli — !IsAlive check gereksiz
                     if (other == null || other.StringId == raiderWarlord.StringId)
                         continue;
 
@@ -456,7 +454,7 @@ namespace BanditMilitias.Systems.Diplomacy
             lock (_stateLock)
             {
                 var victimWarlord = WarlordSystem.Instance.GetWarlordForParty(evt.Victim);
-                var killerWarlord = WarlordSystem.Instance.GetWarlordForParty(evt.Killer);
+                var killerWarlord = ResolveWarlordFromHero(evt.Killer);
 
                 if (victimWarlord == null || killerWarlord == null || victimWarlord.StringId == killerWarlord.StringId)
                     return;
@@ -622,6 +620,7 @@ namespace BanditMilitias.Systems.Diplomacy
         }
     }
 
+    // ── BanditPoliticsRules (inline) ──────────────────────────────
 
     public static class BanditPoliticsRules
     {
@@ -730,5 +729,3 @@ namespace BanditMilitias.Systems.Diplomacy
         }
     }
 }
-
-

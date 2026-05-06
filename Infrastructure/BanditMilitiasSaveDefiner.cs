@@ -8,7 +8,6 @@ using BanditMilitias.Systems.Diplomacy;
 using BanditMilitias.Systems.Economy;
 using BanditMilitias.Systems.Workshop;
 using BanditMilitias.Systems.Fear;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Systems.Raiding;
 using BanditMilitias.Systems.Tracking;
@@ -30,7 +29,7 @@ namespace BanditMilitias.Infrastructure
         protected override void DefineClassTypes()
         {
 
-            AddStructDefinition(typeof(MilitiaData), 200);
+            AddClassDefinition(typeof(MilitiaPartyComponent), 1);
             AddClassDefinition(typeof(HideoutReputation), 2);
             AddClassDefinition(typeof(Warlord), 3);
             AddClassDefinition(typeof(SettlementFearState), 5);
@@ -44,11 +43,11 @@ namespace BanditMilitias.Infrastructure
             AddClassDefinition(typeof(WarlordPoliticalRelation), 13);
             AddClassDefinition(typeof(AdaptiveDoctrineProfile), 14);
 
-
-            AddClassDefinition(typeof(CareerRecord), 25);
+            // Career and Legacy additions
+            AddClassDefinition(typeof(BanditMilitias.Systems.Progression.CareerRecord), 25);
             AddClassDefinition(typeof(BanditMilitias.Systems.Legacy.WarlordLegacyRecord), 26);
             AddClassDefinition(typeof(CrisisEvent), 27);
-            AddClassDefinition(typeof(AscensionRecord), 28);
+            AddClassDefinition(typeof(BanditMilitias.Systems.Progression.AscensionRecord), 28);
 
             AddStructDefinition(typeof(CombatOutcome), 15);
             AddClassDefinition(typeof(MilitiaPerformance), 16);
@@ -67,17 +66,17 @@ namespace BanditMilitias.Infrastructure
             AddClassDefinition(typeof(BanditMilitias.Intelligence.Swarm.SwarmGroup), 82);
             AddClassDefinition(typeof(BanditMilitias.Intelligence.Swarm.SwarmOrder), 83);
 
-
+            // ── v5.1 Yeni Sistemler ────────────────────────────────────
             AddClassDefinition(typeof(WarlordWorkshop), 90);
-            AddClassDefinition(typeof(BanditMilitias.Systems.Heroics.HeroicsFeat), 95);
 
-
+            // ── v5.5 Hafıza Sistemi (Plan 6e83e5ce) ─────────────────────
+            // Memory Data systems removed for V5 WorldMemory
         }
 
         protected override void DefineContainerDefinitions()
         {
 
-            ConstructContainerDefinition(typeof(Dictionary<string, MilitiaData>));
+            ConstructContainerDefinition(typeof(List<MilitiaPartyComponent>));
             ConstructContainerDefinition(typeof(List<Warlord>));
             ConstructContainerDefinition(typeof(List<MobileParty>));
             ConstructContainerDefinition(typeof(List<CombatOutcome>));
@@ -121,13 +120,11 @@ namespace BanditMilitias.Infrastructure
 
             ConstructContainerDefinition(typeof(List<string>));
 
-
+            // ── v5.1 Yeni Sistemler ────────────────────────────────────
             ConstructContainerDefinition(typeof(List<WarlordWorkshop>));
             ConstructContainerDefinition(typeof(Dictionary<string, List<WarlordWorkshop>>));
-            ConstructContainerDefinition(typeof(List<BanditMilitias.Systems.Heroics.HeroicsFeat>));
-            ConstructContainerDefinition(typeof(Dictionary<string, List<BanditMilitias.Systems.Heroics.HeroicsFeat>>));
 
-
+            // ── v5.5 Hafıza Sistemi ────────────────────────────────────
         }
 
         protected override void DefineEnumTypes()
@@ -141,7 +138,7 @@ namespace BanditMilitias.Infrastructure
             AddEnumDefinition(typeof(StrategicPosture), 111);
             AddEnumDefinition(typeof(PlayStyle), 112);
             AddEnumDefinition(typeof(CommandCompletionStatus), 113);
-            AddEnumDefinition(typeof(CareerTier), 114);
+            AddEnumDefinition(typeof(BanditMilitias.Systems.Progression.CareerTier), 114);
 
             AddEnumDefinition(typeof(WarEventType), 120);
             AddEnumDefinition(typeof(LegitimacyLevel), 121);
@@ -154,7 +151,7 @@ namespace BanditMilitias.Infrastructure
             AddEnumDefinition(typeof(BanditMilitias.Intelligence.Swarm.SwarmTactic), 180);
             AddEnumDefinition(typeof(BanditMilitias.Intelligence.Swarm.FormationType), 181);
 
-
+            // ── v5.1 Yeni Sistemler ────────────────────────────────────
             AddEnumDefinition(typeof(BanditMilitias.Systems.Seasonal.MilitiaSeason), 190);
             AddEnumDefinition(typeof(BanditMilitias.Systems.Workshop.WorkshopType), 191);
         }

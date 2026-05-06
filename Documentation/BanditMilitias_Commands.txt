@@ -1,0 +1,41 @@
+=== BANDIT MILITIAS: KONSOL KOMUTLARI LİSTESİ ===
+
+Aşağıdaki komutları Bannerlord konsolunda (ALT + ~) kullanabilirsiniz.
+
+--- PREFİKS: militia. ---
+militia.help              - Tüm komutları ve kısa açıklamalarını gösterir.
+militia.help_ux           - Kullanıcı deneyimi odaklı komut rehberi.
+militia.list_parties      - Aktif tüm milis partilerini listeler.
+militia.list_parties [x]  - İsmi 'x' içeren milisleri filtreleyerek listeler.
+militia.reset_safe        - Onay mekanizmalı güvenli sıfırlama (bilgi verir).
+militia.reset_safe confirm- Tüm milis verilerini ve partilerini temizler.
+militia.module_status     - Modüllerin sağlık durumunu ve hata raporlarını gösterir.
+militia.diag_report       - Performans ve sistem metrikleri raporu oluşturur.
+militia.audit             - TÜM sistemleri (AI, Sinir Ağı, Altyapı) kapsayan dev bir rapor oluşturur ve dosyaya kaydeder.
+militia.full_sim_report   - Detaylı simülasyon ve popülasyon analizi yapar.
+militia.watchdog_status   - Sistem nöbetçisi (watchdog) durumunu gösterir.
+militia.runtime_diag      - Canlı çalışma zamanı tanılama raporu.
+militia.dev_export        - Mevcut durumu 'DevDataCollector' sistemine aktarır.
+militia.dev_status        - Geliştirici veri toplama oturum özeti.
+
+--- PREFİKS: bandit. ---
+bandit.test_list          - Mevcut runtime test senaryolarını listeler.
+bandit.test_run [test]    - Belirtilen veya tüm testleri çalıştırır.
+bandit.test_report        - Son test sonuçlarını gösterir.
+bandit.toggle_debug       - Ekran üzerindeki hata ayıklama panelini açar/kapatır (Shift+Alt+L).
+bandit.toggle_test_mode   - Test modunu açar/kapatır (Hızlı spawn, log artışı).
+bandit.force_spawn        - En yakın sığınakta (hideout) anında bir milis ordusu oluşturur.
+bandit.exec <cmd>         - Dahili debug komutlarını çalıştırır (örn: sys_stats, sys_spawn).
+bandit.debug_log          - Son oluşan hata ayıklama kayıtlarını gösterir.
+
+--- PREFİKS: bandit_militias. (Eski Komutlar) ---
+bandit_militias.spawn_swarm  - Büyük bir haydut akını (swarm) başlatır.
+bandit_militias.debug_hideout- Sığınak (hideout) verilerini ve cache durumunu gösterir.
+
+--- ÖZEL KISA YOLLAR (Klavye) ---
+Shift + Alt + L : Debug Panelini Aç/Kapat
+Shift + Alt + J : Test Modunu Toggle Et
+
+--- NOTLAR ---
+- Raporlar genellikle 'Belgelerim\Mount and Blade II Bannerlord\Warlord_Logs\BanditMilitias' klasörüne kaydedilir.
+- 'audit' komutu, özellikle hata bildirimlerinde en kapsamlı bilgiyi sağlayan komuttur.

@@ -11,13 +11,16 @@ namespace BanditMilitias.Tests
     [TestClass]
     public class ContractIntegrityTests
     {
-
-
+        /// <summary>
+        /// CompatibilityLayer içindeki tüm Reflection bazlı metodların 
+        /// mevcut Bannerlord DLL'leri ile uyumlu olduğunu doğrular.
+        /// </summary>
         [TestMethod]
         public void CompatibilityLayer_AllBridges_AreValid()
         {
-
-
+            // Bu metod tüm Lazy alanları tetikler. 
+            // Eğer bir metod bulunamazsa, CompatibilityLayer içinde loglanır ama 
+            // biz burada tüm kritik köprülerin kurulu olduğunu doğrulamak istiyoruz.
             CompatibilityLayer.ForceInitializeAll();
 
             var fields = typeof(CompatibilityLayer).GetFields(BindingFlags.Static | BindingFlags.NonPublic);
@@ -27,9 +30,8 @@ namespace BanditMilitias.Tests
             {
                 if (field.FieldType.IsGenericType && field.FieldType.GetGenericTypeDefinition() == typeof(Lazy<>))
                 {
-
-
-                    if (field.Name is "_agentCrashGuardWarningMethod" or "_agentCrashGuardLogEventMethod" or "_totalStrengthDelegateLazy" or "_setMoveEngagePartyLazy" or "_setMoveRaidLazy")
+                    // Bu kopruler ortam bagimli veya opsiyonel.
+                    if (field.Name is "_agentCrashGuardWarningMethod" or "_agentCrashGuardLogEventMethod" or "_totalStrengthDelegateLazy" or "_setMoveEngagePartyLazy")
                     {
                         continue;
                     }
@@ -42,27 +44,21 @@ namespace BanditMilitias.Tests
                     {
                         failedBridges.Add(field.Name);
                     }
-                    else if (value.GetType().IsValueType && value.GetType().Name.Contains("ValueTuple"))
-                    {
-                        // Handle (MethodInfo?, bool) or similar tuples
-                        var methodField = value.GetType().GetField("Item1");
-                        if (methodField != null && methodField.GetValue(value) == null)
-                        {
-                            failedBridges.Add(field.Name);
-                        }
-                    }
                 }
             }
 
-
+            // Not: Bazı köprüler opsiyonel olabilir, ama çoğu kritik.
+            // Burada hata listesini raporluyoruz.
             if (failedBridges.Count > 0)
             {
-                Assert.Inconclusive("The following CompatibilityLayer bridges could not be established (API mismatch): " +
+                Assert.Fail("Şu CompatibilityLayer köprüleri kurulamadı (API uyuşmazlığı): " + 
                     string.Join(", ", failedBridges));
             }
         }
 
-
+        /// <summary>
+        /// Tüm Harmony yamalarının hedef aldığı metodların DLL içinde var olduğunu doğrular.
+        /// </summary>
         [TestMethod]
         public void HarmonyPatches_TargetMethods_Exist()
         {
@@ -75,8 +71,8 @@ namespace BanditMilitias.Tests
 
             foreach (var type in patchTypes)
             {
-
-
+                // Harmony internallarina bagli extension API'leri surumler arasi degisiyor.
+                // Bu nedenle yalnizca acik TargetMethod resolver'larini dogruluyoruz.
                 try
                 {
                     var targetResolvers = type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
@@ -92,21 +88,20 @@ namespace BanditMilitias.Tests
                         }
 
                         var original = resolver.Invoke(null, null) as MethodBase;
-
-
-                        if (original == null && !type.Name.Contains("BanditCombatSimulationPatch") && !type.Name.Contains("SimulationDamagePatch") && !type.Name.Contains("SimulationCasualtiesPatch"))
+                        // Bazi patch hedefleri Bannerlord surumune gore degisken olabilir.
+                        if (original == null && type.Name != "BanditCombatSimulationPatch")
                             failedPatches.Add($"{type.Name}.{resolver.Name} -> null MethodBase");
                     }
                 }
                 catch (Exception ex)
                 {
-                    failedPatches.Add($"{type.Name} (Error: {ex.Message})");
+                    failedPatches.Add($"{type.Name} (Hata: {ex.Message})");
                 }
             }
 
             if (failedPatches.Count > 0)
             {
-                Assert.Fail("The following Harmony patches could not find the target method: " +
+                Assert.Fail("Şu Harmony yamaları hedef metodu bulamadı: " + 
                     string.Join(", ", failedPatches));
             }
         }

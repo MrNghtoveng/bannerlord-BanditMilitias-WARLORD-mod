@@ -1,0 +1,36 @@
+AI Architecture
+
+Bandit Militias: WARLORD Edition does not use one single AI model.
+It combines:
+
+- strategic reasoning
+- tactical decision rules
+- scheduler-driven execution
+- telemetry and learning support
+- world-context systems
+- patch-based integration
+
+MAIN SYSTEMS
+
+- BanditBrain
+- WarlordSystem
+- HTNEngine
+- WarlordTacticalMissionBehavior
+- MilitiaDecider
+- SwarmCoordinator
+- AdaptiveAIDoctrineSystem
+- AILearningSystem
+- PlayerTracker
+- FearSystem
+- SpatialGridSystem
+- PartyCleanupSystem
+- Harmony patches
+
+In this project, AI means the combined behavior of rules, scheduling, context tracking, telemetry, and world simulation feedback.
+
+NOTES
+
+- HTNEngine is the campaign-side execution bridge used by the bandit AI patch.
+- WarlordTacticalMissionBehavior is the mission-time tactical planner that turns doctrine choice into live HTN plans.
+- Primitive HTN task preconditions are now active, so doctrine plans only execute tasks that still fit the current world state.
+- The internal EventBus is pumped from SubModule.OnApplicationTick and becomes fully active after deferred bootstrap completes.

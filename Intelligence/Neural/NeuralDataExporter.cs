@@ -8,38 +8,46 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Intelligence.Neural
 {
+    // ═══════════════════════════════════════════════════════════════════
+    //  NEURAL DATA EXPORTER — Ağırlık/Veri Import/Export + Konsol
+    //
+    //  Mevcut DevDataCollector ile entegre çalışır.
+    //  Konsol komutları: militia.neural_status, neural_train, vb.
+    // ═══════════════════════════════════════════════════════════════════
 
     public static class NeuralDataExporter
     {
         private static string? _exportDir;
 
-
+        /// <summary>
+        /// Export dizinini ayarla (DevDataCollector session dizini altında).
+        /// </summary>
         public static void SetExportDirectory(string dir)
         {
             _exportDir = dir;
         }
 
-
+        /// <summary>
+        /// Deneyim buffer'ını CSV'ye yaz.
+        /// </summary>
         public static bool ExportExperienceBuffer(ExperienceBuffer buffer, string filename = "experience_buffer.csv")
         {
             if (buffer == null || string.IsNullOrEmpty(_exportDir)) return false;
 
             try
             {
-
-
+                // SECURITY: Prevent path traversal by ensuring filename is just a filename
                 string safeFilename = Path.GetFileName(filename);
                 if (string.IsNullOrEmpty(safeFilename) || safeFilename != filename)
                 {
                     DebugLogger.Warning("NeuralExporter", $"Rejected suspicious filename: {filename}");
-                    safeFilename = "experience_buffer.csv";
-
+                    safeFilename = "experience_buffer.csv"; // Fallback to safe default
                 }
 
                 Directory.CreateDirectory(_exportDir);
                 string path = Path.Combine(_exportDir, safeFilename);
 
-
+                // FINAL SECURITY CHECK: Ensure the combined path is still inside the intended directory
                 string fullPath = Path.GetFullPath(path);
                 string fullExportDir = Path.GetFullPath(_exportDir);
                 if (!fullPath.StartsWith(fullExportDir, StringComparison.OrdinalIgnoreCase))
@@ -58,7 +66,9 @@ namespace BanditMilitias.Intelligence.Neural
             }
         }
 
-
+        /// <summary>
+        /// Eğitim logunu CSV'ye yaz.
+        /// </summary>
         public static void AppendTrainingLog(int batchNum, int samples, float loss, float confidence)
         {
             if (string.IsNullOrEmpty(_exportDir)) return;
@@ -87,7 +97,9 @@ namespace BanditMilitias.Intelligence.Neural
             catch { }
         }
 
-
+        /// <summary>
+        /// Neural inference sonuçlarını logla.
+        /// </summary>
         public static void AppendPredictionLog(string warlordId, string recommendedAction,
             float confidence, float[] probabilities)
         {
@@ -122,7 +134,13 @@ namespace BanditMilitias.Intelligence.Neural
             catch { }
         }
 
+        // ═══════════════════════════════════════════════════════════
+        //  KONSOL KOMUTLARI
+        // ═══════════════════════════════════════════════════════════
 
+        /// <summary>
+        /// militia.neural_status — Neural ağ durumu, confidence, buffer size.
+        /// </summary>
         [TaleWorlds.Library.CommandLineFunctionality.CommandLineArgumentFunction("neural_status", "militia")]
         public static string CommandNeuralStatus(List<string> args)
         {
@@ -133,7 +151,10 @@ namespace BanditMilitias.Intelligence.Neural
             return advisor.GetDiagnostics();
         }
 
-
+        /// <summary>
+        /// militia.neural_train [batchCount] — Manuel eğitim tetikleme.
+        /// Kullanım: militia.neural_train 10
+        /// </summary>
         [TaleWorlds.Library.CommandLineFunctionality.CommandLineArgumentFunction("neural_train", "militia")]
         public static string CommandNeuralTrain(List<string> args)
         {
@@ -150,14 +171,17 @@ namespace BanditMilitias.Intelligence.Neural
 
             string result = advisor.TrainOffline(batches);
 
-
+            // Log to file
             AppendTrainingLog(advisor.TotalTrainingBatches, batches * 32,
                 advisor.LastTrainingLoss, advisor.GlobalConfidence);
 
             return result;
         }
 
-
+        /// <summary>
+        /// militia.neural_reset — Ağırlıkları sıfırla (dikkat!).
+        /// Kullanım: militia.neural_reset confirm
+        /// </summary>
         [TaleWorlds.Library.CommandLineFunctionality.CommandLineArgumentFunction("neural_reset", "militia")]
         public static string CommandNeuralReset(List<string> args)
         {
@@ -174,7 +198,7 @@ namespace BanditMilitias.Intelligence.Neural
             if (advisor == null)
                 return "[Neural] NeuralAdvisor henüz initialize edilmedi.";
 
-
+            // Yeniden initialize et
             advisor.Cleanup();
             var newAdvisor = NeuralAdvisor.CreateInstance();
             string weightsDir = Path.Combine(
@@ -185,7 +209,9 @@ namespace BanditMilitias.Intelligence.Neural
             return "[Neural] Ağırlıklar sıfırlandı ve pre-trained başlangıç uygulandı.";
         }
 
-
+        /// <summary>
+        /// militia.neural_export — Ağırlıkları ve deneyimleri dışa aktar.
+        /// </summary>
         [TaleWorlds.Library.CommandLineFunctionality.CommandLineArgumentFunction("neural_export", "militia")]
         public static string CommandNeuralExport(List<string> args)
         {
@@ -193,10 +219,10 @@ namespace BanditMilitias.Intelligence.Neural
             if (advisor == null)
                 return "[Neural] NeuralAdvisor henüz initialize edilmedi.";
 
-
+            // Ağırlıkları kaydet
             advisor.TrySaveWeights();
 
-
+            // Deneyim buffer'ını export et
             var buffer = advisor.GetExperienceBuffer();
             bool exported = ExportExperienceBuffer(buffer);
 
@@ -206,23 +232,27 @@ namespace BanditMilitias.Intelligence.Neural
                    $"  Dizin: {_exportDir ?? "ayarlanmadı"}";
         }
 
-
+        /// <summary>
+        /// militia.neural_confidence — Mevcut confidence değerini göster.
+        /// </summary>
         [TaleWorlds.Library.CommandLineFunctionality.CommandLineArgumentFunction("neural_confidence", "militia")]
         public static string CommandNeuralConfidence(List<string> args)
         {
             var advisor = NeuralAdvisor.Instance;
             if (advisor == null)
-                return "[Neural] NeuralAdvisor not initialized.";
+                return "[Neural] NeuralAdvisor henüz initialize edilmedi.";
 
             return $"[Neural] Global Confidence: {advisor.GlobalConfidence:F3}\n" +
                    $"  Tier 3 (Warlord):   max {0.30f * advisor.GlobalConfidence:F3}\n" +
-                   $"  Tier 4 (Recognized): max {0.60f * advisor.GlobalConfidence:F3}\n" +
-                   $"  Tier 5 (Conqueror): max {1.00f * advisor.GlobalConfidence:F3}\n" +
+                   $"  Tier 4 (Tanınmış):  max {0.60f * advisor.GlobalConfidence:F3}\n" +
+                   $"  Tier 5 (Fatih):     max {1.00f * advisor.GlobalConfidence:F3}\n" +
                    $"  Training Batches:   {advisor.TotalTrainingBatches}\n" +
                    $"  Total Inferences:   {advisor.TotalInferences}";
         }
 
-
+        /// <summary>
+        /// militia.neural_toggle — Neural AI'ı aç/kapat.
+        /// </summary>
         [TaleWorlds.Library.CommandLineFunctionality.CommandLineArgumentFunction("neural_toggle", "militia")]
         public static string CommandNeuralToggle(List<string> args)
         {

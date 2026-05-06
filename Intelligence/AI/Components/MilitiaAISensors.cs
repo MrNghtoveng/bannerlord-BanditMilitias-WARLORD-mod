@@ -1,7 +1,6 @@
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Intelligence.AI.Components;
-using BanditMilitias.Core.Components;
 using System.Collections.Generic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
@@ -129,7 +128,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             foreach (var p in allNearby)
             {
                 if (p == _party || !p.IsActive) continue;
-                if (p.IsMilitia)
+                if (p.PartyComponent is BanditMilitias.Components.MilitiaPartyComponent)
                     result.Add(p);
             }
             return result;

@@ -10,9 +10,19 @@ using TaleWorlds.Localization;
 
 namespace BanditMilitias.Systems.Spawning
 {
+    /// <summary>
+    /// Milis partilerine kültür ve bölgeye duyarlı isimler üretir.
+    ///
+    /// FIX (Faz 6): Bannerlord Türkçe çevirisinde tüm hideout'lar "Sığınak" olarak görünür.
+    /// Artık ResolveRegionLabel ile hideout'a en yakın şehir adı kullanılır.
+    /// Örnek çıktılar:
+    ///   "Storm Reavers of Rivacheg"   (deniz haydutları, kuzey şehri)
+    ///   "Peak Highlanders — Battania" (dağ haydutları, kültür kimliği)
+    ///   "Black Raiders"               (vanilla fallback)
+    /// </summary>
     public static class MilitiaNameGenerator
     {
-
+        // ── Kültür anahtarına göre ön ekler ─────────────────────────────
         private static readonly Dictionary<string, string[]> _prefixes = new()
         {
             ["default"]          = new[] { "Rogue", "Outlaw", "Renegade", "Wild", "Dark", "Lost", "Black", "Red" },
@@ -24,7 +34,7 @@ namespace BanditMilitias.Systems.Spawning
             ["steppe_bandits"]   = new[] { "Wind", "Swift", "Horse", "Grass", "Sky", "Lightning", "Hawk", "Arrow" }
         };
 
-
+        // ── Kültür anahtarına göre son ekler ────────────────────────────
         private static readonly Dictionary<string, string[]> _suffixes = new()
         {
             ["default"]          = new[] { "Band", "Gang", "Mob", "Crew", "Raiders", "Cutthroats", "Militia", "Pack" },
@@ -36,27 +46,23 @@ namespace BanditMilitias.Systems.Spawning
             ["steppe_bandits"]   = new[] { "Horde", "Kheshigs", "Lancers", "Marauders", "Outriders", "Chasers" }
         };
 
-
+        // ── İsim formatları ─────────────────────────────────────────────
+        // {0}=prefix  {1}=suffix  {2}=regionLabel  {3}=clanName
         private static readonly string[] _formats = new[]
         {
-            "{0} {1}",
-
-            "{1} of {2}",
-
-            "{0} {1} of {2}",
-
-            "{2}'s {0} {1}",
-
-            "{3}'s {1}",
-
-            "{0} {1} — {2}"
-
+            "{0} {1}",           // "Black Raiders"            — bölgesiz
+            "{1} of {2}",        // "Raiders of Rivacheg"
+            "{0} {1} of {2}",    // "Black Raiders of Rivacheg"
+            "{2}'s {0} {1}",     // "Rivacheg's Black Raiders"
+            "{3}'s {1}",         // "Looters' Gang"
+            "{0} {1} — {2}"      // "Black Raiders — Battania" — kültür etiketi
         };
 
-
+        // ── Bölge etiketi önbelleği: hideout StringId → etiket ──────────
+        // Her sığınak için bir kez hesaplanır; spawn döngüsünde tekrar hesap yapılmaz.
         private static readonly Dictionary<string, string> _regionLabelCache = new();
 
-
+        // ── Ana giriş noktası ────────────────────────────────────────────
         public static TextObject GenerateName(Settlement hideout, Clan banditClan)
         {
             try
@@ -86,6 +92,7 @@ namespace BanditMilitias.Systems.Spawning
             }
         }
 
+        // ── Yardımcılar ──────────────────────────────────────────────────
 
         private static string ResolveClanKey(Clan? banditClan)
         {
@@ -99,6 +106,14 @@ namespace BanditMilitias.Systems.Spawning
             return "default";
         }
 
+        /// <summary>
+        /// FIX: Türkçe'de tüm hideout'lar "Sığınak" göründüğü için
+        /// gerçek coğrafi etiket üretir:
+        ///   1. En yakın şehir/kasaba adını dene (StaticDataCache.AllTowns)
+        ///   2. Yoksa kültür adını kullan (Battania, Vlandia vb.)
+        ///   3. Her ikisi de başarısız → boş → format {0} {1}'e düşer
+        /// Sonuç önbelleğe alınır (hideout başına tek hesaplama).
+        /// </summary>
         private static string ResolveRegionLabel(Settlement? hideout)
         {
             if (hideout == null) return "";
@@ -109,8 +124,7 @@ namespace BanditMilitias.Systems.Spawning
             string label = "";
             try
             {
-
-
+                // 1. En yakın şehri bul
                 var dataCache = BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance;
                 if (dataCache != null)
                 {
@@ -133,7 +147,7 @@ namespace BanditMilitias.Systems.Spawning
                     }
                 }
 
-
+                // 2. Şehir bulunamadı / jenerik isimse → kültür adı
                 if (string.IsNullOrWhiteSpace(label))
                 {
                     string cultureName = hideout.Culture?.Name?.ToString() ?? "";
@@ -152,36 +166,46 @@ namespace BanditMilitias.Systems.Spawning
             return label;
         }
 
+        /// <summary>
+        /// Bannerlord'un farklı dillerde tüm hideout'lara verdiği jenerik
+        /// "Sığınak / Hideout / Refugio / Repaire / Versteck" tuzağını tespit eder.
+        /// </summary>
         private static bool IsGenericHideoutWord(string name)
         {
             if (string.IsNullOrWhiteSpace(name)) return true;
             string lower = name.ToLowerInvariant().Trim();
             return lower == "hideout"
+                || lower == "sığınak"
+                || lower == "sigınak"
+                || lower == "siganak"
                 || lower == "refugio"
                 || lower == "repaire"
                 || lower == "versteck"
-                || lower.StartsWith("hideout");
+                || lower.StartsWith("hideout")
+                || lower.StartsWith("sığınak");
         }
 
+        /// <summary>
+        /// Bölge etiketi varsa onu kullanan formatlardan birini seç;
+        /// yoksa sadece "{0} {1}" döndür.
+        /// </summary>
         private static string PickFormat(string regionLabel)
         {
             if (string.IsNullOrWhiteSpace(regionLabel))
-                return _formats[0];
-
+                return _formats[0]; // "{0} {1}" — bölgesiz
 
             float roll = MBRandom.RandomFloat;
-            if (roll < 0.25f) return _formats[1];
-
-            if (roll < 0.55f) return _formats[2];
-
-            if (roll < 0.75f) return _formats[3];
-
-            if (roll < 0.90f) return _formats[5];
-
-            return _formats[0];
-
+            if (roll < 0.25f) return _formats[1]; // "{1} of {2}"
+            if (roll < 0.55f) return _formats[2]; // "{0} {1} of {2}"
+            if (roll < 0.75f) return _formats[3]; // "{2}'s {0} {1}"
+            if (roll < 0.90f) return _formats[5]; // "{0} {1} — {2}"
+            return _formats[0];                   // "{0} {1}" — bölgesiz varyasyon
         }
 
+        /// <summary>
+        /// Oyun oturumu kapandığında önbelleği temizle.
+        /// SubModule.OnGameEnd() içinden çağrılmalıdır.
+        /// </summary>
         public static void ClearCache() => _regionLabelCache.Clear();
     }
 }

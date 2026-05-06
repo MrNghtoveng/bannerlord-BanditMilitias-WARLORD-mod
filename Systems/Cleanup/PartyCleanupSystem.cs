@@ -5,7 +5,6 @@ using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Progression;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -18,14 +17,12 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Cleanup
 {
-        [BanditMilitias.Core.Components.AutoRegister(Priority = 140, IsCritical = true)]
     public class PartyCleanupSystem : MilitiaModuleBase, ICleanupSystem
-        {
-            private static PartyCleanupSystem? _instance;
-            public static PartyCleanupSystem Instance =>
-                _instance
-                ?? ModuleManager.Instance.GetModule<PartyCleanupSystem>()
-                ?? throw new InvalidOperationException("PartyCleanupSystem is not registered.");
+    {
+        private static PartyCleanupSystem? _instance;
+        public static PartyCleanupSystem Instance =>
+            _instance ??= ModuleManager.Instance.GetModule<PartyCleanupSystem>()
+                          ?? new PartyCleanupSystem();
 
         public override string ModuleName => "CleanupSystem";
         public override bool IsEnabled => true;
@@ -69,68 +66,53 @@ namespace BanditMilitias.Systems.Cleanup
         {
             if (_isInitialized) return;
             _instance = this;
-            _cleanupQueue.Clear();
-            _quarantineList.Clear();
-            _gracePeriodTracker.Clear();
             _isInitialized = true;
-            CampaignEvents.MobilePartyDestroyed.AddNonSerializedListener(this, OnPartyDestroyedCleanup);
         }
 
         public void OnPartyDestroyedCleanup(MobileParty party, PartyBase partyBase)
         {
             if (party?.PartyComponent is MilitiaPartyComponent comp)
             {
-
-
+                // ── YENİLGİ CEZASI: Tier'a göre Legitimacy düşüşü ────────────────────────
                 try
                 {
-                    var legitSys = WarlordLegitimacySystem.Instance;
-                    var warlordSys = WarlordSystem.Instance;
                     if (comp.WarlordId != null
-                        && legitSys?.IsEnabled == true
-                        && warlordSys != null)
+                        && WarlordLegitimacySystem.Instance?.IsEnabled == true)
                     {
-                        var warlordObj = warlordSys.GetWarlord(comp.WarlordId);
+                        var warlordObj = WarlordSystem.Instance.GetWarlord(comp.WarlordId);
                         if (warlordObj != null)
                         {
-                            var level = legitSys.GetLevel(comp.WarlordId);
-
-
+                            var level = WarlordLegitimacySystem.Instance.GetLevel(comp.WarlordId);
+                            // Düşük tier → büyük ceza, yüksek tier → küçük ceza
                             float penalty = level switch
                             {
-                                LegitimacyLevel.Outlaw => -80f,
-
-                                LegitimacyLevel.Rebel => -60f,
-
-                                LegitimacyLevel.FamousBandit => -40f,
-
-                                LegitimacyLevel.Warlord => -20f,
-
-                                _ => -10f
-
+                                LegitimacyLevel.Outlaw => -80f,   // Tier 1: çok kritik
+                                LegitimacyLevel.Rebel => -60f,   // Tier 2: kritik
+                                LegitimacyLevel.FamousBandit => -40f, // Tier 2: orta
+                                LegitimacyLevel.Warlord => -20f,   // Tier 3: hafif
+                                _ => -10f    // Tier 5+: az
                             };
-                            legitSys.ApplyPoints(
+                            WarlordLegitimacySystem.Instance.ApplyPoints(
                                 warlordObj, penalty, "PartyDestroyed");
 
                             if (Settings.Instance?.TestingMode == true)
                                 DebugLogger.Info("CleanupSystem",
-                                    $"[DEFEAT] {comp.WarlordId} Tier={level} Penalty={penalty:F0} points");
+                                    $"[YENİLGİ] {comp.WarlordId} Tier={level} Ceza={penalty:F0} puan");
                         }
                     }
                 }
-                catch (OutOfMemoryException) { throw; }
                 catch (Exception ex)
                 {
                     DebugLogger.Warning("CleanupSystem", $"Defeat penalty failed: {ex.Message}");
                 }
 
-
+                // ── SIVIŞMA (SLIPPERY ESCAPE) MEKANİĞİ ────────────────────────
+                // Yenilen birliğin %25'i sığınağın manpower havuzuna kaçar
                 try
                 {
-                    var warlordSys = WarlordSystem.Instance;
-                    if (!string.IsNullOrEmpty(comp.WarlordId) && warlordSys != null)
+                    if (!string.IsNullOrEmpty(comp.WarlordId))
                     {
-                        var warlord = warlordSys.GetWarlord(comp.WarlordId);
+                        var warlord = WarlordSystem.Instance.GetWarlord(comp.WarlordId);
                         if (warlord != null && party.MemberRoster != null)
                         {
                             int escapedCount = (int)(party.MemberRoster.TotalManCount * 0.25f);
@@ -138,38 +120,28 @@ namespace BanditMilitias.Systems.Cleanup
                             {
                                 warlord.ReserveManpower += escapedCount;
                                 if (Settings.Instance?.TestingMode == true)
-                                    DebugLogger.Info("CleanupSystem", $"[SLIPPERY ESCAPE] {party.Name} defeated. {escapedCount} soldiers escaped to the forest and returned to {warlord.Name}'s pool.");
+                                    DebugLogger.Info("CleanupSystem", $"[SIVIŞMA] {party.Name} yenildi. {escapedCount} asker ormana kaçıp {warlord.Name} havuzuna döndü.");
                             }
                         }
                     }
                 }
-                catch (OutOfMemoryException) { throw; }
                 catch (Exception ex)
                 {
                     DebugLogger.Warning("CleanupSystem", $"Slippery Escape failed: {ex.Message}");
                 }
-
+                // ────────────────────────────────────────────────────────────────
 
                 try
                 {
                     if (party.LeaderHero != null
-                        && !party.LeaderHero.IsDead
+                        && party.LeaderHero.IsAlive
                         && party.LeaderHero.Occupation == Occupation.Bandit
                         && party.LeaderHero.Clan?.IsBanditFaction == true)
                     {
                         TaleWorlds.CampaignSystem.Actions.KillCharacterAction.ApplyByRemove(
                             party.LeaderHero, false);
                     }
-                    // Also remove from clan roster to prevent ghost hero accumulation
-                    else if (party.LeaderHero != null
-                        && party.LeaderHero.IsDead
-                        && party.LeaderHero.Clan?.IsBanditFaction == true)
-                    {
-                        // Hero is already dead, standard API handles removal from active rosters
-                        // try { party.LeaderHero.Clan.RemoveHero(party.LeaderHero); } catch { }
-                    }
                 }
-                catch (OutOfMemoryException) { throw; }
                 catch (Exception ex)
                 {
                     DebugLogger.Warning("CleanupSystem", $"Captain hero cleanup failed: {ex.Message}");
@@ -177,7 +149,7 @@ namespace BanditMilitias.Systems.Cleanup
 
                 _ = _quarantineList.Remove(party);
                 _ = _gracePeriodTracker.Remove(party);
-
+                // _cleanupQueue contains logic - list handled via queue logic
 
                 var disbandEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<BanditMilitias.Core.Events.MilitiaDisbandedEvent>();
                 disbandEvt ??= new BanditMilitias.Core.Events.MilitiaDisbandedEvent();
@@ -208,8 +180,7 @@ namespace BanditMilitias.Systems.Cleanup
             if (Campaign.Current == null) return;
 
             int deletedCount = 0;
-
-
+            // MobileParty.All (tüm harita) yerine kayıtlı milis listesi
             var toDelete = new List<MobileParty>(ModuleManager.Instance.ActiveMilitias);
 
             foreach (var party in toDelete)
@@ -228,7 +199,7 @@ namespace BanditMilitias.Systems.Cleanup
                 BanditMilitias.Intelligence.Strategic.WarlordSystem.Instance.Cleanup();
                 BanditMilitias.Intelligence.AI.Components.MilitiaSmartCache.Instance.Clear();
 
-
+                // ✅ Bir kez çalışıp durmalı - Otomatik olarak kapatıyoruz
                 if (Settings.Instance != null)
                 {
                     Settings.Instance.UninstallMode = false;
@@ -252,7 +223,8 @@ namespace BanditMilitias.Systems.Cleanup
                 AttemptQuarantineRepairs();
             }
 
-
+            // Always drain deletion queue each hour. Keeping this behind aggressive mode
+            // allowed zombie buildup to persist for too long.
             ExecuteInternalDestruction();
 
             bool aggressive = Settings.Instance?.EnableAggressiveCleanup == true;
@@ -286,7 +258,7 @@ namespace BanditMilitias.Systems.Cleanup
             if (_quarantineList.Count >= MAX_QUARANTINE_SIZE)
             {
 
-
+                // Manuel min-scan: allocation-free en eski karantina girişini bul
                 MobileParty? oldest = null;
                 int minAttempts = int.MaxValue;
                 foreach (var kvp in _quarantineList)
@@ -514,22 +486,17 @@ namespace BanditMilitias.Systems.Cleanup
         public override void Cleanup()
         {
             _instance = null;
-            _isInitialized = false;
             _cleanupQueue.Clear();
-            _quarantineList.Clear();
-            _gracePeriodTracker.Clear();
-            _reusableSnapshot.Clear();
             CampaignEvents.MobilePartyDestroyed.ClearListeners(this);
         }
 
         public void DailyCleanup()
         {
-            // Intentionally empty: zombie recovery is handled by AISchedulerSystem.RescueZombies
-            // and destructive cleanup stays behind explicit sweeps/queues.
-
+            // Haftalık tetikleme artık MilitiaAssertionSystem tarafından HOURS_BETWEEN_CHECKS (168h) ile yapılıyor.
+            // Bu metot artık boş kalabilir veya günlük hafif temizlik için kullanılabilir.
         }
 
-        public bool IsZombie(MobileParty party)
+        public bool IsZombie(MobileParty party) 
         {
             if (party == null || party.MemberRoster == null) return true;
             if (party.MemberRoster.TotalManCount <= 0) return true;
@@ -596,8 +563,7 @@ namespace BanditMilitias.Systems.Cleanup
             if (_cleanupQueue.Count == 0) return;
 
             int processed = 0;
-
-
+            // Dinamik batch boyutu: dünya nüfusu > 2000 ise agresif temizlik
             int totalParties = Campaign.Current?.MobileParties?.Count ?? 0;
             int maxPerBatch = totalParties > 2000
                 ? MBRandom.RandomInt(50, 100)
@@ -640,11 +606,12 @@ namespace BanditMilitias.Systems.Cleanup
 
             ExecuteInternalDestruction();
 
-
+            // PERFORMANCE GUARD: Global Thinning for vanilla bandit parties
             if (Campaign.Current != null && Campaign.Current.MobileParties != null)
             {
                 int totalParties = Campaign.Current.MobileParties.Count;
-
+                
+                // YENİ: Önce Konsolidasyon ve Milis Absorpsiyonunu çalıştır (1200+)
                 if (totalParties > GetSoftCrowdingThreshold())
                 {
                     MilitiaConsolidationSystem.Instance.OnHourlyTick();
@@ -659,7 +626,7 @@ namespace BanditMilitias.Systems.Cleanup
             sw.Stop();
             BanditMilitias.Systems.Dev.DevDataCollector.Instance.RecordModuleTiming("CleanupSystem_Deep", sw.ElapsedMilliseconds);
 
-
+            // OPTIMIZASYON: _lastMergeTime temizliği (Sızıntı önleme)
             if (_lastMergeTime.Count > 200)
             {
                 var keysToRemove = new List<string>();
@@ -671,14 +638,13 @@ namespace BanditMilitias.Systems.Cleanup
                 foreach (var key in keysToRemove) _lastMergeTime.Remove(key);
             }
 
-
+            // OPTIMIZASYON: .ToList() yerine buffer kullanarak temizle
             _reusableSnapshot.Clear();
             foreach (var kvp in _gracePeriodTracker)
             {
                 if (!kvp.Key.IsActive && (kvp.Key.MemberRoster == null || kvp.Key.MemberRoster.TotalManCount <= 0))
                 {
-
-
+                    // Not: _reusableSnapshot MobileParty listesidir, burada kullanabiliriz
                     _reusableSnapshot.Add(kvp.Key);
                 }
             }
@@ -816,7 +782,7 @@ namespace BanditMilitias.Systems.Cleanup
                 {
                     string allySubFaction = allyComp.GetHomeSettlement()?.Culture?.StringId ?? "";
                     string weakSubFaction = comp.GetHomeSettlement()?.Culture?.StringId ?? "";
-
+                    
                     if (allySubFaction == weakSubFaction || allyComp.WarlordId == comp.WarlordId)
                     {
                         float dist = weakPos.Distance(CompatibilityLayer.GetPartyPosition(ally));
@@ -836,17 +802,16 @@ namespace BanditMilitias.Systems.Cleanup
                 try
                 {
                     BanditMilitias.Debug.DebugLogger.Info("CleanupSystem", $"Weak Party Hysteresis Merge: {weakParty.Name} ({weakParty.MemberRoster.TotalManCount}) merging into {bestAlly.Name}");
-
+                    
                     bestAlly.MemberRoster.Add(weakParty.MemberRoster);
                     bestAlly.PrisonRoster.Add(weakParty.PrisonRoster);
                     if (bestAlly.PartyComponent is MilitiaPartyComponent allyComp2)
                     {
                         allyComp2.Gold += comp.Gold;
                     }
-
+                    
                     BanditMilitias.Infrastructure.CompatibilityLayer.DestroyParty(weakParty);
                 }
-                catch (OutOfMemoryException) { throw; }
                 catch (Exception ex)
                 {
                     BanditMilitias.Debug.DebugLogger.Warning("CleanupSystem", $"Hysteresis Merge failed: {ex.Message}");
@@ -861,13 +826,14 @@ namespace BanditMilitias.Systems.Cleanup
 
             if (IsInGracePeriod(party)) return false;
 
-
+            // ── YENİ: Headless parti tespiti — karantina ATLANIR ──────────────
+            // Grace period sonrası hâlâ ActualClan veya HomeSettlement yoksa
+            // bu parti kurtarılamaz. Askerlerini en yakın Captain'a aktar ve yok et.
             bool isHeadless = IsHeadlessParty(party);
             if (isHeadless)
             {
                 TransferToNearestCaptain(party);
-                return true;
-
+                return true; // Hemen temizlenecek (ScanAndMigrateOrphans zaten ExecuteNuclearCleanup çağırır)
             }
 
             bool isCritical = IsCriticalAnomaly(party);
@@ -928,8 +894,7 @@ namespace BanditMilitias.Systems.Cleanup
 
             if (_quarantineList.Count >= MAX_QUARANTINE_SIZE)
             {
-
-
+                // Manuel min-scan: allocation-free en eski karantina girişini bul
                 MobileParty? oldest = null;
                 int minVal = int.MaxValue;
                 foreach (var kvp in _quarantineList)
@@ -1017,7 +982,6 @@ namespace BanditMilitias.Systems.Cleanup
                         {
                             TaleWorlds.CampaignSystem.Actions.DestroyPartyAction.Apply(nearestCaptain.Party, party);
                         }
-                        catch (OutOfMemoryException) { throw; }
                         catch (Exception ex)
                         {
                             BanditMilitias.Debug.DebugLogger.Warning("CleanupSystem", $"DestroyPartyAction merge failed: {ex.Message}");
@@ -1059,8 +1023,7 @@ namespace BanditMilitias.Systems.Cleanup
             {
                 if (p == null || p == zombieParty || !p.IsActive || p.Party == null) continue;
                 if (p.PartyComponent is MilitiaPartyComponent comp &&
-                   comp.Role >= MilitiaPartyComponent.MilitiaRole.Captain)
-
+                   comp.Role >= MilitiaPartyComponent.MilitiaRole.Captain) // Captain, VeteranCaptain ve üzeri
                 {
                     var cPos = CompatibilityLayer.GetPartyPosition(p);
                     if (cPos.IsValid)
@@ -1078,15 +1041,19 @@ namespace BanditMilitias.Systems.Cleanup
             return closest;
         }
 
-
+        // ── Headless Parti Tespiti ─────────────────────────────────────────────
+        /// <summary>
+        /// Grace period sonrası hâlâ temel verileri eksik olan partileri tespit eder.
+        /// ActualClan veya HomeSettlement olmadan yaşayan parti "headless" sayılır.
+        /// </summary>
         private bool IsHeadlessParty(MobileParty party)
         {
             if (party == null || !party.IsActive) return false;
 
-
+            // ActualClan tamamen yok
             if (party.ActualClan == null) return true;
 
-
+            // HomeSettlement yok veya inactive (Raw check: Inactive olsa bile kalıcı silinmemeli)
             if (party.PartyComponent is MilitiaPartyComponent comp)
             {
                 var home = comp.GetHomeSettlementRaw();
@@ -1096,7 +1063,12 @@ namespace BanditMilitias.Systems.Cleanup
             return false;
         }
 
-
+        // ── Headless Parti Transferi ───────────────────────────────────────────
+        /// <summary>
+        /// Headless partinin askerlerini ve altınını en yakın aktif Captain/VeteranCaptain'a
+        /// transfer eder ve partiyi immediate destroy'a işaretler.
+        /// Karantina tamamen atlanır.
+        /// </summary>
         public void TransferToNearestCaptain(MobileParty headlessParty)
         {
             if (headlessParty == null || !headlessParty.IsActive) return;
@@ -1105,8 +1077,7 @@ namespace BanditMilitias.Systems.Cleanup
             var target = FindNearestFriendlyCaptain(headlessParty);
             if (target == null)
             {
-
-
+                // Hiç Captain yoksa
                 DebugLogger.Info("CleanupSystem",
                     $"[Headless] No captain found for {headlessParty.Name}.");
                 return;
@@ -1114,8 +1085,7 @@ namespace BanditMilitias.Systems.Cleanup
 
             try
             {
-
-
+                // Asker transferi
                 int troopsBefore = target.MemberRoster?.TotalManCount ?? 0;
                 int transferTroops = headlessParty.MemberRoster?.TotalManCount ?? 0;
 
@@ -1124,13 +1094,13 @@ namespace BanditMilitias.Systems.Cleanup
                     target.MemberRoster.Add(headlessParty.MemberRoster);
                 }
 
-
+                // Mahkum transferi
                 if (headlessParty.PrisonRoster != null && headlessParty.PrisonRoster.TotalManCount > 0 && target.PrisonRoster != null)
                 {
                     target.PrisonRoster.Add(headlessParty.PrisonRoster);
                 }
 
-
+                // Altın transferi
                 if (headlessParty.PartyComponent is MilitiaPartyComponent headlessComp &&
                     target.PartyComponent is MilitiaPartyComponent targetComp)
                 {
@@ -1148,14 +1118,13 @@ namespace BanditMilitias.Systems.Cleanup
                         Colors.Cyan));
                 }
             }
-            catch (OutOfMemoryException) { throw; }
             catch (Exception ex)
             {
                 DebugLogger.Warning("CleanupSystem",
                     $"[Headless] Transfer failed for {headlessParty.Name}: {ex.Message}");
             }
 
-
+            // Transfer tamamlandı
         }
 
         private bool TryMigrate(MobileParty party)
@@ -1241,5 +1210,3 @@ namespace BanditMilitias.Systems.Cleanup
         }
     }
 }
-
-

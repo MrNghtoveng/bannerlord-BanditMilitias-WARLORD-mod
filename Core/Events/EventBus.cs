@@ -1,6 +1,5 @@
 using BanditMilitias.Core.Registry;
 using BanditMilitias.Debug;
-using BanditMilitias.Lifecycle;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -17,30 +16,7 @@ namespace BanditMilitias.Core.Events
         private static readonly Lazy<EventBus> _instance = new(() => new EventBus());
         public static EventBus Instance => _instance.Value;
 
-        private int _mainThreadId = -1;
-
         private EventBus() { }
-
-        /// <summary>
-        /// Must be called once from the main game thread during initialization.
-        /// All ProcessQueue calls will be validated against this thread ID.
-        /// </summary>
-        public void CaptureMainThread()
-        {
-            _mainThreadId = Thread.CurrentThread.ManagedThreadId;
-        }
-
-        public bool IsOnMainThread => _mainThreadId <= 0 || Thread.CurrentThread.ManagedThreadId == _mainThreadId;
-
-        private void WarnIfOffThread(string caller)
-        {
-            if (_mainThreadId > 0 && Thread.CurrentThread.ManagedThreadId != _mainThreadId)
-            {
-                DebugLogger.Warning("EventBus",
-                    $"[THREAD-SAFETY] {caller} called from thread {Thread.CurrentThread.ManagedThreadId}, " +
-                    $"expected main thread {_mainThreadId}. This may cause race conditions.");
-            }
-        }
 
         private interface IHandlerWrapper
         {
@@ -65,8 +41,16 @@ namespace BanditMilitias.Core.Events
             public ActionWrapper(Action<T> handler) => _handler = handler;
             public void Invoke(IGameEvent gameEvent)
             {
-                _handler((T)gameEvent);
-                ModuleRegistry.Instance.RecordActivity(_handler, "EventDispatch");
+                try
+                {
+                    _handler((T)gameEvent);
+                    ModuleRegistry.Instance.RecordActivity(_handler, "EventDispatch");
+                }
+                catch (Exception ex)
+                {
+                    ModuleRegistry.Instance.RecordFailure(_handler, ex.Message);
+                    throw;
+                }
             }
 
             public bool IsMatch(Delegate otherData) => otherData.Equals(_handler);
@@ -88,8 +72,16 @@ namespace BanditMilitias.Core.Events
                 T typedEvent = (T)gameEvent;
                 if (_filter(typedEvent))
                 {
-                    _handler(typedEvent);
-                    ModuleRegistry.Instance.RecordActivity(_handler, "EventDispatch");
+                    try
+                    {
+                        _handler(typedEvent);
+                        ModuleRegistry.Instance.RecordActivity(_handler, "EventDispatch");
+                    }
+                    catch (Exception ex)
+                    {
+                        ModuleRegistry.Instance.RecordFailure(_handler, ex.Message);
+                        throw;
+                    }
                 }
             }
             public bool IsMatch(Delegate otherData) => otherData.Equals(_handler);
@@ -100,7 +92,6 @@ namespace BanditMilitias.Core.Events
         private readonly Stopwatch _processStopwatch = new Stopwatch();
 
         private readonly ConcurrentDictionary<Type, IHandlerWrapper[]> _subscribers = new();
-        private readonly ConcurrentDictionary<Type, HashSet<string>> _subscriptionOwnership = new();
         private readonly object _writeLock = new object();
 
         private readonly ConcurrentQueue<IGameEvent> _deferredQueue = new();
@@ -110,8 +101,6 @@ namespace BanditMilitias.Core.Events
 
         private readonly ConcurrentDictionary<Type, ConcurrentQueue<IPoolableEvent>> _eventPool = new();
         private const int MAX_POOL_SIZE = 100;
-        private volatile ModState _lifecycleState = ModState.Uninitialized;
-        private int _sessionGeneration = 0;
 
         public T Get<T>() where T : IPoolableEvent, new()
         {
@@ -157,13 +146,6 @@ namespace BanditMilitias.Core.Events
         {
             lock (_writeLock)
             {
-                string ownerKey = BuildOwnerKey(handler);
-                HashSet<string> owners = _subscriptionOwnership.GetOrAdd(type, _ => new HashSet<string>(StringComparer.Ordinal));
-                if (!owners.Add(ownerKey))
-                {
-                    return false;
-                }
-
                 _ = _subscribers.TryGetValue(type, out var existing);
                 if (existing != null)
                 {
@@ -171,7 +153,6 @@ namespace BanditMilitias.Core.Events
                     {
                         if (current.IsMatch(handler))
                         {
-                            owners.Remove(ownerKey);
                             return false;
                         }
                     }
@@ -200,7 +181,7 @@ namespace BanditMilitias.Core.Events
                 if (_subscribers.TryGetValue(typeof(T), out var existing) && existing != null)
                 {
 
-
+                    // OPTIMIZATION 7: Avoid new List + ToArray allocation
                     int removedCount = 0;
                     foreach (var h in existing)
                     {
@@ -209,11 +190,6 @@ namespace BanditMilitias.Core.Events
 
                     if (removedCount > 0)
                     {
-                        if (_subscriptionOwnership.TryGetValue(typeof(T), out var owners))
-                        {
-                            _ = owners.Remove(BuildOwnerKey(handler));
-                        }
-
                         if (existing.Length == removedCount)
                         {
                             _subscribers.TryRemove(typeof(T), out _);
@@ -255,7 +231,6 @@ namespace BanditMilitias.Core.Events
             lock (_writeLock)
             {
                 _subscribers.Clear();
-                _subscriptionOwnership.Clear();
                 _eventPool.Clear();
                 _ = Interlocked.Exchange(ref _deferredQueueCount, 0);
                 _ = Interlocked.Exchange(ref _droppedDeferredCount, 0);
@@ -286,7 +261,15 @@ namespace BanditMilitias.Core.Events
 
             foreach (var wrapper in snapshot)
             {
-                wrapper.Invoke(gameEvent);
+                try
+                {
+                    wrapper.Invoke(gameEvent);
+                }
+                catch (Exception ex)
+                {
+
+                    DebugLogger.Error("EventBus", $"Handler error ({typeof(T).Name}): {ex.Message}");
+                }
             }
 
         }
@@ -306,7 +289,14 @@ namespace BanditMilitias.Core.Events
 
                 foreach (var handler in handlers)
                 {
-                    handler.Invoke(gameEvent);
+                    try
+                    {
+                        handler.Invoke(gameEvent);
+                    }
+                    catch (Exception ex)
+                    {
+                        DebugLogger.Error("EventBus", $"Untyped handler error ({eventType.Name}): {ex.Message}");
+                    }
                 }
             }
             else
@@ -320,11 +310,6 @@ namespace BanditMilitias.Core.Events
         public void PublishDeferred<T>(T gameEvent) where T : IGameEvent
         {
             if (gameEvent == null) return;
-            if (!CanAcceptDeferredEvents())
-            {
-                _ = Interlocked.Increment(ref _droppedDeferredCount);
-                return;
-            }
 
             if (gameEvent is IPoolableEvent)
             {
@@ -332,8 +317,9 @@ namespace BanditMilitias.Core.Events
                     "PublishDeferred does not support pooled events. Falling back to synchronous publish to prevent crash.";
 
                 DebugLogger.Warning("EventBus", $"{message} Event={typeof(T).Name}");
-
-
+                
+                // CRASH-FIX: Pooled event'ler ertelenemez çünkü Return() çağrıldığında veri sıfırlanır.
+                // Oyunu çökertmek yerine hemen (senkron) yayınlıyoruz.
                 Publish(gameEvent);
                 return;
             }
@@ -341,8 +327,10 @@ namespace BanditMilitias.Core.Events
             int currentQueue = Volatile.Read(ref _deferredQueueCount);
             if (currentQueue >= MAX_QUEUE_SIZE)
             {
-
-
+                // PRIORITY-AWARE DROP FIX:
+                // Critical olaylar (Priority=0) kuyruk dolu olsa bile kabul edilir (%20 tolerans).
+                // High olaylar (Priority=1) %10 toleranslı kabul edilir.
+                // Normal ve Low olaylar anında düşürülür.
                 bool isCritical   = gameEvent.Priority == EventPriority.Critical;
                 bool isHigh       = gameEvent.Priority == EventPriority.High;
                 bool allowOverflow = (isCritical && currentQueue < MAX_QUEUE_SIZE * 12 / 10)
@@ -374,10 +362,6 @@ namespace BanditMilitias.Core.Events
 
         public void ProcessQueue()
         {
-            if (!CanPumpQueue())
-                return;
-
-            WarnIfOffThread("ProcessQueue");
 
             if (Interlocked.CompareExchange(ref _isProcessingQueue, 1, 0) != 0)
                 return;
@@ -429,53 +413,9 @@ namespace BanditMilitias.Core.Events
             long dropped = Interlocked.Read(ref _droppedDeferredCount);
             float fillPct = (float)q / MAX_QUEUE_SIZE * 100f;
             string health = fillPct >= 100f ? "DOLU" : fillPct >= 80f ? "YÜKSEK" : "OK";
-            int callerThread = Thread.CurrentThread.ManagedThreadId;
             return $"Queue={q}/{MAX_QUEUE_SIZE} ({fillPct:F0}% [{health}]), " +
                    $"Dropped={dropped}, " +
-                   $"PoolTypes={_eventPool.Count}, " +
-                   $"Lifecycle={_lifecycleState}, Session={_sessionGeneration}, " +
-                   $"MainThread={_mainThreadId}, CallerThread={callerThread}";
-        }
-
-        public void SetLifecycleState(ModState state)
-        {
-            _lifecycleState = state;
-        }
-
-        public void ResetForSessionEnd()
-        {
-            _ = Interlocked.Increment(ref _sessionGeneration);
-            Clear();
-            _lifecycleState = ModState.Ready;
-        }
-
-        public void ResetForModuleUnload()
-        {
-            _ = Interlocked.Increment(ref _sessionGeneration);
-            Clear();
-            _lifecycleState = ModState.Uninitialized;
-        }
-
-        private bool CanAcceptDeferredEvents()
-        {
-            return _lifecycleState is ModState.Ready
-                or ModState.Dormant
-                or ModState.Active
-                or ModState.Degraded;
-        }
-
-        private bool CanPumpQueue()
-        {
-            return _lifecycleState is ModState.Ready
-                or ModState.Dormant
-                or ModState.Active
-                or ModState.Degraded;
-        }
-
-        private static string BuildOwnerKey(Delegate handler)
-        {
-            object target = handler.Target ?? handler.Method.DeclaringType ?? typeof(EventBus);
-            return $"{target.GetHashCode()}::{handler.Method.DeclaringType?.FullName}::{handler.Method.Name}";
+                   $"PoolTypes={_eventPool.Count}";
         }
     }
 

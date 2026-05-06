@@ -1,7 +1,6 @@
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.AI;
 using BanditMilitias.Systems.Progression;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace BanditMilitias.Tests

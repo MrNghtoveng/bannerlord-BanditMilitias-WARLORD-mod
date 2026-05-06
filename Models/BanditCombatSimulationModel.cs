@@ -9,43 +9,30 @@ using TaleWorlds.Core;
 
 namespace BanditMilitias.Models
 {
-
-
+    // Bannerlord versiyonları arasındaki imza değişikliklerini (MobileParty vs MapEventParty vs PartyBase)
+    // tolere etmek için override yerine Harmony yaması kullanıyoruz.
     [HarmonyPatch]
-    public class BanditCombatSimulationDamagePatch
+    public class BanditCombatSimulationPatch
     {
-        [HarmonyPrepare]
-        static bool Prepare()
-        {
-            var target = TargetMethod();
-            if (target == null)
-            {
-                BanditMilitias.Infrastructure.FileLogger.LogWarning("[BanditCombatSimulationDamagePatch] Target method 'GetSimulationDamage' not found. Patch skipped.");
-                return false;
-            }
-            return true;
-        }
-
+        // ── GetSimulationDamage Yaması ──────────────────────────────────
         [HarmonyTargetMethod]
-        public static System.Reflection.MethodBase TargetMethod()
+        public static System.Reflection.MethodBase TargetMethod1()
         {
-            // Bannerlord 1.2+ uses out parameter and void return.
-            // 1.1 and older used int return.
-            var type = AccessTools.TypeByName("TaleWorlds.CampaignSystem.GameComponents.DefaultCombatSimulationModel")
-                    ?? AccessTools.TypeByName("TaleWorlds.CampaignSystem.Models.CombatSimulationModel");
-            
-            if (type == null) return null;
-
-            return AccessTools.Method(type, "GetSimulationDamage");
+            return AccessTools.Method("TaleWorlds.CampaignSystem.GameComponents.DefaultCombatSimulationModel:GetSimulationDamage")
+                ?? AccessTools.Method("TaleWorlds.CampaignSystem.Models.CombatSimulationModel:GetSimulationDamage");
         }
 
         [HarmonyPostfix]
-        public static void PostfixDamage(PartyBase attackerParty, PartyBase defenderParty, ref int damage)
+        public static void PostfixDamage(ref int __result, object attackerParty, object defenderParty)
         {
-            if (attackerParty == null || defenderParty == null) return;
+            // Parametreler farklı tiplerde (MobileParty/MapEventParty/PartyBase) gelebileceği için object olarak alıp çözüyoruz.
+            PartyBase? attacker = ResolveParty(attackerParty);
+            PartyBase? defender = ResolveParty(defenderParty);
 
-            var attackerMobile = attackerParty.MobileParty;
-            var defenderMobile = defenderParty.MobileParty;
+            if (attacker == null || defender == null) return;
+
+            var attackerMobile = attacker.MobileParty;
+            var defenderMobile = defender.MobileParty;
 
             float attackMult = 1.0f;
             if (attackerMobile?.PartyComponent is MilitiaPartyComponent attackerComp)
@@ -70,65 +57,42 @@ namespace BanditMilitias.Models
                     defenseMult = 1.0f - (t1Ratio * 0.35f);
             }
 
-            damage = (int)(damage * attackMult * defenseMult);
+            __result = (int)(__result * attackMult * defenseMult);
         }
 
-        private static float GetLowTierRatio(MobileParty party)
-        {
-            int total = party.MemberRoster.TotalManCount;
-            if (total <= 0) return 0f;
-
-            int lowTierCount = 0;
-            foreach (var troop in party.MemberRoster.GetTroopRoster())
-            {
-                if (troop.Character != null && troop.Character.Tier <= 2)
-                    lowTierCount += troop.Number;
-            }
-            return (float)lowTierCount / total;
-        }
-    }
-
-    [HarmonyPatch]
-    public class BanditCombatSimulationCasualtiesPatch
-    {
-        [HarmonyPrepare]
-        static bool Prepare()
-        {
-            var target = TargetMethod();
-            if (target == null)
-            {
-                BanditMilitias.Infrastructure.FileLogger.LogWarning("[BanditCombatSimulationCasualtiesPatch] Target method 'GetSimulationCasualties' not found. Patch skipped.");
-                return false;
-            }
-            return true;
-        }
-
+        // ── GetSimulationCasualties Yaması ──────────────────────────────
         [HarmonyTargetMethod]
-        public static System.Reflection.MethodBase TargetMethod()
+        public static System.Reflection.MethodBase TargetMethod2()
         {
-            var type = AccessTools.TypeByName("TaleWorlds.CampaignSystem.GameComponents.DefaultCombatSimulationModel")
-                    ?? AccessTools.TypeByName("TaleWorlds.CampaignSystem.Models.CombatSimulationModel");
-            
-            if (type == null) return null;
-
-            return AccessTools.Method(type, "GetSimulationCasualties");
+            return AccessTools.Method("TaleWorlds.CampaignSystem.GameComponents.DefaultCombatSimulationModel:GetSimulationCasualties")
+                ?? AccessTools.Method("TaleWorlds.CampaignSystem.Models.CombatSimulationModel:GetSimulationCasualties");
         }
 
         [HarmonyPostfix]
-        public static void PostfixCasualties(PartyBase attackerParty, PartyBase defenderParty, ref int casualties)
+        public static void PostfixCasualties(ref int __result, object attackerParty, object defenderParty)
         {
-            if (defenderParty == null) return;
+            PartyBase? defender = ResolveParty(defenderParty);
+            if (defender == null) return;
 
-            var defenderMobile = defenderParty.MobileParty;
+            var defenderMobile = defender.MobileParty;
             if (defenderMobile?.PartyComponent is MilitiaPartyComponent && defenderMobile.MemberRoster != null)
             {
                 float t1Ratio = GetLowTierRatio(defenderMobile);
                 if (t1Ratio > 0.5f)
                 {
                     float reduction = t1Ratio * 0.40f;
-                    casualties = (int)(casualties * (1f - reduction));
+                    __result = (int)(__result * (1f - reduction));
                 }
             }
+        }
+
+        // ── Yardımcılar ────────────────────────────────────────────────
+        private static PartyBase? ResolveParty(object obj)
+        {
+            if (obj is PartyBase pb) return pb;
+            if (obj is MobileParty mp) return mp.Party;
+            if (obj is MapEventParty mep) return mep.Party;
+            return null;
         }
 
         private static float GetLowTierRatio(MobileParty party)

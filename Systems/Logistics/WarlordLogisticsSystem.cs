@@ -16,7 +16,6 @@ using TaleWorlds.ObjectSystem;
 namespace BanditMilitias.Systems.Logistics
 {
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 110, IsCritical = false)]
     public class WarlordLogisticsSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordLogisticsSystem";
@@ -114,9 +113,9 @@ namespace BanditMilitias.Systems.Logistics
                 if (town != null)
                 {
                     ChangeState(militia, component, MilitiaPartyComponent.WarlordState.SellingPrisoners);
-                    CustomMilitiaAI.AssignCommand(militia, new StrategicCommand
-                    {
-                        Type = CommandType.Patrol,
+                    CustomMilitiaAI.AssignCommand(militia, new StrategicCommand 
+                    { 
+                        Type = CommandType.Patrol, 
                         TargetLocation = CompatibilityLayer.GetSettlementPosition(town),
                         Reason = "Selling prisoners"
                     });
@@ -458,5 +457,3 @@ namespace BanditMilitias.Systems.Logistics
         }
     }
 }
-
-

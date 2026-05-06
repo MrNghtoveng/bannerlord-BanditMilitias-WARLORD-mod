@@ -3,12 +3,10 @@ using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Systems.Enhancement;
 using BanditMilitias.Systems.Progression;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
-using TaleWorlds.CampaignSystem.CharacterDevelopment;
 using TaleWorlds.CampaignSystem.MapEvents;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.Core;
@@ -17,8 +15,8 @@ using TaleWorlds.MountAndBlade;
 
 namespace BanditMilitias.Systems.Combat
 {
-
-
+    // ── WarlordCombat ─────────────────────────────────────────
+    // ── WarlordCombatSystem ─────────────────────────────────────────
     public class WarlordCombatSystem : MissionBehavior
     {
         public override MissionBehaviorType BehaviorType => MissionBehaviorType.Other;
@@ -32,29 +30,27 @@ namespace BanditMilitias.Systems.Combat
             MobileParty? party = TryResolveMobileParty(affectedAgent);
             if (party?.PartyComponent is not MilitiaPartyComponent) return;
 
-
+            // 1'e Karşı Çok (Swarm) Mantığı: Hedef etrafında birden fazla milis varsa hasar artışı
             int nearbyAllies = 0;
             var agents = Mission.Current.Agents;
             foreach (var other in agents)
             {
                 if (other != affectedAgent && other.IsActive() && other.Team == affectorAgent.Team)
                 {
-
-
-                    if (other.Position.DistanceSquared(affectedAgent.Position) < 9f)
+                    // Swarm Radius: 3 metre
+                    if (other.Position.DistanceSquared(affectedAgent.Position) < 9f) 
                         nearbyAllies++;
                 }
             }
 
             if (nearbyAllies >= 2)
             {
-
-
-                float swarmBonus = Math.Min(0.50f, nearbyAllies * 0.10f);
-
-
+                // Sürü Hasarı: Her müttefik için %10, max %50 hasar artışı
+                float swarmBonus = Math.Min(0.50f, nearbyAllies * 0.10f); 
+                
+                // AMBUSH BONUS: Eğer parti pusu emrindeyse ekstra %25 baskın hasarı
                 float ambushBonus = 0f;
-                if (party?.PartyComponent is MilitiaPartyComponent comp &&
+                if (party?.PartyComponent is MilitiaPartyComponent comp && 
                     comp.CurrentOrder?.Type == Intelligence.Strategic.CommandType.Ambush)
                 {
                     ambushBonus = 0.25f;
@@ -72,19 +68,19 @@ namespace BanditMilitias.Systems.Combat
             MobileParty? party = TryResolveMobileParty(agent);
             if (party?.PartyComponent is not MilitiaPartyComponent) return;
 
-
+            // 2. Rapor Revize: Koşullu Ajan Buffları (Hız ve Dayanıklılık)
             var adaptiveAI = Systems.AI.AdaptiveAIDoctrineSystem.Instance;
             if (adaptiveAI != null)
             {
                 var profile = adaptiveAI.GetProfileForWarlord(party);
                 if (profile != null)
                 {
-                    if (profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.FastFlank ||
+                    if (profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.FastFlank || 
                         profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.ShockRaid)
                     {
                         CompatibilityLayer.SetAgentBaseSpeedMultiplier(agent, 1.15f);
                     }
-
+                    
                     if (profile.ActiveCounterDoctrine == Systems.AI.CounterDoctrine.DefensiveDepth)
                     {
                         agent.HealthLimit += 15f;
@@ -112,7 +108,7 @@ namespace BanditMilitias.Systems.Combat
         }
     }
 
-
+    // ── WarlordRegenerationSystem ─────────────────────────────────────────
     public class WarlordRegenerationSystem : MissionBehavior
     {
         private const float TICK_INTERVAL = 1.0f;
@@ -201,17 +197,19 @@ namespace BanditMilitias.Systems.Combat
                     continue;
                 }
 
-
+                // Rejenerasyon mantığı kısıtlandı: Sadece çok düşük sağlıkta ve rütbeli askerlerde
                 if (data.Agent.Health < 20f && data.Agent.Health < data.Agent.HealthLimit)
                 {
-
-
-                    data.Agent.Health += 0.1f;
+                    // Savaşın ortasında durup dururken can dolması 'hile' olarak görüldüğü için
+                    // sadece hayatta kalma şansını artıracak çok küçük bir destek verilir.
+                    data.Agent.Health += 0.1f; 
                 }
             }
         }
     }
 
+
+    // ── MilitiaVictorySystem ─────────────────────────────────────────
 
     public static class MilitiaVictorySystem
     {
@@ -232,8 +230,7 @@ namespace BanditMilitias.Systems.Combat
 
             try
             {
-
-
+                // Savaş lokasyonunu TerritorySystem'e kaydet
                 var territory = BanditMilitias.Systems.Territory.TerritorySystem.Instance;
                 var winnerPosition = CompatibilityLayer.GetPartyPosition(winner);
                 if (territory?.IsEnabled == true && winnerPosition.IsValid)
@@ -246,21 +243,27 @@ namespace BanditMilitias.Systems.Combat
 
                 }
 
-
+                // BUG-4 Fix: Zafer sayacını artır
                 if (winner.PartyComponent is MilitiaPartyComponent winnerComp)
                 {
                     winnerComp.BattlesWon++;
 
-
+                    // Warlord ve Swarm istatistiklerini de güncelle
                     var warlord = Intelligence.Strategic.WarlordSystem.Instance.GetWarlordForParty(winner);
+                    if (warlord != null)
+                    {
+                        // warlord.BattlesWon++; // BUG-4 Fixed: Warlord main career stat was missing - handled in WarlordCareerSystem
+                        // var swarmGroup = Intelligence.Swarm.SwarmCoordinator.Instance.GetGroupForWarlord(warlord.StringId);
+                        // if (swarmGroup != null) swarmGroup.BattlesWon++; // Readonly
+                    }
 
-
+                    // AscensionEvaluator: savaş sonucu eventini hazırla ve fırlat
                     try
                     {
-                        var battleEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<Core.Events.MilitiaBattleResultEvent>();
+                        var battleEvt = Core.Events.EventBus.Instance.Get<Core.Events.MilitiaBattleResultEvent>();
                         battleEvt.WinnerParty = winner;
 
-
+                        // Yenilen taraf analizi (lord / warlord var mı?)
                         var defSide = mapEvent.DefeatedSide;
                         if (defSide != BattleSideEnum.None)
                         {
@@ -281,7 +284,7 @@ namespace BanditMilitias.Systems.Combat
                             }
                         }
 
-
+                        // Galip taraf analizi
                         var winSide = defSide == BattleSideEnum.Attacker ? BattleSideEnum.Defender : BattleSideEnum.Attacker;
                         var winParties = mapEvent.GetMapEventSide(winSide)?.Parties;
                         if (winParties != null)
@@ -297,29 +300,35 @@ namespace BanditMilitias.Systems.Combat
                             }
                         }
 
-
+                        // Underdog oranı
                         if (mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2)
                         {
-                            var winnerSide = mapEvent.WinningSide;
-                            var loserSide = winnerSide == BattleSideEnum.Attacker ? BattleSideEnum.Defender : BattleSideEnum.Attacker;
-                            
-                            float _winStr = mapEvent.StrengthOfSide[(int)winnerSide];
-                            float _loseStr = mapEvent.StrengthOfSide[(int)loserSide];
-                            
-                            battleEvt.EnemyStrengthRatio = _winStr > 0f ? _loseStr / _winStr : 1f;
+                            float ws = mapEvent.StrengthOfSide[0];
+                            float ls = mapEvent.StrengthOfSide[1];
+                            battleEvt.EnemyStrengthRatio = ws > 0f ? ls / ws : 1f;
+                        }
+
+                        // BUG-DEAD-2 DÜZELTMESİ: Savaş XP hesabı
+                        // Eski: TroopCount (asker sayısı) → parti başına ~1-3 XP → anlamsız
+                        // Yeni: StrengthOfSide (güç skoru) tabanlı → anlamlı ve ölçekli XP
+                        // OnBattleVictory hem galip partiyi hem horde havuzunu günceller.
+                        {
+                            float _winStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
+                                ? mapEvent.StrengthOfSide[0] : 1f;
+                            float _loseStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
+                                ? mapEvent.StrengthOfSide[1] : 1f;
                             MilitiaProgressionSystem.Instance.OnBattleVictory(winner, _loseStr, _winStr);
                         }
 
                         Core.Neural.NeuralEventRouter.Instance.Publish(battleEvt);
-                        BanditMilitias.Core.Events.EventBus.Instance.Return(battleEvt);
+                        Core.Events.EventBus.Instance.Return(battleEvt);
                     }
-                    catch {  }
+                    catch { /* Savaş eventi kritik değil, hata yutulur */ }
                 }
 
                 if (winner.PrisonRoster != null && winner.PrisonRoster.TotalManCount > 0)
                 {
-
-
+                    // Bannerlord 1.3.15+: Bridged via CompatibilityLayer (LimitedPartySize prioritized)
                     int limitSafe = Infrastructure.CompatibilityLayer.GetPartyMemberSizeLimit(winner.Party);
                     int current = winner.MemberRoster?.TotalManCount ?? 0;
                     int space = limitSafe - current;
@@ -366,11 +375,11 @@ namespace BanditMilitias.Systems.Combat
 
                 if (mergedMilitias.Count > 0)
                 {
-                    var mergeEvt = BanditMilitias.Core.Events.EventBus.Instance.Get<Core.Events.MilitiaMergeEvent>();
+                    var mergeEvt = Core.Events.EventBus.Instance.Get<Core.Events.MilitiaMergeEvent>();
                     mergeEvt.ResultingParty = winner;
                     mergeEvt.MergedParties = mergedMilitias;
                     Core.Neural.NeuralEventRouter.Instance.Publish(mergeEvt);
-                    BanditMilitias.Core.Events.EventBus.Instance.Return(mergeEvt);
+                    Core.Events.EventBus.Instance.Return(mergeEvt);
                 }
 
                 foreach (var p in defeatedParties)
@@ -378,8 +387,8 @@ namespace BanditMilitias.Systems.Combat
                     if (p?.Party == null || !p.Party.IsMobile || p.Party.MobileParty == null) continue;
 
                     MobileParty mobParty = p.Party.MobileParty;
-
-
+                    
+                    // GANİMET: Altın Yağmalama (Para alsın talebi)
                     int lootedGold = 0;
                     if (mobParty.PartyTradeGold > 0)
                     {
@@ -387,13 +396,12 @@ namespace BanditMilitias.Systems.Combat
                         winner.PartyTradeGold += mobParty.PartyTradeGold;
                         mobParty.PartyTradeGold = 0;
                     }
-
-
+                    
+                    // Eğer mağlup taraf bir Hero ise (Kaptan/Lord)
                     if (mobParty.LeaderHero != null)
                     {
                         int heroGold = mobParty.LeaderHero.Gold;
-                        int lootAmount = (int)(heroGold * 0.5f);
-
+                        int lootAmount = (int)(heroGold * 0.5f); // Parasının yarısını al
                         lootedGold += lootAmount;
                         winner.PartyTradeGold += lootAmount;
                         mobParty.LeaderHero.Gold -= lootAmount;
@@ -401,26 +409,24 @@ namespace BanditMilitias.Systems.Combat
 
                     if (lootedGold > 0 && Settings.Instance?.TestingMode == true)
                     {
-                        DebugLogger.TestLog($"[LOOT] {winner.Name} looted {lootedGold} gold from {mobParty.Name} party.", Colors.Yellow);
+                        DebugLogger.TestLog($"[LOOT] {winner.Name}, {mobParty.Name} partisinden {lootedGold} altın yağmaladı.", Colors.Yellow);
                     }
 
                     if (mobParty.ItemRoster == null || winner.ItemRoster == null) continue;
 
-
+                    // Gıda Yağmalama
                     var foodItems = mobParty.ItemRoster.Where(item => item.EquipmentElement.Item?.IsFood == true).ToList();
                     foreach (var item in foodItems)
                     {
                         if (item.EquipmentElement.Item == null) continue;
-                        int amount = Math.Min(item.Amount, 50);
-
+                        int amount = Math.Min(item.Amount, 50); // Limit artırıldı
                         _ = winner.ItemRoster.AddToCounts(item.EquipmentElement, amount);
                     }
 
-
+                    // Ekipman Yağmalama (Zırh, At, Silah alsın talebi)
                     int gearStacksLooted = 0;
-                    int maxStacks = mobParty.IsCaravan ? 20 : 10;
-
-
+                    int maxStacks = mobParty.IsCaravan ? 20 : 10; // Kervanlardan daha fazla ganimet
+                    
                     for (int i = 0; i < mobParty.ItemRoster.Count && gearStacksLooted < maxStacks; i++)
                     {
                         var stack = mobParty.ItemRoster.GetElementCopyAtIndex(i);
@@ -433,6 +439,8 @@ namespace BanditMilitias.Systems.Combat
                     }
                 }
 
+                // NOT: Eski rütbe atlama kodu kaldırıldı. 
+                // Artık MilitiaProgressionSystem üzerinden merkezi olarak yönetiliyor.
 
                 winner.RecentEventsMorale += 10f;
                 BanditEnhancementSystem.Instance.EnhanceParty(winner);
@@ -452,8 +460,8 @@ namespace BanditMilitias.Systems.Combat
                         xpMultiplier = 2.0f;
                     }
 
-
-                    if (winner.PartyComponent is MilitiaPartyComponent ambushWinnerComp &&
+                    // AMBUSH BONUS: Pusu başarılı olursa +%50 ekstra XP
+                    if (winner.PartyComponent is MilitiaPartyComponent ambushWinnerComp && 
                         ambushWinnerComp.CurrentOrder?.Type == Intelligence.Strategic.CommandType.Ambush)
                     {
                         xpMultiplier *= 1.5f;
@@ -503,15 +511,16 @@ namespace BanditMilitias.Systems.Combat
             try
             {
                 if (captain == null) return;
-
+                
                 _ = _ascendedCaptains.Add(captain.StringId);
 
+                // YENİ: Merkezi sisteme kaydet ve mülkiyet AI'sını tetikle
                 var warlord = Intelligence.Strategic.WarlordSystem.Instance.CreateWarlordFromHero(captain);
 
                 if (warlord != null)
                 {
                     InformationManager.DisplayMessage(new InformationMessage(
-                        $"[ASCENSION] {warlord.FullName} claimed rights over {warlord.OwnedSettlement?.Name?.ToString() ?? "new properties"}!",
+                        $"[YÜKSELİŞ] {warlord.FullName}, {warlord.OwnedSettlement?.Name?.ToString() ?? "yeni mülkler"} üzerinde hak iddia etti!",
                         Colors.Magenta));
 
                     TelemetryBridge.LogEvent("CaptainAscension", new

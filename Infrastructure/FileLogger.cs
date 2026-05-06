@@ -21,16 +21,15 @@ namespace BanditMilitias.Infrastructure
         private static readonly ConcurrentQueue<string> _logQueue = new ConcurrentQueue<string>();
         private static int _isWriting = 0;
         private const int MAX_QUEUE_SIZE = 10000;
-        public static bool IsReady => Directory.Exists(LogDirectory);
 
-
+        // FIX-7: BOM-less UTF-8 — Windows'un varsayılan sistem encoding'i (UTF-8 BOM'lu)
+        // SwarmCoordinator loglarında "Ambush→Defensive" yerine bozuk karakterler üretiyordu.
         private static readonly System.Text.Encoding Utf8NoBom = new System.Text.UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
 
         public static void Log(string message)
         {
             if (string.IsNullOrEmpty(message)) return;
-            if (_logQueue.Count > MAX_QUEUE_SIZE) return;
-
+            if (_logQueue.Count > MAX_QUEUE_SIZE) return; // MEMORY GUARD
 
             string timestampedMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}] {message}\n";
             _logQueue.Enqueue(timestampedMessage);
@@ -58,22 +57,21 @@ namespace BanditMilitias.Infrastructure
                 {
                     lock (_lockObject)
                     {
-
-
+                        // FIX-7: BOM-less UTF-8 ile yaz — ok/arrow gibi özel karakterler düzgün görünür.
                         File.AppendAllText(LogPath, sb.ToString(), Utf8NoBom);
                     }
                 }
             }
             catch (Exception ex)
             {
-
-
+                // NOTE: We cannot log to FileLogger here as it would cause recursion.
                 System.Console.Error.WriteLine($"[BanditMilitias] FileLogger.ProcessQueue failed: {ex.Message}");
             }
             finally
             {
-
-
+                // HATA-BM-4 FIX: Önce kuyrukta eleman var mı kontrol et.
+                // Eğer varsa _isWriting'i serbest bırakmadan devam et,
+                // böylece iki paralel writer oluşması engellenir.
                 if (!_logQueue.IsEmpty)
                 {
                     _ = Task.Run(ProcessQueue);
@@ -81,8 +79,7 @@ namespace BanditMilitias.Infrastructure
                 else
                 {
                     _ = Interlocked.Exchange(ref _isWriting, 0);
-
-
+                    // Son kontrol: sıfırladıktan sonra yeni eleman gelmiş olabilir
                     if (!_logQueue.IsEmpty && Interlocked.CompareExchange(ref _isWriting, 1, 0) == 0)
                     {
                         _ = Task.Run(ProcessQueue);

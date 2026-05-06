@@ -6,7 +6,6 @@ using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Fear;
 using BanditMilitias.Systems.Progression;
-using BanditMilitias.Systems.WarlordLegitimacy;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,14 +17,14 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Cleanup
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 150, IsCritical = false)]
+    [AutoRegister]
     public class MilitiaConsolidationSystem : MilitiaModuleBase
     {
         public override string ModuleName => "ConsolidationSystem";
         public override bool IsEnabled => Settings.Instance?.MilitiaSpawn ?? true;
         public override int Priority => 40;
 
-        private static readonly Lazy<MilitiaConsolidationSystem> _instance =
+        private static readonly Lazy<MilitiaConsolidationSystem> _instance = 
             new Lazy<MilitiaConsolidationSystem>(() => new MilitiaConsolidationSystem());
         public static MilitiaConsolidationSystem Instance => _instance.Value;
 
@@ -35,55 +34,52 @@ namespace BanditMilitias.Systems.Cleanup
 
         public override void OnHourlyTick()
         {
-            if (!IsEnabled || ModActivationManager.IsGameplayActivationDelayed()) return;
+            if (!IsEnabled || CompatibilityLayer.IsGameplayActivationDelayed()) return;
 
             int totalParties = Campaign.Current.MobileParties.Count;
 
-
+            // 1. Vanilla Milis Absorpsiyonu (Drafting) - Her 6 saatte bir
             if (totalParties > INFIGHTING_THRESHOLD && CampaignTime.Now.GetHourOfDay % 6 == 0)
             {
                 PerformVanillaDrafting();
             }
 
-
+            // 2. Global Konsolidasyon (Zorunlu Birleşme)
             if (totalParties > CONSOLIDATION_THRESHOLD)
             {
                 PerformConsolidation(totalParties - 1800);
             }
 
-
+            // 3. HIZLI BİRLEŞME (RAPID MERGE) - 0-12 Kişilik küçük gruplar için her zaman aktif
             PerformRapidMerge();
 
-
+            // 4. MAGNET SİNYALİ (Homing) - Küçük grupları sığınağa veya büyüklere çek
             UpdateMagnetSignals();
         }
 
         private void PerformRapidMerge()
         {
-
-
+            // 5. Rapor Revize: 0-12 kiÅŸilik "baÅŸsÄ±z" birlikler hiÃ§bir ek koÅŸul aranmaksÄ±zÄ±n birleÅŸir
             var smallMilitias = ModuleManager.Instance.ActiveMilitias
                 .Where(m => m.IsActive && m.MemberRoster.TotalManCount <= 12 && m.LeaderHero == null)
                 .ToList();
 
             foreach (var source in smallMilitias)
             {
-                if (!source.IsActive) continue;
+                if (!source.IsActive) continue; // Ã–nceki adÄ±mda yok edilmiÅŸ olabilir
 
-
+                // YakÄ±ndaki herhangi bir dost birliÄŸi bul
                 var target = ModuleManager.Instance.ActiveMilitias
                     .Where(m => m != source && m.IsActive)
-                    .OrderByDescending(m => m.MemberRoster.TotalManCount)
-
+                    .OrderByDescending(m => m.MemberRoster.TotalManCount) // Ã–nce bÃ¼yÃ¼kleri dene
                     .ThenBy(m => CompatibilityLayer.GetPartyPosition(m).DistanceSquared(CompatibilityLayer.GetPartyPosition(source)))
                     .FirstOrDefault();
 
                 if (target != null)
                 {
                     float distSq = CompatibilityLayer.GetPartyPosition(source).DistanceSquared(CompatibilityLayer.GetPartyPosition(target));
-
-
-                    float mergeRange = (source.MemberRoster.TotalManCount <= 5) ? 400f : 100f;
+                    // 0-12 kiÅŸilik gruplar iÃ§in birleÅŸme menzili geniÅŸletildi (ZombileÅŸme Ã¶nleyici)
+                    float mergeRange = (source.MemberRoster.TotalManCount <= 5) ? 400f : 100f; 
 
                     if (distSq < mergeRange)
                     {
@@ -96,8 +92,7 @@ namespace BanditMilitias.Systems.Cleanup
 
         private void UpdateMagnetSignals()
         {
-
-
+            // Küçük gruplara ( < 25) "Eve Dön" veya "Orduya Katıl" emri ver
             foreach (var party in ModuleManager.Instance.ActiveMilitias)
             {
                 if (party == null || !party.IsActive || party.MemberRoster.TotalManCount >= 25 || party.MapEvent != null) continue;
@@ -105,12 +100,12 @@ namespace BanditMilitias.Systems.Cleanup
                 var comp = party.PartyComponent as MilitiaPartyComponent;
                 if (comp == null || comp.HomeSettlement == null) continue;
 
-
+                // Magnet logic: Sığınağa doğru hareket et (Sürüleşme)
                 if (party.CurrentSettlement == null && party.ShortTermTargetSettlement != comp.HomeSettlement)
                 {
                     party.SetMoveGoToSettlement(comp.HomeSettlement, default, true);
                     if (Settings.Instance?.TestingMode == true)
-                        DebugLogger.TestLog($"[MAGNET] {party.Name} is being pulled towards the hideout (Swarming).");
+                        DebugLogger.TestLog($"[MAGNET] {party.Name} sığınağa doğru çekiliyor (Sürüleşme).");
                 }
             }
         }
@@ -119,8 +114,7 @@ namespace BanditMilitias.Systems.Cleanup
         {
             if (party.MemberRoster.TotalManCount >= 25 && party.LeaderHero == null)
             {
-
-
+                // Kaptan ata
                 WarlordSystem.Instance.TryAssignCaptainToParty(party);
             }
         }
@@ -139,8 +133,7 @@ namespace BanditMilitias.Systems.Cleanup
 
                 if (fear >= MIN_FEAR_DRAFT && !string.IsNullOrEmpty(warlordId))
                 {
-
-
+                    // Yerleşim milislerinden haydut saflarına transfer
                     int draftCount = Math.Max(2, (int)(settlement.Militia * 0.05f));
                     if (draftCount > 10) draftCount = 10;
 
@@ -182,11 +175,10 @@ namespace BanditMilitias.Systems.Cleanup
         {
             try
             {
-
-
+                // Milis sayısını azalt
                 s.Militia -= count;
 
-
+                // Hayduta asker ekle (Köy milisi genelde BasicInfantry tier'ındadır)
                 var troop = Globals.BasicInfantry.FirstOrDefault() ?? CharacterObject.All.FirstOrDefault(c => c.IsSoldier && c.Level < 10);
                 if (troop != null)
                 {
@@ -234,12 +226,12 @@ namespace BanditMilitias.Systems.Cleanup
             {
                 target.MemberRoster.Add(source.MemberRoster);
                 target.PrisonRoster.Add(source.PrisonRoster);
-
+                
                 if (source.PartyComponent is MilitiaPartyComponent sComp && target.PartyComponent is MilitiaPartyComponent tComp)
                 {
                     tComp.Gold += sComp.Gold;
 
-
+                    // REWARD: Consolidation awards Legitimacy points (Centralization bonus)
                     if (!string.IsNullOrEmpty(tComp.WarlordId))
                     {
                         var warlord = WarlordSystem.Instance.GetWarlord(tComp.WarlordId);
@@ -258,17 +250,6 @@ namespace BanditMilitias.Systems.Cleanup
             catch (Exception ex)
             {
                 DebugLogger.Error("Consolidation", $"Merge failed: {ex.Message}");
-                // If the merge threw after troop transfer but before DestroyParty,
-                // source is still Active but possibly empty — destroy it to prevent a zombie.
-                try
-                {
-                    if (source != null && source.IsActive)
-                        CompatibilityLayer.DestroyParty(source);
-                }
-                catch (Exception destroyEx)
-                {
-                    DebugLogger.Warning("Consolidation", $"Zombie cleanup also failed for {source?.Name}: {destroyEx.Message}");
-                }
             }
         }
 
@@ -283,21 +264,20 @@ namespace BanditMilitias.Systems.Cleanup
                     var warlord = WarlordSystem.Instance.GetWarlord(comp.WarlordId);
                     if (warlord != null)
                     {
-
-
+                        // Transfer troops to manpower reserves
                         int totalTroops = party.MemberRoster.TotalManCount;
                         warlord.ReserveManpower += totalTroops;
-
-
+                        
+                        // Transfer gold
                         warlord.Gold += comp.Gold;
-
+                        
                         if (Settings.Instance?.TestingMode == true)
                         {
                             DebugLogger.Info("Consolidation", $"[REINTEGRATION] {party.Name} consolidated to {warlord.Name}'s reserves. (+{totalTroops} manpower)");
                         }
                     }
                 }
-
+                
                 CompatibilityLayer.DestroyParty(party);
             }
             catch (Exception ex)
@@ -307,5 +287,3 @@ namespace BanditMilitias.Systems.Cleanup
         }
     }
 }
-
-

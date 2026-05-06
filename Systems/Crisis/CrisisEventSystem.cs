@@ -1,4 +1,4 @@
-using BanditMilitias.Components;
+﻿using BanditMilitias.Components;
 using BanditMilitias.Core.Components;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Debug;
@@ -16,6 +16,26 @@ using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Systems.Crisis
 {
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    //  CRISIS EVENT SYSTEM
+    //
+    //  Warlord'larÄ±n iÃ§ dinamiÄŸini canlandÄ±ran kural-temelli olay motoru.
+    //  Her kriz tÃ¼rÃ¼ kendi tetikleyici koÅŸuluna, Ã§Ã¶zÃ¼m yoluna ve
+    //  sonucuna sahiptir. Oyun rastgele deÄŸil; koÅŸullar olgunlaÅŸÄ±nca kriz
+    //  doÄŸar, koÅŸullar deÄŸiÅŸince Ã§Ã¶zÃ¼lÃ¼r ya da patlama yaÅŸanÄ±r.
+    //
+    //  KRÄ°Z TÃœRLERÄ°:
+    //  â€¢ BETRAYAL      â€” Bir komutan warlord'a ihanet ederek ayrÄ±lÄ±r.
+    //                    Militia kontrolsÃ¼z kalÄ±r, baÄŸÄ±msÄ±z davranÄ±r.
+    //  â€¢ MUTINY        â€” Ordu isyanÄ±. Militia aggressiveness dÃ¼ÅŸer,
+    //                    bir kÄ±smÄ± daÄŸÄ±lÄ±r.
+    //  â€¢ POWER_VACUUM  â€” Warlord dÃ¼ÅŸer, gÃ¼Ã§ boÅŸluÄŸu doÄŸar. Ä°ki militia
+    //                    liderlik iÃ§in Ã§ekiÅŸir.
+    //  â€¢ SIEGE_PANIC   â€” BÃ¼yÃ¼k bir lord ordusu yaklaÅŸÄ±rken panik yayÄ±lÄ±r.
+    //                    Warlord'un tÃ¼m militialarÄ± kaÃ§Ä±ÅŸ moduna girer.
+    //  â€¢ BOUNTY_CRISIS â€” Ã–dÃ¼l Ã§ok yÃ¼kseÄŸinde bazÄ± "sadÄ±k" militia bile
+    //                    warlord'u ihbar etmeyi gÃ¶ze alÄ±r.
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     public enum CrisisType
     {
@@ -28,14 +48,10 @@ namespace BanditMilitias.Systems.Crisis
 
     public enum CrisisPhase
     {
-        Brewing,
-
-        Active,
-
-        Resolving,
-
-        Resolved
-
+        Brewing,    // tetikleyici koÅŸullar olgunlaÅŸÄ±yor
+        Active,     // kriz patlak verdi
+        Resolving,  // Ã§Ã¶zÃ¼m sÃ¼reci
+        Resolved    // tamamlandÄ± (silinecek)
     }
 
     [Serializable]
@@ -49,17 +65,16 @@ namespace BanditMilitias.Systems.Crisis
         [SaveableProperty(6)] public int DaysActive { get; set; }
         [SaveableProperty(7)] public float Intensity { get; set; } = 0.5f;
 
-
+        // Betrayal â†’ hangi militia ihanet etti
         [SaveableProperty(8)] public string? TraitorPartyId { get; set; }
 
-
+        // PowerVacuum â†’ rakip militia id'leri
         [SaveableProperty(9)] public List<string> Rivals { get; set; } = new();
 
-
+        // Ã‡Ã¶zÃ¼m outcome
         [SaveableProperty(10)] public string? Resolution { get; set; }
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 450, IsCritical = false)]
     public class CrisisEventSystem : MilitiaModuleBase
     {
         public override string ModuleName => "CrisisEvents";
@@ -72,7 +87,7 @@ namespace BanditMilitias.Systems.Crisis
 
         private List<CrisisEvent> _activeCrises = new();
 
-
+        // â”€â”€ Tetikleyici eÅŸikler (CrisisRules'tan) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         private const int BETRAYAL_MIN_MILITIAS = CrisisRules.BETRAYAL_MIN_MILITIAS;
         private const float MUTINY_DAYS_NO_WIN = CrisisRules.MUTINY_NO_WIN_DAYS;
         private const float BOUNTY_CRISIS_THRESHOLD = CrisisRules.BOUNTY_CRISIS_THRESHOLD;
@@ -83,7 +98,7 @@ namespace BanditMilitias.Systems.Crisis
 
         public override void Initialize()
         {
-            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
+            EventBus.Instance.Subscribe<HideoutClearedEvent>(OnHideoutCleared);
         }
 
 
@@ -91,14 +106,14 @@ namespace BanditMilitias.Systems.Crisis
         {
             try
             {
-                var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<BanditMilitias.Core.Events.CrisisStartedEvent>();
+                var evt = EventBus.Instance.Get<BanditMilitias.Core.Events.CrisisStartedEvent>();
                 if (evt != null)
                 {
                     evt.WarlordId = crisis.WarlordId;
-                    evt.CrisisType = crisis.Type.ToString();
+                    evt.CrisisType = crisis.Type;
                     evt.Intensity = crisis.Intensity;
                     NeuralEventRouter.Instance.Publish(evt);
-                    BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
+                    EventBus.Instance.Return(evt);
                 }
             }
             catch { }
@@ -106,11 +121,11 @@ namespace BanditMilitias.Systems.Crisis
 
         public override void Cleanup()
         {
-            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
+            EventBus.Instance.Unsubscribe<HideoutClearedEvent>(OnHideoutCleared);
             _activeCrises.Clear();
         }
 
-
+        // â”€â”€ GÃ¼nlÃ¼k: kriz deÄŸerlendirme + Ã§Ã¶zÃ¼m dÃ¶ngÃ¼sÃ¼ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         public override void OnDailyTick()
         {
             if (!IsEnabled) return;
@@ -120,7 +135,7 @@ namespace BanditMilitias.Systems.Crisis
             PurgeResolved();
         }
 
-
+        // â”€â”€ Kriz tetikleyici deÄŸerlendirmesi â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         private void EvaluateNewCrises()
         {
             if (_activeCrises.Count >= MAX_CONCURRENT_CRISES) return;
@@ -128,8 +143,7 @@ namespace BanditMilitias.Systems.Crisis
             var warlords = WarlordSystem.Instance.GetAllWarlords();
             foreach (var w in warlords)
             {
-
-
+                // Zaten bu warlord iÃ§in aktif kriz varsa atla
                 if (_activeCrises.Any(c =>
                     c.WarlordId == w.StringId && c.Phase != CrisisPhase.Resolved))
                     continue;
@@ -149,7 +163,7 @@ namespace BanditMilitias.Systems.Crisis
             float chance = CrisisRules.CalcBetrayalChance(w.DaysActive);
             if (MBRandom.RandomFloat > chance) return;
 
-
+            // Ä°hanet edecek militia seÃ§ (en gÃ¼Ã§sÃ¼z olanÄ±)
             var traitor = w.CommandedMilitias
                 .Where(m => m?.IsActive == true)
                 .OrderBy(m => m.MemberRoster.TotalManCount)
@@ -171,17 +185,17 @@ namespace BanditMilitias.Systems.Crisis
             ApplyBetrayalEffect(w, traitor, crisis);
 
             DebugLogger.Info("CrisisEvents",
-                $"[BETRAYAL] {traitor.Name} -> separated from {w.Name}!");
+                $"[Ä°HANET] {traitor.Name} â†’ {w.Name}'dan ayrÄ±ldÄ±!");
 
             InformationManager.DisplayMessage(new InformationMessage(
-                $"[Crisis] {traitor.Name} {w.Name} left — uncontrolled power!", Colors.Red));
+                $"[Kriz] {traitor.Name} {w.Name}'Ä± terk etti â€” kontrolsÃ¼z gÃ¼Ã§!", Colors.Red));
         }
 
         private void TryTriggerMutiny(Warlord w)
         {
             if (w.CommandedMilitias.Count < 2) return;
 
-
+            // Son 21 gÃ¼nde hiÃ§ battle yoksa isyan
             bool recentVictory = w.CommandedMilitias
                 .Any(m => m?.PartyComponent is MilitiaPartyComponent c &&
                           (CampaignTime.Now - c.LastBattleTime).ToDays < MUTINY_DAYS_NO_WIN);
@@ -203,7 +217,7 @@ namespace BanditMilitias.Systems.Crisis
             FireCrisisStartedEvent(crisis);
             ApplyMutinyEffect(w, crisis);
 
-            DebugLogger.Info("CrisisEvents", $"[MUTINY] Mutiny in {w.Name}'s army!");
+            DebugLogger.Info("CrisisEvents", $"[Ä°SYAN] {w.Name} ordusunda isyan!");
         }
 
         private void TryTriggerBountyCrisis(Warlord w)
@@ -228,17 +242,16 @@ namespace BanditMilitias.Systems.Crisis
             };
             _activeCrises.Add(crisis);
             FireCrisisStartedEvent(crisis);
-
-
+            // TÃ¼m militialar geÃ§ici lay-low
             w.IssueOrderToMilitias(new StrategicCommand
             {
                 Type = CommandType.CommandLayLow,
                 Priority = 0.95f,
-                Reason = "BountyCrisis: bounty too high"
+                Reason = "BountyCrisis: Ã¶dÃ¼l Ã§ok yÃ¼ksek"
             });
 
             DebugLogger.Info("CrisisEvents",
-                $"[BOUNTY CRISIS] {w.Name} — Bounty={bounty:F0}");
+                $"[Ã–DÃœL KRÄ°ZÄ°] {w.Name} â€” Bounty={bounty:F0}");
         }
 
         private void TryTriggerSiegePanic(Warlord w)
@@ -248,7 +261,8 @@ namespace BanditMilitias.Systems.Crisis
             var hideoutPos = CompatibilityLayer.GetSettlementPosition(w.AssignedHideout);
             if (!hideoutPos.IsValid) return;
 
-
+            // YakÄ±nÄ±nda bÃ¼yÃ¼k bir lord ordusu var mÄ±?
+            // MobileParty.All yerine SpatialGrid ile yakın partileri sorgula
             var nearbyParties = new System.Collections.Generic.List<TaleWorlds.CampaignSystem.Party.MobileParty>();
             BanditMilitias.Systems.Grid.SpatialGridSystem.Instance.QueryNearby(hideoutPos, 25f, nearbyParties);
             bool bigArmyNear = nearbyParties.Any(p => p?.IsActive == true &&
@@ -268,21 +282,20 @@ namespace BanditMilitias.Systems.Crisis
             };
             _activeCrises.Add(crisis);
             FireCrisisStartedEvent(crisis);
-
-
+            // Retreat emri
             w.IssueOrderToMilitias(new StrategicCommand
             {
                 Type = CommandType.Retreat,
                 Priority = 1f,
-                Reason = "SiegePanic: large lord army nearby"
+                Reason = "SiegePanic: bÃ¼yÃ¼k lord ordusu yakÄ±n"
             });
 
             InformationManager.DisplayMessage(new InformationMessage(
-                $"[Panic] {w.Name}'s forces are dispersing — large army coming!",
+                $"[Panik] {w.Name}'Ä±n kuvvetleri daÄŸÄ±lÄ±yor â€” bÃ¼yÃ¼k ordu geliyor!",
                 Colors.Red));
         }
 
-
+        // â”€â”€ Aktif krizleri iÅŸle â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         private void ProcessActiveCrises()
         {
             foreach (var crisis in _activeCrises.Where(c => c.Phase == CrisisPhase.Active))
@@ -314,7 +327,7 @@ namespace BanditMilitias.Systems.Crisis
             crisis.Resolution = returned ? "Traitor returned" : "Traitor dispersed";
 
             DebugLogger.Info("CrisisEvents",
-                $"[BETRAYAL RESOLVED] {w?.Name} | {crisis.Resolution}");
+                $"[Ä°HANET Ã‡Ã–ZÃœLDÃœ] {w?.Name} | {crisis.Resolution}");
         }
 
         private void ProcessMutiny(CrisisEvent crisis)
@@ -324,8 +337,7 @@ namespace BanditMilitias.Systems.Crisis
             var w = WarlordSystem.Instance.GetWarlord(crisis.WarlordId);
             if (w != null)
             {
-
-
+                // Ä°syan sona erdi â€” moral dÃ¼ÅŸÃ¼k ama ordu toplandÄ±
                 foreach (var m in w.CommandedMilitias.Where(m => m?.IsActive == true))
                     m.Aggressiveness = MathF.Max(0.3f, m.Aggressiveness - 0.2f);
             }
@@ -347,14 +359,13 @@ namespace BanditMilitias.Systems.Crisis
             crisis.Resolution = "Army dispersed";
         }
 
-
+        // â”€â”€ Etki fonksiyonlarÄ± â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         private static void ApplyBetrayalEffect(Warlord w, MobileParty traitor, CrisisEvent crisis)
         {
-
-
+            // Traitor'Ä± warlord kontrolÃ¼nden Ã§Ä±kar
             w.ReleaseMilitia(traitor);
 
-
+            // Kendi baÅŸÄ±na daha saldÄ±rgan
             traitor.Aggressiveness = MathF.Min(1f, traitor.Aggressiveness + 0.4f);
         }
 
@@ -362,8 +373,7 @@ namespace BanditMilitias.Systems.Crisis
         {
             foreach (var m in w.CommandedMilitias.Where(m => m?.IsActive == true))
             {
-
-
+                // Aggressiveness geÃ§ici dÃ¼ÅŸÃ¼ÅŸ
                 m.Aggressiveness *= (1f - crisis.Intensity * 0.4f);
             }
         }
@@ -372,7 +382,7 @@ namespace BanditMilitias.Systems.Crisis
         {
             if (evt == null || evt.Hideout == null) return;
 
-
+            // Hideout temizlenince ilgili krizleri zorla kapat
             var w = WarlordSystem.Instance.GetWarlordForHideout(evt.Hideout);
             if (w == null) return;
 
@@ -398,16 +408,20 @@ namespace BanditMilitias.Systems.Crisis
         }
 
         public override string GetDiagnostics() =>
-            $"CrisisEvents: {_activeCrises.Count} active | " +
+            $"CrisisEvents: {_activeCrises.Count} aktif | " +
             $"Betrayal={_activeCrises.Count(c => c.Type == CrisisType.Betrayal)} " +
             $"Mutiny={_activeCrises.Count(c => c.Type == CrisisType.Mutiny)}";
     }
 
-
+    // ── CrisisRules (inline) ──────────────────────────────
+    /// <summary>
+    /// CrisisEventSystem için Bannerlord bağımsız pure logic.
+    /// Tüm threshold hesaplamaları ve olasılık fonksiyonları burada.
+    /// CrisisEventSystem bu sınıfı çağırır — test suite bu sınıfı test eder.
+    /// </summary>
     public static class CrisisRules
     {
-
-
+        // ── Sabitler ──────────────────────────────────────────────────
         public const int BETRAYAL_MIN_MILITIAS = 3;
         public const float BETRAYAL_BASE_CHANCE = 0.03f;
         public const float BETRAYAL_DAYS_SCALE = 60f;
@@ -424,26 +438,35 @@ namespace BanditMilitias.Systems.Crisis
 
         public const int MAX_CONCURRENT_CRISES = 6;
 
+        // ── Betrayal ──────────────────────────────────────────────────
 
+        /// <summary>
+        /// İhanet olasılığını hesaplar.
+        /// militiaCount >= MIN ve gold <= 0 koşulunu caller kontrol eder.
+        /// </summary>
         public static float CalcBetrayalChance(int daysActive)
         {
             float t = Math.Max(0, daysActive) / BETRAYAL_DAYS_SCALE;
             return BETRAYAL_BASE_CHANCE * (1f + t);
         }
 
-
+        /// <summary>İhanet tetiklenebilir mi?</summary>
         public static bool CanBetrayal(int militiaCount, float gold, int activeWarlordCrises)
             => militiaCount >= BETRAYAL_MIN_MILITIAS
             && gold <= 0f
             && activeWarlordCrises < MAX_CONCURRENT_CRISES;
 
+        // ── Mutiny ────────────────────────────────────────────────────
 
+        /// <summary>İsyan tetiklenebilir mi?</summary>
         public static bool CanMutiny(int militiaCount, float daysSinceLastBattle, int activeCrises)
             => militiaCount >= 2
             && daysSinceLastBattle >= MUTINY_NO_WIN_DAYS
             && activeCrises < MAX_CONCURRENT_CRISES;
 
+        // ── Bounty Crisis ─────────────────────────────────────────────
 
+        /// <summary>Ödül krizinin tetiklenme olasılığı [0-1].</summary>
         public static float CalcBountyCrisisChance(float bounty)
         {
             if (bounty < BOUNTY_CRISIS_THRESHOLD) return 0f;
@@ -451,16 +474,20 @@ namespace BanditMilitias.Systems.Crisis
             return Math.Min(1f, (excess / BOUNTY_MAX_SCALE) * BOUNTY_CHANCE_MULTIPLIER);
         }
 
-
+        /// <summary>Ödül krizi tetiklenebilir mi?</summary>
         public static bool CanBountyCrisis(float bounty, int activeCrises)
             => bounty >= BOUNTY_CRISIS_THRESHOLD
             && activeCrises < MAX_CONCURRENT_CRISES;
 
+        // ── Siege Panic ───────────────────────────────────────────────
 
+        /// <summary>Kuşatma paniği için ordu büyüklük eşiği geçildi mi?</summary>
         public static bool IsArmySizeDangerous(int armySize)
             => armySize >= SIEGE_PANIC_ARMY_SIZE;
 
+        // ── Genel ─────────────────────────────────────────────────────
 
+        /// <summary>Kriz süresi doldu mu (tip bazında).</summary>
         public static bool IsCrisisExpired(string crisisType, int daysActive)
         {
             int maxDays = crisisType switch
@@ -475,5 +502,3 @@ namespace BanditMilitias.Systems.Crisis
         }
     }
 }
-
-
