@@ -401,6 +401,7 @@ namespace BanditMilitias.Systems.Spawning
 
         public override void SyncData(IDataStore dataStore)
         {
+            dataStore.SyncData("_spawningTickCount_v1", ref _tickCount);
         }
 
         public MobileParty? SpawnMilitia(Settlement hideout)

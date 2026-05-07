@@ -14,6 +14,8 @@ using BanditMilitias.Systems.Fear;
 using BanditMilitias.Systems.Logistics;
 using BanditMilitias.Systems.Scheduling;
 using BanditMilitias.Systems.Tracking;
+using BanditMilitias.Systems.Cleanup;
+using BanditMilitias.Intelligence.Swarm;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.Library;
@@ -318,6 +320,12 @@ namespace BanditMilitias.Core.Neural
         private long   _savedTickCount     = 0;
         private long   _savedMilitiasServed = 0;
 
+        // ── YARDIMCI ALANLAR (TRAINING) ──────────────────────────────────────
+        private int _trainingDayCounter = 0;
+        private const int TRAINING_INTERVAL_DAYS = 3;   // kaç günde bir eğitim
+        private const int TRAINING_BATCHES = 10;         // her seferinde kaç batch
+        private const int MIN_BUFFER_FOR_TRAINING = 32;  // en az kaç deneyim olmalı
+
 
         public override void Initialize()
         {
@@ -355,78 +363,194 @@ namespace BanditMilitias.Core.Neural
 
         private void BuildGroups()
         {
-
-
+            // ── SENSORY ──────────────────────────────────────────────────────────
+            // GroupProcessor: küresel tehdit durumunu değerlendirir.
+            // Tehdit > 0.7 → tüm warlord milisleri urgent kuyruğuna alınır.
+            // Tehdit > 0.85 → kritik eşik, warlord korku indeksi güncellenir.
+            // MilitiaBehavior veya LogisticsSystem ile çakışma yok:
+            // Bunlar AiHourlyTickEvent / OnHourlyTick üzerinden çalışır,
+            // Sensory sadece scheduler kuyruğuna öncelik ekler.
             _sensory = new GanglionGroup("Sensory", budget: 1)
-
                 .AddGroupProcessor(static (p) =>
                 {
+                    if (p.ThreatLevel <= 0.7f) return;
 
+                    var scheduler = ModuleManager.Instance?.GetModule<AISchedulerSystem>();
+                    if (scheduler == null) return;
 
-                    if (p.ThreatLevel > 0.7f)
+                    bool isCritical = p.ThreatLevel > 0.85f;
+
+                    foreach (var w in p.AllWarlords)
                     {
+                        if (w?.CommandedMilitias == null) continue;
 
+                        // Kritik tehdit: warlord'un korku indeksine göre ek uyarı
+                        float fearScore = 0f;
+                        if (isCritical)
+                            p.WarlordFearIndex.TryGetValue(w.StringId, out fearScore);
 
-                        var scheduler = ModuleManager.Instance?.GetModule<AISchedulerSystem>();
-                        if (scheduler == null) return;
-                        foreach (var w in p.AllWarlords)
+                        foreach (var m in w.CommandedMilitias)
                         {
-                            if (w?.CommandedMilitias == null) continue;
-                            foreach (var m in w.CommandedMilitias)
+                            if (m?.IsActive != true) continue;
+
+                            // Kritik tehdit + yüksek korku → önce güçlü milisler uyansın
+                            if (isCritical && fearScore > 60f)
                             {
-                                if (m?.IsActive == true)
-                                    scheduler.EnqueueDecision(m, urgent: true);
+                                float str = CompatibilityLayer.GetTotalStrength(m);
+                                if (str < 20f) continue; // çok zayıf, bu durumda kaçsın
                             }
+
+                            scheduler.EnqueueDecision(m, urgent: true);
                         }
                     }
                 });
 
-
+            // ── ASSOCIATIVE ──────────────────────────────────────────────────────
+            // Milis bazında çalışır. MilitiaBehavior.OnAiHourlyTick ile
+            // IsPriorityAIUpdate çakışmasını önlemek için bu flag'e DOKUNMUYORUZ.
+            // Bunun yerine: warlord'suz, swarm'sız ve uzun süredir uyuyan militisleri
+            // tespit edip uyandırır. Bu görevi başka hiçbir sistem yapmıyor.
             _associative = new GanglionGroup("Associative", budget: 60)
                 .AddProcessor(static (militia, percept, inhibitory) =>
                 {
-
-
                     var comp = militia.PartyComponent as MilitiaPartyComponent;
-                    if (comp?.IsPriorityAIUpdate == true)
+                    if (comp == null) return;
+
+                    // Warlord'a bağlı milis → kendi kararını verir, dokunma
+                    var warlordSystem = WarlordSystem.Instance;
+                    if (warlordSystem != null && warlordSystem.GetWarlordForParty(militia) != null)
+                        return;
+
+                    // Swarm grubundaysa → SwarmCoordinator yönetir, dokunma
+                    var swarm = Intelligence.Swarm.SwarmCoordinator.Instance;
+                    if (swarm?.IsInSwarm(militia) == true) return;
+
+                    // Aktif map eventi varsa → dokunma
+                    if (militia.MapEvent != null) return;
+
+                    // Uzun süredir uyuyan bağımsız milis → uyandır
+                    // "Uzun" = NextThinkTime 4 saatten fazla geçmiş olması
+                    float overdueHours = comp.GetSleepOverdueHours();
+                    if (overdueHours >= 4f)
                     {
+                        comp.WakeUp();
+                        // Scheduler'a ekle ama urgent değil — düşük öncelik yeterli
                         var scheduler = ModuleManager.Instance?.GetModule<AISchedulerSystem>();
-                        scheduler?.EnqueueDecision(militia, urgent: true);
-                        comp.IsPriorityAIUpdate = false;
+                        scheduler?.EnqueueDecision(militia, urgent: false);
                     }
                 });
 
-
+            // ── MOTOR ────────────────────────────────────────────────────────────
+            // Yük yönetimi. LogisticsSystem zaten yiyecek/restocking halleder.
+            // Motor'un görevi: yük yüksekken ÖNCELIKLENDIRME — zayıf/hareketsiz
+            // militisleri yavaşlatarak CPU'yu güçlü/aktif militislere bırakmak.
+            // Bu görevi hiçbir sistem yapmıyor.
             _motor = new GanglionGroup("Motor", budget: 80)
                 .AddProcessor(static (militia, percept, inhibitory) =>
                 {
-
-
+                    // Yük normal → önceliklendirmeye gerek yok
                     if (!percept.IsHighLoad) return;
 
                     var comp = militia.PartyComponent as MilitiaPartyComponent;
                     if (comp == null) return;
 
+                    // Aktif savaş veya görev varsa kesinlikle dokunma
+                    if (militia.MapEvent != null || militia.SiegeEvent != null) return;
 
-                    if (militia.FoodChange < -5f && militia.ItemRoster != null)
+                    // Priority güncelleme bekleyen → dokunma
+                    if (comp.IsPriorityAIUpdate) return;
+
+                    // Zaten uyuyorsa → dokunma
+                    if (comp.NextThinkTime > CampaignTime.Now) return;
+
+                    float strength = CompatibilityLayer.GetTotalStrength(militia);
+                    int   troops   = militia.MemberRoster?.TotalManCount ?? 0;
+
+                    // Zayıf milis (< 15 er, < 10 güç) → yük yüksekse 3 saat uyu
+                    // Bu militisler büyük etkiye sahip değil, ertelenebilir
+                    if (troops < 15 && strength < 10f)
                     {
-                        var logistics = ModuleManager.Instance
-                            ?.GetModule<WarlordLogisticsSystem>();
+                        comp.SleepFor(3f);
+                        return;
+                    }
 
-
-                        comp.CurrentState = MilitiaPartyComponent.WarlordState.Restocking;
+                    // Warlord'a bağlı değil + orta güç → 2 saat uyu
+                    var warlordSystem = WarlordSystem.Instance;
+                    bool hasWarlord = warlordSystem?.GetWarlordForParty(militia) != null;
+                    if (!hasWarlord && strength < 25f)
+                    {
+                        comp.SleepFor(2f);
                     }
                 });
 
-
+            // ── AUTONOMIC ────────────────────────────────────────────────────────
+            // Küresel arka plan sağlık kontrolü. Düşük frekanslı, yük yüksekse atlanır.
+            // İki görev:
+            // 1) Yüksek korku altındaki warlord'ların militislerini uyandır
+            //    (FearSystem bunu reaktif yapmıyor, polling gerekiyor)
+            // 2) Zombie milis tespiti: aktif görünen ama geçersiz component'e sahip
+            //    militisleri işaretle (PartyCleanupSystem sonraki tick'te temizler)
             _autonomic = new GanglionGroup("Autonomic", budget: 20)
                 .AddGroupProcessor(static (p) =>
                 {
-
-
+                    // Yük yüksekse bu arka plan kontrolünü atla — kritik değil
                     if (p.IsHighLoad) return;
+                    if (Campaign.Current == null) return;
 
+                    var fear = FearSystem.Instance;
+                    if (fear == null) return;
 
+                    var scheduler = ModuleManager.Instance?.GetModule<AISchedulerSystem>();
+
+                    // Görev 1: Yüksek korku altındaki warlord'ların militislerini uyandır
+                    // Korku > 75 olan bir warlord, militislerinin reaktif davranmasını gerektirir
+                    foreach (var w in p.AllWarlords)
+                    {
+                        if (w?.CommandedMilitias == null || !w.IsAlive) continue;
+
+                        if (!p.WarlordFearIndex.TryGetValue(w.StringId, out float fearScore))
+                            continue;
+
+                        if (fearScore <= 75f) continue;
+
+                        foreach (var m in w.CommandedMilitias)
+                        {
+                            if (m?.IsActive != true) continue;
+                            if (m.MapEvent != null) continue;
+
+                            var comp = m.PartyComponent as MilitiaPartyComponent;
+                            if (comp == null) continue;
+
+                            // Sadece derin uyku modundakileri uyandır (> 2 saat kalan)
+                            float remaining = (float)(comp.NextThinkTime - CampaignTime.Now).ToHours;
+                            if (remaining > 2f)
+                            {
+                                comp.WakeUp();
+                                scheduler?.EnqueueDecision(m, urgent: false);
+                            }
+                        }
+                    }
+
+                    // Görev 2: Zombie milis tespiti
+                    // IsActive = true ama component null veya bozuk olan militisler
+                    // Bu durumu tespit edip CleanupSystem'in kuyruğuna gönder
+                    var cleanup = ModuleManager.Instance
+                        ?.GetModule<PartyCleanupSystem>();
+                    if (cleanup == null) return;
+
+                    foreach (var militia in p.ActiveMilitias)
+                    {
+                        if (militia == null) continue;
+
+                        // Component yoksa veya HomeSettlement kaybolduysa → zombie
+                        var comp = militia.PartyComponent as MilitiaPartyComponent;
+                        if (comp == null)
+                        {
+                            // PartyCleanupSystem'in public API'si üzerinden işaretle
+                            // (kuyruğa ekle — doğrudan silme, campaign thread güvenliği)
+                            cleanup.MarkForDeletion(militia);
+                        }
+                    }
                 });
         }
 
@@ -448,6 +572,12 @@ namespace BanditMilitias.Core.Neural
 
 
             NeuralEventRouter.Instance.OnHourlyTick();
+
+            // Governor'ı NeuralEventRouter ile senkronize et —
+            // flood eşiği high-load'da otomatik düşsün.
+            BanditMilitias.Core.Events.EventBus.Instance
+                .GetGovernor()
+                ?.SetHighLoad(SharedPercept.Current?.IsHighLoad ?? false);
 
 
             NeuralAdvisor.Instance?.OnTickReset();
@@ -525,6 +655,64 @@ namespace BanditMilitias.Core.Neural
 
             _savedTickCount      = _tickCount;
             _savedMilitiasServed = _totalMilitiasServed;
+
+            // ── YENİ: Günlük otomatik eğitim döngüsü ──────────────────────────────
+            TryRunDailyTraining();
+        }
+
+        /// <summary>
+        /// Her TRAINING_INTERVAL_DAYS günde bir NeuralAdvisor'ı ExperienceBuffer'daki
+        /// birikmiş verilerle eğitir. Oyuncu makinesine yük bindirmemek için
+        /// batch sayısı kasıtlı olarak düşük tutulmuştur (10 batch = ~320 sample).
+        /// Headless test modunda bu değer settings üzerinden artırılabilir.
+        /// </summary>
+        private void TryRunDailyTraining()
+        {
+            try
+            {
+                var advisor = NeuralAdvisor.Instance;
+                if (advisor == null || !advisor.IsEnabled || !advisor.IsOperational) return;
+
+                _trainingDayCounter++;
+
+                // Kaç günde bir eğiteceğimizi settings'ten al, yoksa sabit kullan
+                int intervalDays = Settings.Instance?.NeuralTrainingIntervalDays ?? TRAINING_INTERVAL_DAYS;
+
+                if (_trainingDayCounter < intervalDays) return;
+                _trainingDayCounter = 0;
+
+                // Yeterli veri var mı?
+                var buffer = advisor.GetExperienceBuffer();
+                if (buffer == null || buffer.Count < MIN_BUFFER_FOR_TRAINING) return;
+
+                // Headless/test modunda daha fazla batch kullan
+                bool isHeadless = Settings.Instance?.TestingMode == true;
+                int batches = isHeadless
+                    ? (Settings.Instance?.NeuralHeadlessTrainingBatches ?? 50)
+                    : TRAINING_BATCHES;
+
+                float learningRate = Settings.Instance?.NeuralLearningRate ?? 0.01f;
+
+                string result = advisor.TrainOffline(batches, batchSize: 32, learningRate: learningRate);
+
+                // Ağırlıkları kaydet (NeuralDataExporter üzerinden)
+                if (advisor.TotalTrainingBatches % 100 == 0)
+                {
+                    advisor.TrySaveWeights();
+                }
+
+                if (Settings.Instance?.TestingMode == true || isHeadless)
+                {
+                    DebugLogger.Info("NervousSystem.Training",
+                        $"Auto-train complete | batches={batches} | buffer={buffer.Count} | " +
+                        $"totalBatches={advisor.TotalTrainingBatches} | " +
+                        $"confidence={advisor.GlobalConfidence:F3} | {result}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning("NervousSystem", $"TryRunDailyTraining failed: {ex.Message}");
+            }
         }
 
 
@@ -599,5 +787,3 @@ namespace BanditMilitias.Core.Neural
         }
     }
 }
-
-

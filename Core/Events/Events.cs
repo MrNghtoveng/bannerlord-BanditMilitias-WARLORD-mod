@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using BanditMilitias.Intelligence.Neural;
 using BanditMilitias.Intelligence.Strategic;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
@@ -104,12 +105,15 @@ namespace BanditMilitias.Core.Events
         public List<MobileParty>? EnemyParties { get; set; }
         public float EnemyTotalStrength { get; set; }
         public float MilitiaTotalStrength { get; set; }
+        public float WinnerRemainingStrength { get; set; }
+        public float LoserRemainingStrength { get; set; }
         public void Reset()
         {
             WinnerParty = null; LoserParty = null; WinnerHadLordParty = false;
             LoserHadLordParty = false; WinnerHadWarlordParty = false; LoserHadWarlordParty = false;
             EnemyStrengthRatio = 0f; Warlord = null; IsVictory = false;
             EnemyParties = null; EnemyTotalStrength = 0f; MilitiaTotalStrength = 0f;
+            WinnerRemainingStrength = 0f; LoserRemainingStrength = 0f;
         }
     }
 
@@ -120,7 +124,7 @@ namespace BanditMilitias.Core.Events
         public void Reset() { ResultingParty = null; MergedParties = null; }
     }
 
-    public class ThreatLevelChangedEvent : MilitiaEventBase, IPoolableEvent
+    public class ThreatLevelChangedEvent : MilitiaEventBase, IPoolableEvent, ISemanticEvent
     {
         public float OldThreatLevel { get; set; }
         public float NewThreatLevel { get; set; }
@@ -128,6 +132,8 @@ namespace BanditMilitias.Core.Events
         public CampaignTime ChangeTime { get; set; }
         public string Reason { get; set; } = "";
         public void Reset() { OldThreatLevel = 0f; NewThreatLevel = 0f; ThreatDelta    = 0f; ChangeTime     = CampaignTime.Zero; Reason = ""; }
+
+        public float GetSignificanceDelta() => Math.Abs(ThreatDelta);
     }
 
     public class WarlordBetrayedEvent : MilitiaEventBase, IPoolableEvent
@@ -163,13 +169,15 @@ namespace BanditMilitias.Core.Events
         public void Reset() { Warlord = null; }
     }
 
-    public class WarlordAllianceFormedEvent : MilitiaEventBase, IPoolableEvent
+    public class WarlordAllianceFormedEvent : MilitiaEventBase, IPoolableEvent, ISemanticEvent
     {
         public Warlord? PrimaryWarlord { get; set; }
         public Warlord? SecondaryWarlord { get; set; }
         public float RelationScore { get; set; }
         public CampaignTime FormedAt { get; set; }
         public void Reset() { PrimaryWarlord = null; SecondaryWarlord = null; RelationScore = 0f; FormedAt = CampaignTime.Zero; }
+        // İlişki skorunun büyüklüğü önem göstergesi
+        public float GetSignificanceDelta() => Math.Abs(RelationScore);
     }
 
     public class AllianceOfferEvent : MilitiaEventBase, IPoolableEvent
@@ -180,7 +188,7 @@ namespace BanditMilitias.Core.Events
         public void Reset() { Warlord = null; KingdomId = ""; OfferCount = 0; }
     }
 
-    public class WarlordRivalryEscalatedEvent : MilitiaEventBase, IPoolableEvent
+    public class WarlordRivalryEscalatedEvent : MilitiaEventBase, IPoolableEvent, ISemanticEvent
     {
         public Warlord? PrimaryWarlord { get; set; }
         public Warlord? SecondaryWarlord { get; set; }
@@ -188,6 +196,8 @@ namespace BanditMilitias.Core.Events
         public float RelationScore { get; set; }
         public CampaignTime EscalatedAt { get; set; }
         public void Reset() { PrimaryWarlord = null; SecondaryWarlord = null; Tension = 0f; RelationScore = 0f; EscalatedAt = CampaignTime.Zero; }
+        // Gerilim değişiminin büyüklüğünü significance olarak kullan
+        public float GetSignificanceDelta() => Math.Abs(Tension);
     }
 
     public class WarlordBackstabEvent : MilitiaEventBase, IPoolableEvent
@@ -207,7 +217,7 @@ namespace BanditMilitias.Core.Events
         public void Reset() { Warlord = null; BountyAmount = 0; Threshold = 0; }
     }
 
-    public class AdaptiveDoctrineShiftedEvent : MilitiaEventBase, IPoolableEvent
+    public class AdaptiveDoctrineShiftedEvent : MilitiaEventBase, IPoolableEvent, ISemanticEvent
     {
         public Warlord? Warlord { get; set; }
         public string OldDoctrine { get; set; } = "";
@@ -223,6 +233,9 @@ namespace BanditMilitias.Core.Events
             Confidence = 0f;
             ChangedAt = CampaignTime.Zero;
         }
+
+        // Güven skoru significance olarak kullan — düşük confidence = önemsiz geçiş
+        public float GetSignificanceDelta() => Math.Abs(Confidence);
     }
 
     public class CrisisStartedEvent : MilitiaEventBase, IPoolableEvent

@@ -1,6 +1,7 @@
 using System;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
+using TaleWorlds.CampaignSystem.Actions;
 using System.Collections.Generic;
 using System.Linq;
 using BanditMilitias.Intelligence.Strategic;
@@ -22,8 +23,10 @@ namespace BanditMilitias.Behaviors
             try
             {
                 Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.HourlyTickEvent, this, OnHourlyTick);
-                hourlyRemoved = true;
                 Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.DailyTickEvent, this, OnDailyTick);
+                Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.MobilePartyDestroyed, this, OnMobilePartyDestroyed);
+                Infrastructure.MbEventExtensions.RemoveListenerSafe(CampaignEvents.HeroKilledEvent, this, OnHeroKilled);
+                hourlyRemoved = true;
                 dailyRemoved = true;
             }
             catch { }
@@ -39,6 +42,9 @@ namespace BanditMilitias.Behaviors
                 CampaignEvents.DailyTickEvent.AddNonSerializedListener(this, OnDailyTick);
                 _dailyRegistered = true;
             }
+
+            CampaignEvents.MobilePartyDestroyed.AddNonSerializedListener(this, OnMobilePartyDestroyed);
+            CampaignEvents.HeroKilledEvent.AddNonSerializedListener(this, OnHeroKilled);
         }
 
 
@@ -54,7 +60,7 @@ namespace BanditMilitias.Behaviors
 
 
                     _savedWarlordIds = WarlordSystem.Instance.GetAllWarlords()
-                        .Where(w => w != null && w.IsAlive)
+                        .Where(w => w != null && w.IsAlive && !string.IsNullOrEmpty(w.StringId))
                         .Select(w => w.StringId)
                         .ToList();
                     _savedQueueSize = _partiesToCalculate.Count;
@@ -76,6 +82,35 @@ namespace BanditMilitias.Behaviors
             catch (Exception ex)
             {
                 Debug.DebugLogger.Warning("WarlordCampaignBehavior", $"SyncData error: {ex.Message}");
+            }
+        }
+
+        private void OnMobilePartyDestroyed(MobileParty party, PartyBase attacker)
+        {
+            if (party == null) return;
+
+            try
+            {
+                // Immediate cleanup of warlord references when a party is destroyed
+                WarlordSystem.Instance.RemoveWarlordByParty(party);
+            }
+            catch (Exception ex)
+            {
+                Debug.DebugLogger.Warning("WarlordCampaignBehavior", $"OnMobilePartyDestroyed error: {ex.Message}");
+            }
+        }
+
+        private void OnHeroKilled(Hero victim, Hero killer, KillCharacterAction.KillCharacterActionDetail detail, bool showNotification)
+        {
+            if (victim == null) return;
+            try
+            {
+                // Immediate cleanup when a warlord's hero is killed (reactive)
+                WarlordSystem.Instance.RemoveWarlordByHero(victim);
+            }
+            catch (Exception ex)
+            {
+                Debug.DebugLogger.Warning("WarlordCampaignBehavior", $"OnHeroKilled error: {ex.Message}");
             }
         }
 

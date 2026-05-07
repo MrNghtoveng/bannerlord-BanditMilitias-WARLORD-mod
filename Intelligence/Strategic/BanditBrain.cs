@@ -16,7 +16,10 @@ using BanditMilitias.Components;
 using BanditMilitias.Intelligence.AI.Components;
 using BanditMilitias.Intelligence.Neural;
 using BanditMilitias.Intelligence.Logging;
+using BanditMilitias.Systems.Enhancement;
+using BanditMilitias.Systems.AI;
 using TaleWorlds.CampaignSystem.Settlements;
+using TaleWorlds.Core;
 using TaleWorlds.Library;
 using TaleWorlds.SaveSystem;
 
@@ -74,6 +77,7 @@ namespace BanditMilitias.Intelligence.Strategic
 
 
         private float _averageDecisionTime = 0f;
+        private Warlord? _warlord;
         private int _totalCommandsIssued = 0;
         private int _successfulCommands = 0;
         private float _overallSuccessRate = 0f;
@@ -643,46 +647,95 @@ namespace BanditMilitias.Intelligence.Strategic
                 var advisor = NeuralAdvisor.Instance;
                 if (advisor == null || !advisor.IsEnabled) return;
 
-
                 var percept = BanditMilitias.Core.Neural.SharedPercept.Current;
 
                 float[] stateFeatures = new float[NeuralAdvisor.STRATEGIC_INPUT_SIZE];
+
+                // [0] Kendi gücümüz
                 stateFeatures[0] = Normalize(outcome.MilitiaStrength, 0f, 5000f);
+                // [1] Düşman gücü
                 stateFeatures[1] = Normalize(outcome.PlayerStrength, 0f, 5000f);
+                // [2] Güç oranı (kendi/düşman)
                 stateFeatures[2] = outcome.PlayerStrength > 0
                     ? Math.Min(3f, outcome.MilitiaStrength / Math.Max(1f, outcome.PlayerStrength))
                     : 1f;
+                // [3] Tehdit seviyesi
                 stateFeatures[3] = Math.Min(1f, percept.ThreatLevel);
 
-                stateFeatures[4] = 0f;
+                // [4] Arazi — orman tespiti (eski: sabit 0f)
+                stateFeatures[4] = IsAssignedPartyInForest() ? 1f : 0f;
 
-                stateFeatures[5] = 0.5f;
+                // [5] Düşman süvari oranı (eski: sabit 0.5f)
+                stateFeatures[5] = EstimateEnemyCavalryRatio(outcome);
 
-                stateFeatures[6] = Normalize(outcome.MilitiaStrength / 10f, 0f, 200f);
+                // [6] Toplam asker sayısı
+                stateFeatures[6] = Normalize(_warlord?.CommandedMilitias?
+                    .Where(m => m?.IsActive == true)
+                    .Sum(m => m.MemberRoster?.TotalManCount ?? 0) ?? (int)outcome.MilitiaStrength / 10,
+                    0f, 200f);
 
-                stateFeatures[7] = 0.5f;
+                // [7] Ortalama asker tieri (eski: sabit 0.5f)
+                stateFeatures[7] = Normalize(EstimateAverageTier(), 0f, 6f);
 
-                stateFeatures[8] = 0.5f;
+                // [8] Warlord kariyer tieri (eski: sabit 0.5f)
+                var careerSystem = WarlordCareerSystem.Instance;
+                int tierInt = _warlord != null && careerSystem != null
+                    ? (int)careerSystem.GetTier(_warlord.StringId) : 2;
+                stateFeatures[8] = Normalize(tierInt, 0f, 4f);
 
-                stateFeatures[9] = 0f;
+                // [9] Aktif avcı var mı (eski: sabit 0f)
+                stateFeatures[9] = (_warlord != null && BountySystem.Instance.HasHunterParty(_warlord.StringId)) ? 1.0f : 0.0f;
 
-                stateFeatures[10] = 0.2f;
+                // [10] Warlord ödülü
+                stateFeatures[10] = _warlord != null ? Normalize(BountySystem.Instance.GetBounty(_warlord.StringId), 0f, 5000f) : 0.2f;
 
+                // [11] Oyuncuya mesafe
                 stateFeatures[11] = percept.ThreatLevel > 0.5f ? 0.3f : 0.7f;
 
+                // ── Action: son alınan doktrine göre seç (kazandı/kaybetti varsayımı yerine) ──
+                var doctrineSystem = AdaptiveAIDoctrineSystem.Instance;
+                CounterDoctrine activeDoctrine = _warlord != null
+                    ? doctrineSystem?.GetProfileForWarlord(
+                        _warlord.CommandedMilitias?.FirstOrDefault(m => m?.IsActive == true))
+                        ?.ActiveCounterDoctrine ?? CounterDoctrine.Balanced
+                    : CounterDoctrine.Balanced;
 
-                int actionIdx = outcome.PlayerWon
-                    ? NeuralActionMap.CommandToIndex(CommandType.Defend)
-                    : NeuralActionMap.CommandToIndex(CommandType.Ambush);
+                int actionIdx = DoctrineToActionIndex(activeDoctrine);
 
-                float casualtyRatio = 0.3f;
-                float reward = RewardFunction.CalculateBattleReward(
-                    !outcome.PlayerWon,
-                    outcome.MilitiaStrength,
-                    outcome.PlayerStrength,
-                    casualtyRatio);
+                // ── Gerçek kayıp oranı (eski: sabit 0.3f) ──────────────────────────────
+                float ownCasualtyRatio = EstimateOwnCasualtyRatio(outcome);
+                float enemyCasualtyRatio = outcome.PlayerStrength > 0
+                    ? Math.Min(1f, (outcome.PlayerStrength - outcome.PlayerRemainingStrength) /
+                        Math.Max(1f, outcome.PlayerStrength))
+                    : 0.3f;
 
-                advisor.RecordExperience(stateFeatures, actionIdx, reward, stateFeatures, "battle");
+                // ── Sürekli ödül (Pirus zaferi farkında) ───────────────────────────────
+                float reward = CalculateContinuousReward(
+                    !outcome.PlayerWon,      // militia kazandı mı
+                    ownCasualtyRatio,
+                    enemyCasualtyRatio);
+
+                // ── nextState: savaş sonrası güncellenmiş vektör ────────────────────────
+                float[] nextStateFeatures = new float[NeuralAdvisor.STRATEGIC_INPUT_SIZE];
+                Array.Copy(stateFeatures, nextStateFeatures, stateFeatures.Length);
+                // Kendi gücü kayıplar kadar azaldı
+                nextStateFeatures[0] = Math.Max(0f, stateFeatures[0] * (1f - ownCasualtyRatio));
+                // Düşman gücü: kazandıysak büyük ölçüde yok oldu
+                nextStateFeatures[1] = !outcome.PlayerWon
+                    ? Math.Max(0f, stateFeatures[1] * 0.1f)
+                    : stateFeatures[1];
+                nextStateFeatures[2] = nextStateFeatures[1] > 0f
+                    ? Math.Min(3f, nextStateFeatures[0] / Math.Max(0.01f, nextStateFeatures[1]))
+                    : 1f;
+
+                advisor.RecordExperience(stateFeatures, actionIdx, reward, nextStateFeatures, "banditbrain_battle");
+
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    DebugLogger.Info("BanditBrain.Neural",
+                        $"Experience | won={!outcome.PlayerWon} | doctrine={activeDoctrine} " +
+                        $"| ownCas={ownCasualtyRatio:F2} | reward={reward:F3} | buffer={advisor.GetExperienceBuffer().Count}");
+                }
             }
             catch (Exception ex)
             {
@@ -1548,6 +1601,92 @@ namespace BanditMilitias.Intelligence.Strategic
             }
 
             return MathF.Clamp(score, 0f, 1f);
+        }
+        // ── YARDIMCI METODLAR (NEURAL ENTEGRASYON) ───────────────────────────
+
+        private bool IsAssignedPartyInForest()
+        {
+            try
+            {
+                var party = _warlord?.CommandedMilitias?.FirstOrDefault(m => m?.IsActive == true);
+                if (party == null) return false;
+
+                var terrainType = CompatibilityLayer.GetTerrainType(party);
+                return terrainType == TerrainType.Forest || terrainType == TerrainType.Steppe;
+            }
+            catch { return false; }
+        }
+
+        private static float EstimateEnemyCavalryRatio(CombatOutcome outcome)
+        {
+            try
+            {
+                if (MobileParty.MainParty == null) return 0.5f;
+                int total = MobileParty.MainParty.MemberRoster?.TotalManCount ?? 0;
+                if (total <= 0) return 0.5f;
+
+                int mounted = MobileParty.MainParty.MemberRoster?.TotalRegulars ?? 0; // Basit tahmin
+                return Math.Min(1f, mounted / (float)total);
+            }
+            catch { return 0.5f; }
+        }
+
+        private float EstimateAverageTier()
+        {
+            try
+            {
+                float tierSum = 0f; int count = 0;
+                foreach (var militia in _warlord?.CommandedMilitias ?? Enumerable.Empty<MobileParty>())
+                {
+                    if (militia?.MemberRoster == null) continue;
+                    foreach (var element in militia.MemberRoster.GetTroopRoster())
+                    {
+                        tierSum += element.Character.Level * element.Number;
+                        count += element.Number;
+                    }
+                }
+                return count > 0 ? (tierSum / count) / 10f : 2.5f;
+            }
+            catch { return 2.5f; }
+        }
+
+        private static float EstimateOwnCasualtyRatio(CombatOutcome outcome)
+        {
+            if (outcome.MilitiaStrength <= 0) return 1f;
+            float lost = Math.Max(0f, outcome.MilitiaStrength - outcome.MilitiaRemainingStrength);
+            return Math.Min(1f, lost / outcome.MilitiaStrength);
+        }
+
+        private static float CalculateContinuousReward(bool won, float ownCasualtyRatio, float enemyCasualtyRatio)
+        {
+            float baseScore = won ? 0.6f : -0.6f;
+            float efficiency = enemyCasualtyRatio - ownCasualtyRatio;
+
+            // Pirus zaferi cezası
+            if (won && ownCasualtyRatio > 0.5f) baseScore *= 0.5f;
+
+            return Math.Max(-1f, Math.Min(1f, baseScore + efficiency * 0.4f));
+        }
+
+        private static int DoctrineToActionIndex(CounterDoctrine doctrine)
+        {
+            return doctrine switch
+            {
+                CounterDoctrine.Balanced       => NeuralActionMap.CommandToIndex(CommandType.Patrol),
+                CounterDoctrine.SpearWall      => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.FastFlank      => NeuralActionMap.CommandToIndex(CommandType.Hunt),
+                CounterDoctrine.HarassScreen   => NeuralActionMap.CommandToIndex(CommandType.Harass),
+                CounterDoctrine.DefensiveDepth => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.ShockRaid      => NeuralActionMap.CommandToIndex(CommandType.Engage),
+                CounterDoctrine.Killbox        => NeuralActionMap.CommandToIndex(CommandType.Ambush),
+                CounterDoctrine.DoubleSquare   => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.FeignedRetreat => NeuralActionMap.CommandToIndex(CommandType.Retreat),
+                CounterDoctrine.RefusedFlank   => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.Turan          => NeuralActionMap.CommandToIndex(CommandType.Engage),
+                CounterDoctrine.Wedge          => NeuralActionMap.CommandToIndex(CommandType.Engage),
+                CounterDoctrine.Hedgehog       => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                _                              => 0
+            };
         }
     }
 }

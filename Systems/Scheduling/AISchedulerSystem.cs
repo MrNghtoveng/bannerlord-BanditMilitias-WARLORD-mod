@@ -4,6 +4,7 @@ using System.Linq;
 using BanditMilitias.Core.Events;
 using BanditMilitias.Debug;
 using BanditMilitias.Infrastructure;
+using BanditMilitias.Components;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
@@ -263,6 +264,9 @@ namespace BanditMilitias.Systems.Scheduling
                     if (urgent)
                         _lastUpdateTimes.Remove(party.StringId);
 
+                    var component = party.GetMilitiaComponent();
+                    if (component != null) component.IsPriorityAIUpdate = false;
+                    
                     Intelligence.AI.CustomMilitiaAI.UpdateTacticalDecision(party);
                     _lastUpdateTimes[party.StringId] = CampaignTime.Now;
                     _totalDecisionsProcessed++;

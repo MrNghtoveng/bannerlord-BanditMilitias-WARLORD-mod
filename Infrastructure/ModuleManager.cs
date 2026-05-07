@@ -1516,6 +1516,7 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
+
         public T? GetModule<T>() where T : class, IMilitiaModule
         {
             return GetModule(typeof(T)) as T;

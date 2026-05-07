@@ -43,7 +43,7 @@ namespace BanditMilitias.Systems.Grid
             CampaignEvents.MobilePartyDestroyed.AddNonSerializedListener(this, OnPartyDestroyed);
         }
 
-        public void OnSessionLaunched()
+        public override void OnSessionStart()
         {
             if (_disposed) return;
 

@@ -108,7 +108,6 @@ namespace BanditMilitias.Behaviors
 
             CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, OnSessionLaunched);
 
-            // AI override — replaces AiPatrollingBehaviorPatch + BanditAiPatch
             CampaignEvents.AiHourlyTickEvent.AddNonSerializedListener(this, OnAiHourlyTick);
         }
 
@@ -224,7 +223,7 @@ namespace BanditMilitias.Behaviors
                     Infrastructure.HealthCheck.DisplayReport(healthReport);
                     Infrastructure.TroopRosterPool.Clear();
                     Intelligence.AI.PatrolDetection.RefreshPatrolCache();
-                    Systems.Grid.SpatialGridSystem.Instance.OnSessionLaunched();
+                    Systems.Grid.SpatialGridSystem.Instance.OnSessionStart();
                     DebugLogger.Info("MilitiaBehavior", "Infrastructure systems initialized (Patrol, Grid, Pool).");
                 }
                 catch (OutOfMemoryException) { throw; }
@@ -437,7 +436,7 @@ namespace BanditMilitias.Behaviors
                 if (!SubModule.IsDeferredInitDone)
                 {
                     _ = SubModule.RunDeferredSystemInit();
-                    Systems.Grid.SpatialGridSystem.Instance.OnSessionLaunched();
+                    Systems.Grid.SpatialGridSystem.Instance.OnSessionStart();
                     Intelligence.AI.PatrolDetection.RefreshPatrolCache();
                     Infrastructure.TroopRosterPool.Clear();
                 }
@@ -1009,6 +1008,7 @@ namespace BanditMilitias.Behaviors
         {
             try
             {
+                ModuleManager.Instance.SyncData(dataStore);
                 var serializableCooldowns = dataStore.IsSaving
                     ? ExportCampaignTimeDictionary(_hideoutCooldowns)
                     : new Dictionary<string, double>();
@@ -1186,23 +1186,19 @@ namespace BanditMilitias.Behaviors
                 bool urgent = mobileParty.MapEvent != null || component.IsPriorityAIUpdate;
 
                 var moduleManager = ModuleManager.Instance;
-                if (moduleManager != null)
+                var scheduler = moduleManager?.GetModule<AISchedulerSystem>();
+                bool usedScheduler = scheduler?.IsEnabled == true;
+
+                if (usedScheduler)
                 {
-                    var scheduler = moduleManager.GetModule<AISchedulerSystem>();
-                    if (scheduler?.IsEnabled == true)
-                        scheduler.EnqueueDecision(mobileParty, urgent);
-                    else
-                        Intelligence.AI.CustomMilitiaAI.UpdateTacticalDecision(mobileParty);
+                    scheduler!.EnqueueDecision(mobileParty, urgent);
+                    // Flag ve sleep scheduler'ın callback'ine bırakılıyor.
                 }
                 else
                 {
                     Intelligence.AI.CustomMilitiaAI.UpdateTacticalDecision(mobileParty);
+                    component.IsPriorityAIUpdate = false;
                 }
-
-                component.IsPriorityAIUpdate = false;
-
-                if (!urgent)
-                    component.SleepFor(GetAiSleepHours(component));
             }
             catch (OutOfMemoryException) { throw; }
             catch (Exception ex)

@@ -2,6 +2,7 @@ using BanditMilitias.Boot;
 using BanditMilitias.Debug;
 using BanditMilitias.Diagnostics;
 using BanditMilitias.Infrastructure;
+using BanditMilitias.Intelligence.Neural;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,6 +11,7 @@ using System.Diagnostics;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
+using TaleWorlds.MountAndBlade;
 
 namespace BanditMilitias.Lifecycle
 {
@@ -63,8 +65,15 @@ namespace BanditMilitias.Lifecycle
             {
                 Core.Events.EventBus.Instance.ResetForSessionEnd();
                 Core.Events.EventBus.Instance.CaptureMainThread();
+                // Governor başlat — tüm oturum boyunca aktif kalır.
+                Core.Events.EventBus.Instance.SetGovernor(new NeuralBusGovernor());
             }
-            public void CleanupSystem() => Core.Events.EventBus.Instance.ResetForSessionEnd();
+            public void CleanupSystem()
+            {
+                // Governor'ı null'a çek — kirli state bir sonraki oturuma taşınmasın.
+                Core.Events.EventBus.Instance.SetGovernor(null);
+                Core.Events.EventBus.Instance.ResetForSessionEnd();
+            }
         }
 
         private class SurrenderFixSystemWrapper : ISystemInitiable
@@ -503,21 +512,28 @@ namespace BanditMilitias.Lifecycle
                 bool aiEnabled = AiSystemEnabled;
                 bool warlordEnabled = WarlordSystemEnabled;
                 bool brainEnabled = BrainSystemEnabled;
-                bool ok = _systemInitCoordinator.RunDeferredSystemInit(DisplayInfo, DisplaySystemStatus, ref aiEnabled, ref warlordEnabled, ref brainEnabled);
+                SystemInitResult result = _systemInitCoordinator.RunDeferredSystemInit(DisplayInfo, DisplaySystemStatus, ref aiEnabled, ref warlordEnabled, ref brainEnabled);
                 AiSystemEnabled = aiEnabled;
                 WarlordSystemEnabled = warlordEnabled;
                 BrainSystemEnabled = brainEnabled;
-                if (ok)
+
+                if (result == SystemInitResult.Success)
                 {
                     DeferredInitDone = true;
                     _deferredInitFailureCount = 0;
                     return true;
                 }
 
+                if (result == SystemInitResult.Fatal)
+                {
+                    EnterHardStop("Critical system initialization failed. Check logs for details.");
+                    return false;
+                }
+
                 _deferredInitFailureCount++;
                 if (_deferredInitFailureCount >= MaxDeferredInitFailures)
                 {
-                    EnterEmergencyStop($"Deferred system init failed {_deferredInitFailureCount} times.", null);
+                    EnterHardStop($"Deferred system init failed {_deferredInitFailureCount} times.");
                 }
                 return false;
             }
@@ -652,6 +668,24 @@ namespace BanditMilitias.Lifecycle
             }
 
             DisplayError($"[BanditMilitias] EMERGENCY STOP: {reason}. Mod disabled to prevent save corruption.");
+        }
+
+        private void EnterHardStop(string reason)
+        {
+            _stateController.ForceState(ModState.Failed, "HARD STOP: " + reason);
+            Core.Events.EventBus.Instance.SetLifecycleState(ModState.Failed);
+            
+            FileLogger.LogError($"[HARD STOP] Reason: {reason}");
+
+            // Show a blocking inquiry to the user
+            InformationManager.ShowInquiry(new InquiryData(
+                "Bandit Militias - CRITICAL ERROR",
+                $"The mod encountered a critical initialization failure: {reason}\n\n" +
+                "To prevent save corruption, the game session must be terminated. Please check your logs and report this issue.",
+                true, false, "Exit to Main Menu", "", 
+                () => {
+                    MBGameManager.EndGame();
+                }, null), true);
         }
 
         private void ValidateSettings()

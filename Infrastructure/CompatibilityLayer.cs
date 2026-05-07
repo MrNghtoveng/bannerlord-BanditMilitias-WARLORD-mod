@@ -105,6 +105,8 @@ namespace BanditMilitias.Infrastructure
 
         public static MobileParty? CreatePartySafe(string partyId, PartyComponent component, Clan? faction, bool forceLootersIfNull = true)
         {
+            if (TaleWorlds.CampaignSystem.Campaign.Current == null) return null;
+
             if (faction == null && forceLootersIfNull)
             {
 
@@ -431,6 +433,20 @@ namespace BanditMilitias.Infrastructure
             }
 
             return Vec2.Invalid;
+        }
+
+        public static TerrainType GetTerrainType(MobileParty party)
+        {
+            if (party == null) return TerrainType.Plain;
+            try
+            {
+                if (Campaign.Current?.MapSceneWrapper != null)
+                {
+                    return Campaign.Current.MapSceneWrapper.GetTerrainTypeAtPosition(CreateCampaignVec2(GetPartyPosition(party)));
+                }
+            }
+            catch { }
+            return TerrainType.Plain;
         }
 
         public static Vec3 GetHeroPosition(Hero hero)

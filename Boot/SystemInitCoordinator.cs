@@ -9,6 +9,13 @@ using TaleWorlds.Core;
 
 namespace BanditMilitias.Boot
 {
+    public enum SystemInitResult
+    {
+        Success,
+        Degraded,
+        Fatal
+    }
+
     public sealed class SystemInitCoordinator
     {
         private readonly BootWatchdog _bootWatchdog;
@@ -33,6 +40,19 @@ namespace BanditMilitias.Boot
             }
 
             return true;
+        }
+
+        public bool IsCriticalSystemFailed()
+        {
+            // Strategic systems are critical for the WARLORD experience.
+            // If the Brain or WarlordSystem is broken, the session is essentially useless/risky.
+            var brain = ModuleManager.Instance?.GetModule<Intelligence.Strategic.BanditBrain>();
+            if (brain != null && brain.IsCritical && !brain.IsEnabled) return true;
+
+            var warlords = ModuleManager.Instance?.GetModule<Intelligence.Strategic.WarlordSystem>();
+            if (warlords != null && warlords.IsCritical && !warlords.IsEnabled) return true;
+
+            return false;
         }
 
         public void RegisterGameModels(IGameStarter gameStarter)
@@ -193,7 +213,7 @@ namespace BanditMilitias.Boot
             }
         }
 
-        public bool RunDeferredSystemInit(Action<string, TaleWorlds.Library.Color?> info, Action displayStatus, ref bool aiSystemEnabled, ref bool warlordSystemEnabled, ref bool brainSystemEnabled)
+        public SystemInitResult RunDeferredSystemInit(Action<string, TaleWorlds.Library.Color?> info, Action displayStatus, ref bool aiSystemEnabled, ref bool warlordSystemEnabled, ref bool brainSystemEnabled)
         {
             FileLogger.Log("RunDeferredSystemInit: begin");
             var timer = System.Diagnostics.Stopwatch.StartNew();
@@ -226,7 +246,6 @@ namespace BanditMilitias.Boot
                 warlordSystemEnabled = InitializeStrategicSystems();
                 FileLogger.Log($"InitializeStrategicSystems: {(warlordSystemEnabled ? "OK" : "FAILED")}");
 
-
                 FileLogger.Log("InitializeBrainSystem: begin");
                 brainSystemEnabled = InitializeBrainSystem();
                 FileLogger.Log($"InitializeBrainSystem: {(brainSystemEnabled ? "OK" : "FAILED")}");
@@ -240,13 +259,22 @@ namespace BanditMilitias.Boot
                     displayStatus();
                 }
 
-                return coreOk;
+                // Decide on the final result
+                if (!coreOk) return SystemInitResult.Fatal; // Core infrastructure failure is always Fatal
+                
+                // If critical systems (Warlord, Brain) failed to initialize, escalate to Fatal
+                if (IsCriticalSystemFailed()) return SystemInitResult.Fatal;
+
+                if (!aiSystemEnabled || !warlordSystemEnabled || !brainSystemEnabled)
+                    return SystemInitResult.Degraded;
+
+                return SystemInitResult.Success;
             }
             catch (Exception ex)
             {
                 FileLogger.LogError($"RunDeferredSystemInit failed: {ex.Message}");
                 DebugLogger.Error("SubModule", $"RunDeferredSystemInit failed: {ex}");
-                return false;
+                return SystemInitResult.Fatal;
             }
         }
     }

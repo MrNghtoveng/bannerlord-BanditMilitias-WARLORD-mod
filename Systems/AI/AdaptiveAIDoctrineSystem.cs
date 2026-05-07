@@ -6,6 +6,11 @@ using BanditMilitias.Intelligence.Strategic;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Tracking;
+using BanditMilitias.Systems.Bounty;
+using BanditMilitias.Debug;
+using BanditMilitias.Systems.Bounty;
+using BanditMilitias.Intelligence.Neural;
+using BanditMilitias.Systems.Enhancement;
 using BanditMilitias.Core.Neural;
 using System;
 using System.Collections.Generic;
@@ -18,6 +23,7 @@ using TaleWorlds.Library;
 using TaleWorlds.SaveSystem;
 using MathF = TaleWorlds.Library.MathF;
 using ArmyComposition = BanditMilitias.Systems.Enhancement.WarlordTacticsSystem.ArmyComposition;
+
 
 namespace BanditMilitias.Systems.AI
 {
@@ -422,17 +428,6 @@ namespace BanditMilitias.Systems.AI
             {
                 foreach (var involved in mapEvent.InvolvedParties)
                 {
-                    if (involved?.MobileParty?.PartyComponent is MilitiaPartyComponent)
-                    {
-                        MilitiaEquipmentManager.Instance.ClearMissionEquipmentPolicy(involved.MobileParty);
-                    }
-                }
-
-                float learningRate = Settings.Instance?.AdaptiveDoctrineLearningRate ?? 0.30f;
-                EnsureGlobalProfile();
-
-                foreach (var involved in mapEvent.InvolvedParties)
-                {
                     MobileParty party = involved.MobileParty;
                     if (party?.PartyComponent is not MilitiaPartyComponent)
                         continue;
@@ -450,14 +445,19 @@ namespace BanditMilitias.Systems.AI
                         ? mapEvent.WinningSide == BattleSideEnum.Attacker
                         : mapEvent.WinningSide == BattleSideEnum.Defender;
 
+                    float learningRate = Settings.Instance?.AdaptiveDoctrineLearningRate ?? 0.30f;
+
+                    // ── Mevcut binary confidence sistemi (değiştirilmedi) ──────────────
                     float confidenceBefore = profile.Confidence;
                     profile.Confidence = AdaptiveDoctrineRules.UpdateConfidence(profile.Confidence, won, learningRate);
                     profile.LastUpdatedTime = CampaignTime.Now;
 
                     if (won) profile.SuccessfulEngagements++;
                     else profile.FailedEngagements++;
-
                     _observedBattleSamples++;
+
+                    // ── YENİ: NeuralAdvisor'a deneyimi ilet ──────────────────────────
+                    TryRecordNeuralExperience(mapEvent, party, warlord, won, militiaIsAttacker);
                 }
             }
         }
@@ -639,6 +639,286 @@ namespace BanditMilitias.Systems.AI
 
             AdaptiveDoctrineDataLogger.ExportProfilesSnapshot(snapshot);
             return $"Doctrine snapshot exported to: {AdaptiveDoctrineDataLogger.SnapshotPath}";
+        }
+
+        /// <summary>
+        /// Savaş sonuçlarını NeuralAdvisor'ın ExperienceBuffer'ına yazar.
+        /// MapEvent'ten gerçek kayıp verisi çeker (sabit 0.3f değil).
+        /// </summary>
+        private void TryRecordNeuralExperience(
+            MapEvent mapEvent,
+            MobileParty militiaParty,
+            Warlord? warlord,
+            bool won,
+            bool isAttacker)
+        {
+            try
+            {
+                var advisor = NeuralAdvisor.Instance;
+                if (advisor == null || !advisor.IsEnabled) return;
+
+                // 1. Savaş öncesi durum vektörünü oluştur
+                float[] stateFeatures = BuildBattleStateFeatures(mapEvent, militiaParty, warlord, isAttacker);
+
+                // 2. Aktif doktrini action index'e çevir
+                AdaptiveDoctrineProfile profile = GetOrCreateProfile(warlord?.StringId ?? GLOBAL_PROFILE_ID);
+                int actionIdx = DoctrineToActionIndex(profile.ActiveCounterDoctrine);
+
+                // 3. Gerçek kayıp oranını hesapla (sabit 0.3f yerine)
+                float ownCasualtyRatio = GetCasualtyRatio(mapEvent, isAttacker ? BattleSideEnum.Attacker : BattleSideEnum.Defender);
+                float enemyCasualtyRatio = GetCasualtyRatio(mapEvent, isAttacker ? BattleSideEnum.Defender : BattleSideEnum.Attacker);
+
+                // 4. Sürekli ödül fonksiyonu (raporun önerdiği, ancak gerçek verilerle)
+                float reward = CalculateContinuousReward(won, ownCasualtyRatio, enemyCasualtyRatio, mapEvent);
+
+                // 5. Savaş sonrası durum (yenilgide düşman gücü sıfıra yakın, zafer durumunda kayıplar hesaba katılır)
+                float[] nextStateFeatures = BuildPostBattleStateFeatures(stateFeatures, won, ownCasualtyRatio);
+
+                advisor.RecordExperience(stateFeatures, actionIdx, reward, nextStateFeatures, "doctrine_battle");
+
+                if (Settings.Instance?.TestingMode == true)
+                {
+                    DebugLogger.Info("DoctrineNeural",
+                        $"Experience recorded | won={won} | action={profile.ActiveCounterDoctrine} " +
+                        $"| ownCas={ownCasualtyRatio:F2} | enemyCas={enemyCasualtyRatio:F2} | reward={reward:F3}");
+                }
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Warning("DoctrineNeural", $"TryRecordNeuralExperience failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// MapEventSide'dan gerçek kayıp oranını çeker.
+        /// Savaş başındaki güç ile bitişteki farkı kullanır.
+        /// </summary>
+        private static float GetCasualtyRatio(MapEvent mapEvent, BattleSideEnum side)
+        {
+            try
+            {
+                if (mapEvent.StrengthOfSide == null || mapEvent.StrengthOfSide.Length < 2)
+                    return 0.3f; // fallback
+
+                // Bannerlord MapEvent'te StrengthOfSide savaş sonrası kalan gücü verir.
+                // Başlangıç gücüne ulaşmak için InvolvedParties'in başlangıç gücünü toplarız.
+                float remainingStrength = mapEvent.StrengthOfSide[(int)side];
+                float initialStrength = 0f;
+
+                foreach (var p in mapEvent.GetMapEventSide(side).Parties)
+                {
+                    if (p?.Party?.MobileParty == null) continue;
+                    // Kalan + kayıp = başlangıç; kayıplar MemberRoster'daki WoundedRegulars üzerinden tahmin edilir
+                    int total = p.Party.MobileParty.MemberRoster?.TotalManCount ?? 0;
+                    int wounded = p.Party.MobileParty.MemberRoster?.TotalWoundedRegulars ?? 0;
+                    initialStrength += total + wounded; // yaklaşık başlangıç
+                }
+
+                if (initialStrength <= 0f) return 0.3f;
+
+                float lost = Math.Max(0f, initialStrength - remainingStrength);
+                return TaleWorlds.Library.MathF.Clamp(lost / initialStrength, 0f, 1f);
+            }
+            catch
+            {
+                return 0.3f;
+            }
+        }
+
+        /// <summary>
+        /// Sürekli ödül fonksiyonu — Pirus zaferini cezalandırır, verimli geri çekilmeyi ödüllendirir.
+        /// R = baseOutcome + casualtyDelta * weight
+        /// </summary>
+        private static float CalculateContinuousReward(
+            bool won,
+            float ownCasualtyRatio,
+            float enemyCasualtyRatio,
+            MapEvent mapEvent)
+        {
+            float baseScore = won ? 0.5f : -0.5f;
+            float casualtyDelta = enemyCasualtyRatio - ownCasualtyRatio; // -1..+1
+
+            // Pirus zaferi tespiti: kazandık ama çok kayıp verdik
+            if (won && ownCasualtyRatio > 0.6f)
+            {
+                baseScore *= (1f - ownCasualtyRatio * 0.5f); // ödülü azalt
+            }
+
+            // Akıllı geri çekilme ödülü:
+            // Çok güçlü düşmana karşı kaybettik ama az kayıp verdik → pozitif
+            if (!won && ownCasualtyRatio < 0.25f)
+            {
+                float enemyStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
+                    ? mapEvent.StrengthOfSide[(int)mapEvent.DefeatedSide == 0 ? 1 : 0]
+                    : 0f;
+                float ownStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
+                    ? mapEvent.StrengthOfSide[(int)mapEvent.DefeatedSide]
+                    : 1f;
+
+                if (enemyStr > ownStr * 1.8f)
+                    baseScore = 0.15f; // Ezici düşmandan kaçmayı başardı
+            }
+
+            float finalReward = baseScore + (casualtyDelta * 0.8f);
+            return TaleWorlds.Library.MathF.Clamp(finalReward, -1.5f, 1.5f);
+        }
+
+        /// <summary>
+        /// Savaş anındaki 12 boyutlu durum vektörü — ExtractFeatures ile aynı yapıda.
+        /// </summary>
+        private static float[] BuildBattleStateFeatures(
+            MapEvent mapEvent,
+            MobileParty militiaParty,
+            Warlord? warlord,
+            bool isAttacker)
+        {
+            float[] f = new float[NeuralAdvisor.STRATEGIC_INPUT_SIZE];
+
+            BattleSideEnum ownSide = isAttacker ? BattleSideEnum.Attacker : BattleSideEnum.Defender;
+            BattleSideEnum enemySide = isAttacker ? BattleSideEnum.Defender : BattleSideEnum.Attacker;
+
+            float ownStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
+                ? mapEvent.StrengthOfSide[(int)ownSide] : 0f;
+            float enemyStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
+                ? mapEvent.StrengthOfSide[(int)enemySide] : 0f;
+
+            f[0] = Normalize(ownStr, 0f, 5000f);
+            f[1] = Normalize(enemyStr, 0f, 5000f);
+            f[2] = enemyStr > 0f ? TaleWorlds.Library.MathF.Min(3f, ownStr / Math.Max(1f, enemyStr)) : 1f;
+            f[3] = Math.Min(1f, PlayerTracker.Instance?.GetThreatLevel() ?? 0.5f);
+
+            // f[4]: arazi — orman mı?
+            f[4] = IsPartyInForest(militiaParty) ? 1f : 0f;
+
+            // f[5]: düşman süvari oranı
+            f[5] = GetEnemyCavalryRatio(mapEvent, enemySide);
+
+            // f[6]: militia toplam asker sayısı normalize
+            f[6] = Normalize(militiaParty.MemberRoster?.TotalManCount ?? 0, 0f, 200f);
+
+            // f[7]: ortalama tier
+            f[7] = Normalize(GetAverageTier(militiaParty), 0f, 6f);
+
+            // f[8]: warlord tier (kariyer seviyesi)
+            var careerSystem = WarlordCareerSystem.Instance;
+            int tierInt = warlord != null && careerSystem != null
+                ? (int)careerSystem.GetTier(warlord.StringId) : 2;
+            f[8] = Normalize(tierInt, 0f, 4f);
+
+            // f[9]: aktif avcı var mı
+            f[9] = (warlord != null && BountySystem.Instance.HasHunterParty(warlord.StringId)) ? 1f : 0f;
+
+            // f[10]: warlord bounty
+            f[10] = warlord != null ? Normalize(BountySystem.Instance.GetBounty(warlord.StringId), 0f, 5000f) : 0.2f;
+
+            // f[11]: oyuncuya mesafe normalize
+            f[11] = GetPlayerDistanceNormalized(militiaParty);
+
+            return f;
+        }
+
+        private static float[] BuildPostBattleStateFeatures(float[] preBattleState, bool won, float ownCasualtyRatio)
+        {
+            float[] next = new float[preBattleState.Length];
+            Array.Copy(preBattleState, next, preBattleState.Length);
+
+            // Savaş sonrası kendi gücümüz azaldı
+            next[0] = Math.Max(0f, preBattleState[0] * (1f - ownCasualtyRatio));
+            // Düşman gücü: kazandıysak azaldı, kaybettik se büyük ölçüde kaldı
+            next[1] = won ? Math.Max(0f, preBattleState[1] * 0.1f) : preBattleState[1];
+            // Güç oranı güncelle
+            next[2] = next[1] > 0f ? Math.Min(3f, next[0] / Math.Max(0.01f, next[1])) : 1f;
+
+            return next;
+        }
+
+        // ── Yardımcı metodlar ──────────────────────────────────────────────────────
+
+        private static int DoctrineToActionIndex(CounterDoctrine doctrine)
+        {
+            // CounterDoctrine → NeuralActionMap.CommandToIndex eşlemesi
+            // Mevcut NeuralActionMap'e göre en yakın CommandType seçilir.
+            return doctrine switch
+            {
+                CounterDoctrine.DefensiveDepth => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.SpearWall      => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.DoubleSquare   => NeuralActionMap.CommandToIndex(CommandType.Defend),
+                CounterDoctrine.ShockRaid      => NeuralActionMap.CommandToIndex(CommandType.CommandRaidVillage),
+                CounterDoctrine.FastFlank      => NeuralActionMap.CommandToIndex(CommandType.Ambush),
+                CounterDoctrine.HarassScreen   => NeuralActionMap.CommandToIndex(CommandType.Ambush),
+                CounterDoctrine.Turan          => NeuralActionMap.CommandToIndex(CommandType.Hunt),
+                CounterDoctrine.FeignedRetreat => NeuralActionMap.CommandToIndex(CommandType.Retreat),
+                _                              => NeuralActionMap.CommandToIndex(CommandType.Ambush),
+            };
+        }
+
+        private static bool IsPartyInForest(MobileParty party)
+        {
+            try
+            {
+                if (Campaign.Current?.MapSceneWrapper == null) return false;
+                var face = Campaign.Current.MapSceneWrapper.GetFaceIndex(
+                    BanditMilitias.Infrastructure.CompatibilityLayer.CreateCampaignVec2(
+                        BanditMilitias.Infrastructure.CompatibilityLayer.GetPartyPosition(party), true));
+                if (!face.IsValid()) return false;
+                return Campaign.Current.MapSceneWrapper.GetFaceTerrainType(face) == TaleWorlds.Core.TerrainType.Forest;
+            }
+            catch { return false; }
+        }
+
+        private static float GetEnemyCavalryRatio(MapEvent mapEvent, BattleSideEnum enemySide)
+        {
+            try
+            {
+                int total = 0, cavalry = 0;
+                foreach (var p in mapEvent.GetMapEventSide(enemySide).Parties)
+                {
+                    if (p?.Party?.MobileParty?.MemberRoster == null) continue;
+                    for (int i = 0; i < p.Party.MobileParty.MemberRoster.Count; i++)
+                    {
+                        var el = p.Party.MobileParty.MemberRoster.GetElementCopyAtIndex(i);
+                        if (el.Character == null) continue;
+                        total += el.Number;
+                        if (el.Character.HasMount()) cavalry += el.Number;
+                    }
+                }
+                return total > 0 ? TaleWorlds.Library.MathF.Clamp((float)cavalry / total, 0f, 1f) : 0.2f;
+            }
+            catch { return 0.2f; }
+        }
+
+        private static float GetAverageTier(MobileParty party)
+        {
+            if (party.MemberRoster == null) return 2f;
+            float tierSum = 0f; int count = 0;
+            for (int i = 0; i < party.MemberRoster.Count; i++)
+            {
+                var el = party.MemberRoster.GetElementCopyAtIndex(i);
+                if (el.Character == null) continue;
+                tierSum += el.Character.Tier * el.Number;
+                count += el.Number;
+            }
+            return count > 0 ? tierSum / count : 2f;
+        }
+
+        private static float GetPlayerDistanceNormalized(MobileParty party)
+        {
+            try
+            {
+                var mainParty = TaleWorlds.CampaignSystem.Party.MobileParty.MainParty;
+                if (mainParty == null) return 0.5f;
+                float dist = BanditMilitias.Infrastructure.CompatibilityLayer
+                    .GetPartyPosition(party)
+                    .Distance(BanditMilitias.Infrastructure.CompatibilityLayer.GetPartyPosition(mainParty));
+                return Normalize(dist, 0f, 100f);
+            }
+            catch { return 0.5f; }
+        }
+
+        private static float Normalize(float value, float min, float max)
+        {
+            if (max <= min) return 0f;
+            return Math.Max(0f, Math.Min(1f, (value - min) / (max - min)));
         }
     }
 

@@ -1,4 +1,5 @@
 using BanditMilitias.Components;
+using BanditMilitias.Core.Components;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.Core;
@@ -8,12 +9,31 @@ using System.Collections.Generic;
 
 namespace BanditMilitias.Systems.AI
 {
-    public class MilitiaEquipmentManager
+    [AutoRegister(Priority = 300, IsCritical = false)]
+    public class MilitiaEquipmentManager : MilitiaModuleBase
     {
+        public override string ModuleName => "MilitiaEquipment";
         private static readonly Lazy<MilitiaEquipmentManager> _instance = new(() => new MilitiaEquipmentManager());
         public static MilitiaEquipmentManager Instance => _instance.Value;
         private readonly object _policyLock = new();
-        private readonly Dictionary<string, CounterDoctrine> _missionDoctrineByPartyId = new();
+        private Dictionary<string, CounterDoctrine> _missionDoctrineByPartyId = new Dictionary<string, CounterDoctrine>();
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            lock (_policyLock)
+            {
+                dataStore.SyncData("_militiaEquipmentDoctrines", ref _missionDoctrineByPartyId);
+                if (dataStore.IsLoading && _missionDoctrineByPartyId == null)
+                {
+                    _missionDoctrineByPartyId = new Dictionary<string, CounterDoctrine>();
+                }
+            }
+        }
+
+        public override void Cleanup()
+        {
+            ResetMissionEquipmentPolicies();
+        }
 
         public void ApplyMissionEquipmentPolicy(MobileParty party, CounterDoctrine doctrine)
         {

@@ -193,6 +193,13 @@ namespace BanditMilitias.Systems.Behavior
             }
         }
 
+        public override void SyncData(IDataStore dataStore)
+        {
+            _ = dataStore.SyncData("_lastVassalScanTime_v1", ref _lastVassalScanTime);
+            if (dataStore.IsLoading && _lastVassalScanTime == null)
+                _lastVassalScanTime = new Dictionary<string, CampaignTime>();
+        }
+
         private void AssessGarrison(Warlord w)
         {
 

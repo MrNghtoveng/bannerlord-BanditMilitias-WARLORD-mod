@@ -72,6 +72,60 @@ namespace BanditMilitias.Intelligence.Strategic
             }
         }
 
+        public override void SyncData(IDataStore dataStore)
+        {
+            lock (_initLock)
+            {
+                dataStore.SyncData("_allWarlords_v2", ref _allWarlords);
+                dataStore.SyncData("_totalWarlordsCreated", ref _totalWarlordsCreated);
+                dataStore.SyncData("_totalWarlordsFallen", ref _totalWarlordsFallen);
+                dataStore.SyncData("_infightingTriggers", ref _infightingTriggers);
+
+                if (dataStore.IsLoading)
+                {
+                    _allWarlords ??= new Dictionary<string, Warlord>();
+                    RebuildWarlordMaps();
+                    _warlordListDirty = true;
+                }
+            }
+        }
+
+        public override void OnSessionStart()
+        {
+            lock (_initLock)
+            {
+                ReIdentifyWarlordParties();
+            }
+        }
+
+        private void ReIdentifyWarlordParties()
+        {
+            int reIdentified = 0;
+            foreach (var warlord in _allWarlords.Values)
+            {
+                warlord.CommandedMilitias.Clear();
+                foreach (var partyId in warlord.CommandedMilitiaIds)
+                {
+                    var party = Campaign.Current.MobileParties.FirstOrDefault(p => p != null && p.StringId == partyId);
+                    if (party != null)
+                    {
+                        warlord.CommandedMilitias.Add(party);
+                        if (party.PartyComponent is MilitiaPartyComponent comp)
+                        {
+                            comp.AssignedWarlord = warlord;
+                            comp.WarlordId = warlord.StringId;
+                        }
+                        reIdentified++;
+                    }
+                }
+            }
+
+            if (reIdentified > 0)
+            {
+                DebugLogger.Info("WarlordSystem", $"Re-identified {reIdentified} parties for active warlords.");
+            }
+        }
+
         public override void Cleanup()
         {
             lock (_initLock)
@@ -172,20 +226,31 @@ namespace BanditMilitias.Intelligence.Strategic
 
         public void RemoveWarlord(Warlord warlord)
         {
+            if (warlord == null) return;
+            RemoveWarlordById(warlord.StringId);
+        }
+
+        public void RemoveWarlordById(string? id)
+        {
+            if (string.IsNullOrEmpty(id)) return;
+
             lock (_initLock)
             {
-                if (warlord == null) return;
+                if (!_allWarlords.TryGetValue(id!, out var warlord)) return;
 
                 warlord.IsAlive = false;
-                _ = _allWarlords.Remove(warlord.StringId);
+                _ = _allWarlords.Remove(id!);
+                
                 if (warlord.AssignedHideout != null) _ = _warlordsByHideout.Remove(warlord.AssignedHideout);
                 if (warlord.LinkedHero != null) _ = _warlordsByHero.Remove(warlord.LinkedHero);
                 _ = _warlordStates.Remove(warlord);
 
-                foreach (var militia in warlord.CommandedMilitias)
+                foreach (var militia in warlord.CommandedMilitias.ToList())
                 {
+                    warlord.ReleaseMilitia(militia);
                     SynchronizeReleasedMilitiaState(militia);
                 }
+                warlord.CommandedMilitiaIds.Clear();
 
                 _totalWarlordsFallen++;
                 _warlordListDirty = true;
@@ -196,7 +261,40 @@ namespace BanditMilitias.Intelligence.Strategic
                 try { BanditMilitias.Core.Events.EventBus.Instance.Publish(evt); }
                 finally { BanditMilitias.Core.Events.EventBus.Instance.Return(evt); }
 
-                DebugLogger.Info("WarlordSystem", $"Warlord fallen: {warlord.Name}");
+                DebugLogger.Info("WarlordSystem", $"Warlord removed: {warlord.Name} (ID: {id})");
+            }
+        }
+
+        public void RemoveWarlordByHero(Hero hero)
+        {
+            if (hero == null) return;
+            lock (_initLock)
+            {
+                if (_warlordsByHero.TryGetValue(hero, out var warlord))
+                {
+                    RemoveWarlord(warlord);
+                }
+            }
+        }
+
+        public void RemoveWarlordByParty(MobileParty party)
+        {
+            if (party == null) return;
+            
+            Warlord? warlord = GetWarlordForParty(party);
+            if (warlord != null)
+            {
+                // If it's a leader hero party, the whole Warlord falls.
+                if (warlord.LinkedHero != null && party.LeaderHero == warlord.LinkedHero)
+                {
+                    RemoveWarlord(warlord);
+                }
+                else
+                {
+                    // Otherwise just release the party from command
+                    warlord.ReleaseMilitia(party);
+                    SynchronizeReleasedMilitiaState(party);
+                }
             }
         }
 
@@ -1368,6 +1466,10 @@ namespace BanditMilitias.Intelligence.Strategic
         public float MilitiaStrength;
         [SaveableField(4)]
         public CampaignTime Timestamp;
+        [SaveableField(5)]
+        public float MilitiaRemainingStrength;
+        [SaveableField(6)]
+        public float PlayerRemainingStrength;
     }
 
     public class MilitiaPerformance

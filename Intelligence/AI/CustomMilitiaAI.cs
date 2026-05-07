@@ -225,7 +225,9 @@ namespace BanditMilitias.Intelligence.AI
         private static bool CheckForOpportunities(MobileParty party, MilitiaPartyComponent component)
         {
             if (party.MapFaction == null) return false;
-            var doctrineSystem = ModuleManager.Instance.GetModule<AdaptiveAIDoctrineSystem>();
+            
+            var moduleManager = ModuleManager.Instance;
+            var doctrineSystem = moduleManager?.GetModule<AdaptiveAIDoctrineSystem>();
 
             var target = FindBestRaidTarget(party);
             if (target != null)
@@ -559,8 +561,9 @@ namespace BanditMilitias.Intelligence.AI
             }
             else
             {
+                var militias = ModuleManager.Instance?.ActiveMilitias;
+                if (militias == null) return;
 
-                var militias = ModuleManager.Instance.ActiveMilitias;
                 foreach (var party in militias)
                 {
                     if (party != null && party.IsActive)
@@ -611,7 +614,10 @@ namespace BanditMilitias.Intelligence.AI
             if (evt.Type == BanditMilitias.Systems.Territory.HotspotType.BattleGround) cmdType = CommandType.Scavenge;
             else if (evt.Type == BanditMilitias.Systems.Territory.HotspotType.RaidTarget) cmdType = CommandType.Raid;
 
-            var candidates = ModuleManager.Instance.ActiveMilitias
+            var activeMilitias = ModuleManager.Instance?.ActiveMilitias;
+            if (activeMilitias == null) return;
+
+            var candidates = activeMilitias
                 .Where(p =>
                     p.IsActive &&
                     IsPartyIdle(p) &&

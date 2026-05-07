@@ -201,6 +201,10 @@ namespace BanditMilitias.Core.Neural
             { typeof(LegacyEchoActivatedEvent),       EventNeuronCategory.Autonomic },
             { typeof(StrategicAssessmentEvent),       EventNeuronCategory.Autonomic },
 
+            // Daha önce kayıt dışı kalan event'ler — Autonomic fallback'e düşüyorlardı.
+            { typeof(ZombiePartyDetectedEvent),       EventNeuronCategory.Spawn     },
+            { typeof(AIDecisionEvent),                EventNeuronCategory.Combat    },
+
 
         };
 
@@ -281,7 +285,7 @@ namespace BanditMilitias.Core.Neural
                 neuron.RecordFire(prio);
                 BanditMilitias.Core.Events.EventBus.Instance.Publish(gameEvent);
 
-
+                // Critical/High ateşlenince alt-öncelikli kategorileri inhibe et.
                 if (prio <= EventPriority.High)
                 {
                     foreach (var inhibCat in LateralInhibitionMap.GetInhibited(cat))
@@ -290,27 +294,34 @@ namespace BanditMilitias.Core.Neural
             }
             else if (prio <= EventPriority.Normal)
             {
-
-
-                if (gameEvent is IPoolableEvent || typeof(IPoolableEvent).IsAssignableFrom(typeof(T)))
+                // Nöron "hayır" dedi — pooled olup olmadığına bakılmaksızın bastır.
+                // Eski kod pooled event'leri koşulsuz geçiriyordu; bu nöron filtresini anlamsız kılıyordu.
+                // Pooled event'ler Governor aşamasında zaten Publish'e yönlendiriliyor;
+                // burada ek bir bypass açmaya gerek yok.
+                if (gameEvent is not IPoolableEvent)
                 {
-                    neuron.RecordFire(prio);
-                    BanditMilitias.Core.Events.EventBus.Instance.Publish(gameEvent);
+                    // Non-pooled: deferrable, kuyruğa al.
+                    neuron.RecordDeferred();
+                    BanditMilitias.Core.Events.EventBus.Instance.PublishDeferred(gameEvent);
                 }
                 else
                 {
-                    neuron.RecordDeferred();
-                    BanditMilitias.Core.Events.EventBus.Instance.PublishDeferred(gameEvent);
+                    // Pooled: nöron bastırdı, event düşürülüyor.
+                    neuron.RecordDropped();
+
+                    if (BanditMilitias.Settings.Instance?.TestingMode == true)
+                        BanditMilitias.Debug.DebugLogger.Warning("NeuralRouter",
+                            $"Suppressed pooled [{cat}] {typeof(T).Name} " +
+                            $"(prio={prio}, w={neuron.SynapticWeight:F2}, state={neuron.State})");
                 }
             }
             else
             {
-
-
+                // Low priority + nöron bastırdı → tamamen düşür.
                 neuron.RecordDropped();
 
                 if (BanditMilitias.Settings.Instance?.TestingMode == true)
-                    DebugLogger.Warning("NeuralRouter",
+                    BanditMilitias.Debug.DebugLogger.Warning("NeuralRouter",
                         $"Dropped [{cat}] {typeof(T).Name} " +
                         $"(prio={prio}, w={neuron.SynapticWeight:F2}, state={neuron.State})");
             }

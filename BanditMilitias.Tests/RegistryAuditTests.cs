@@ -51,7 +51,7 @@ namespace BanditMilitias.Tests
             var ghosts = new List<string>();
             foreach (var moduleClass in moduleClasses)
             {
-                if (moduleClass is "MilitiaUpgradeSystem" or "TroopProgressionSystem") continue;
+                if (moduleClass is "MilitiaUpgradeSystem") continue;
 
                 var file = GetSourceFiles().FirstOrDefault(f => f.content.Contains($"class {moduleClass}"));
                 if (file.content != null && !Regex.IsMatch(file.content, @"\[[\w\.]*AutoRegister"))

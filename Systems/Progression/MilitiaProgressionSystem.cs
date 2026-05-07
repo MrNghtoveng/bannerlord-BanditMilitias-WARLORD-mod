@@ -24,7 +24,7 @@ namespace BanditMilitias.Systems.Progression
         public override int Priority => 80;
 
 
-        private readonly Dictionary<string, int> _hordeXpPool = new();
+        private Dictionary<string, int> _hordeXpPool = new();
 
 
         public override void OnDailyTick()
@@ -305,8 +305,11 @@ namespace BanditMilitias.Systems.Progression
 
         public override void SyncData(IDataStore ds)
         {
-
-
+            _ = ds.SyncData("_hordeXpPool_v1", ref _hordeXpPool);
+            if (ds.IsLoading && _hordeXpPool == null)
+            {
+                _hordeXpPool = new Dictionary<string, int>();
+            }
         }
 
         public override void Cleanup()

@@ -365,9 +365,13 @@ namespace BanditMilitias.Systems.Bounty
         public override void SyncData(IDataStore dataStore)
         {
             _ = dataStore.SyncData("_bountyRecords_v1", ref _records);
+            _ = dataStore.SyncData("_activeBountyHunters_v1", ref _activeHunters);
 
-            if (dataStore.IsLoading && _records == null)
-                _records = new Dictionary<string, WarlordBountyRecord>();
+            if (dataStore.IsLoading)
+            {
+                _records ??= new Dictionary<string, WarlordBountyRecord>();
+                _activeHunters ??= new Dictionary<string, string>();
+            }
         }
 
         public override string GetDiagnostics()

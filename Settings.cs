@@ -472,6 +472,21 @@ namespace BanditMilitias
         [SettingPropertyGroup("{=BMSG_Debug}8. Technical & Debug")]
         public bool EnableNeuralAI { get; set; } = false;
 
+        [SettingPropertyInteger("Neural Training Interval (Days)", 1, 30,
+            HintText = "Kaç oyun gününde bir sinir ağı eğitilsin. Düşük değer = daha sık öğrenme, daha fazla CPU.")]
+        [SettingPropertyGroup("Neural AI / Training")]
+        public int NeuralTrainingIntervalDays { get; set; } = 3;
+
+        [SettingPropertyInteger("Neural Batches (Headless)", 10, 500,
+            HintText = "Test/headless modunda tek eğitim döngüsündeki batch sayısı.")]
+        [SettingPropertyGroup("Neural AI / Training")]
+        public int NeuralHeadlessTrainingBatches { get; set; } = 50;
+
+        [SettingPropertyFloatingInteger("Neural Learning Rate", 0.001f, 0.100f, "#0.000",
+            HintText = "Q-öğrenme oranı. Yüksek = hızlı öğrenir ama dengesiz. Önerilen: 0.01")]
+        [SettingPropertyGroup("Neural AI / Training")]
+        public float NeuralLearningRate { get; set; } = 0.01f;
+
         [SettingPropertyBool("{=BMS_AggressiveCleanup}Aggressive Cleanup", Order = 0, RequireRestart = false,
             HintText = "{=BMS_AggressiveCleanup_H}Removes idle or weak parties during cleanup passes. Enable only if experiencing lag.")]
         [SettingPropertyGroup("{=BMSG_AdvTech}8. Technical & Debug/Advanced Technical", GroupOrder = 1)]
@@ -626,6 +641,10 @@ namespace BanditMilitias
             MaxAITasksPerTick = (int)MathF.Clamp(MaxAITasksPerTick, 1, 100);
             MaxSpawnEvaluationsPerTick = (int)MathF.Clamp(MaxSpawnEvaluationsPerTick, 1, 100);
 
+            NeuralTrainingIntervalDays = (int)MathF.Clamp(NeuralTrainingIntervalDays, 1, 30);
+            NeuralHeadlessTrainingBatches = (int)MathF.Clamp(NeuralHeadlessTrainingBatches, 10, 500);
+            NeuralLearningRate = MathF.Clamp(NeuralLearningRate, 0.001f, 0.1f);
+
             if (WarlordFallbackDays < FamousBanditFallbackDays)
                 WarlordFallbackDays = FamousBanditFallbackDays;
 
@@ -719,6 +738,10 @@ namespace BanditMilitias
             PoorThreshold = 300;
             StrongThreshold = 40;
             WealthyThreshold = 1000;
+
+            NeuralTrainingIntervalDays = 3;
+            NeuralHeadlessTrainingBatches = 50;
+            NeuralLearningRate = 0.01f;
 
             AutoDiagnosticReportInterval = (int)MathF.Clamp(AutoDiagnosticReportInterval, 0, 168);
 

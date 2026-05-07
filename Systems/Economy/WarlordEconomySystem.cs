@@ -47,13 +47,19 @@ namespace BanditMilitias.Systems.Economy
         private System.Collections.Generic.Dictionary<string, System.Collections.Generic.List<Intelligence.Strategic.Warlord>>? _vassalsByLord;
 
 
-        public CampaignTime LastGoldSyncTime { get; private set; } = CampaignTime.Zero;
+        private CampaignTime _lastGoldSyncTime = CampaignTime.Zero;
+        public CampaignTime LastGoldSyncTime => _lastGoldSyncTime;
 
         private WarlordEconomySystem() { }
 
         public override void Initialize()
         {
             DebugLogger.Info("Economy", "WarlordEconomySystem initialized.");
+        }
+
+        public override void SyncData(IDataStore dataStore)
+        {
+            dataStore.SyncData("_lastGoldSyncTime_v1", ref _lastGoldSyncTime);
         }
 
         public override void OnDailyTick()
@@ -292,7 +298,7 @@ namespace BanditMilitias.Systems.Economy
                         party.PartyTradeGold += actualTransfer;
 
 
-                        LastGoldSyncTime = CampaignTime.Now;
+                        _lastGoldSyncTime = CampaignTime.Now;
 
                         if (Settings.Instance?.TestingMode == true && actualTransfer > 500)
                             DebugLogger.TestLog($"[BRIDGE] {w.Name} sent {actualTransfer} gold to {party.Name} for upgrades.");

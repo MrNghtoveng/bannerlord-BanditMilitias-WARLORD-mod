@@ -1,6 +1,7 @@
 using BanditMilitias.Core.Registry;
 using BanditMilitias.Debug;
 using BanditMilitias.Lifecycle;
+using BanditMilitias.Intelligence.Neural;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -18,8 +19,15 @@ namespace BanditMilitias.Core.Events
         public static EventBus Instance => _instance.Value;
 
         private int _mainThreadId = -1;
+        private NeuralBusGovernor? _governor;
 
         private EventBus() { }
+
+        public void SetGovernor(NeuralBusGovernor? g) => _governor = g;
+
+        // NervousSystem'ın high-load sync için Governor'a erişmesini sağlar.
+        // Null dönebilir — çağıran null-check yapmalı.
+        public NeuralBusGovernor? GetGovernor() => _governor;
 
         /// <summary>
         /// Must be called once from the main game thread during initialization.
@@ -276,11 +284,15 @@ namespace BanditMilitias.Core.Events
         {
             if (gameEvent == null) return;
 
+            // Subscriber kontrolü önce — subscriber yoksa Governor'a hiç gitme.
             if (!_subscribers.TryGetValue(typeof(T), out var snapshot) || snapshot == null || snapshot.Length == 0)
             {
                 TraceSignal(gameEvent, 0);
                 return;
             }
+
+            if (_governor != null && _governor.ShouldSuppress(gameEvent))
+                return;
 
             TraceSignal(gameEvent, snapshot.Length);
 
@@ -296,23 +308,23 @@ namespace BanditMilitias.Core.Events
             if (gameEvent == null) return;
 
             var eventType = gameEvent.GetType();
-
             var subscribers = _subscribers;
 
-            if (subscribers.TryGetValue(eventType, out var handlers) && handlers != null && handlers.Length > 0)
+            // Subscriber kontrolü önce — subscriber yoksa Governor'a hiç gitme.
+            if (!subscribers.TryGetValue(eventType, out var handlers) || handlers == null || handlers.Length == 0)
             {
-
-                TraceSignal(gameEvent, handlers.Length);
-
-                foreach (var handler in handlers)
-                {
-                    handler.Invoke(gameEvent);
-                }
-            }
-            else
-            {
-
                 TraceSignal(gameEvent, 0);
+                return;
+            }
+
+            if (_governor != null && _governor.ShouldSuppress(gameEvent))
+                return;
+
+            TraceSignal(gameEvent, handlers.Length);
+
+            foreach (var handler in handlers)
+            {
+                handler.Invoke(gameEvent);
             }
 
         }
@@ -384,8 +396,9 @@ namespace BanditMilitias.Core.Events
 
             try
             {
-
-                const double timeBudgetMs = 4.0;
+                // Ölçüm burada — sadece ProcessQueue başında, her event'te değil.
+                _governor?.UpdateFrameMeasurement();
+                double timeBudgetMs = _governor?.GetTimeBudgetMs() ?? 4.0;
                 const int maxEventsPerPump = 64;
 
                 _processStopwatch.Restart();
@@ -434,7 +447,8 @@ namespace BanditMilitias.Core.Events
                    $"Dropped={dropped}, " +
                    $"PoolTypes={_eventPool.Count}, " +
                    $"Lifecycle={_lifecycleState}, Session={_sessionGeneration}, " +
-                   $"MainThread={_mainThreadId}, CallerThread={callerThread}";
+                   $"MainThread={_mainThreadId}, CallerThread={callerThread}" +
+                   (_governor != null ? $" | {_governor.GetDiagnostics()}" : "");
         }
 
         public void SetLifecycleState(ModState state)

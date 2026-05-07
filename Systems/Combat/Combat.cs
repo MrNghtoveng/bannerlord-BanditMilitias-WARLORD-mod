@@ -307,6 +307,11 @@ namespace BanditMilitias.Systems.Combat
                             float _loseStr = mapEvent.StrengthOfSide[(int)loserSide];
                             
                             battleEvt.EnemyStrengthRatio = _winStr > 0f ? _loseStr / _winStr : 1f;
+                            
+                            // YENİ: Kalan güç bilgisi (kayıp hesaplaması için NeuralAdvisor kullanır)
+                            battleEvt.WinnerRemainingStrength = _winStr;
+                            battleEvt.LoserRemainingStrength  = _loseStr;
+
                             MilitiaProgressionSystem.Instance.OnBattleVictory(winner, _loseStr, _winStr);
                         }
 
