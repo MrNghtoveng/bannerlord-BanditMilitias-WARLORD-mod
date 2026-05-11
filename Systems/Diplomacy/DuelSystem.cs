@@ -15,31 +15,36 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Diplomacy
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 230, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 30, IsCritical = false, IsSingleton = false)]
     public class DuelSystem : Core.Components.MilitiaModuleBase
     {
         public override string ModuleName => "DuelSystem";
         public override bool IsEnabled => Settings.Instance?.EnableWarlords ?? true;
         public override int Priority => 30;
 
-        public static readonly DuelSystem Instance = new();
-        private DuelSystem() { }
+        private static DuelSystem? _instance;
+        public static DuelSystem? Instance => _instance;
 
         private bool _initialized;
 
         public override void Initialize()
         {
             if (_initialized) return;
+            _instance = this;
             CampaignEvents.MapEventEnded.AddNonSerializedListener(this, new Action<MapEvent>(OnMapEventEnded));
             _initialized = true;
         }
 
         public override void Cleanup()
         {
-            CampaignEvents.MapEventEnded.ClearListeners(this);
+            try { CampaignEvents.MapEventEnded?.ClearListeners(this); } catch { }
             if (!_initialized) return;
-            CampaignEvents.MapEventEnded.RemoveNonSerializedListener(this, new Action<MapEvent>(OnMapEventEnded));
+            try { CampaignEvents.MapEventEnded?.RemoveNonSerializedListener(this, new Action<MapEvent>(OnMapEventEnded)); } catch { }
             _initialized = false;
+            _instance = null;
         }
 
         private void OnMapEventEnded(MapEvent ev)

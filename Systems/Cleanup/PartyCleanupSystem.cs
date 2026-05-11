@@ -18,14 +18,18 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Cleanup
 {
-        [BanditMilitias.Core.Components.AutoRegister(Priority = 140, IsCritical = true)]
+        [BanditMilitias.Core.Components.ModuleDependency(
+            typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+            typeof(BanditMilitias.Systems.Cleanup.MilitiaConsolidationSystem),
+            typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
+        [BanditMilitias.Core.Components.AutoRegister(Priority = 40, IsCritical = true)]
     public class PartyCleanupSystem : MilitiaModuleBase, ICleanupSystem
         {
-            private static PartyCleanupSystem? _instance;
-            public static PartyCleanupSystem Instance =>
-                _instance
-                ?? ModuleManager.Instance.GetModule<PartyCleanupSystem>()
-                ?? throw new InvalidOperationException("PartyCleanupSystem is not registered.");
+        private static PartyCleanupSystem? _instance;
+        public static PartyCleanupSystem Instance =>
+            _instance
+            ?? ModuleManager.Instance.GetModule<PartyCleanupSystem>()
+            ?? throw new InvalidOperationException("PartyCleanupSystem is not registered.");
 
         public override string ModuleName => "CleanupSystem";
         public override bool IsEnabled => true;
@@ -519,15 +523,15 @@ namespace BanditMilitias.Systems.Cleanup
             _quarantineList.Clear();
             _gracePeriodTracker.Clear();
             _reusableSnapshot.Clear();
-            CampaignEvents.MobilePartyDestroyed.ClearListeners(this);
+            try { CampaignEvents.MobilePartyDestroyed?.ClearListeners(this); } catch { }
         }
 
         public void DailyCleanup()
         {
-            // Intentionally empty: zombie recovery is handled by AISchedulerSystem.RescueZombies
-            // and destructive cleanup stays behind explicit sweeps/queues.
-
+            // Zombie recovery is handled by AISchedulerSystem.RescueZombies.
+            // Destructive cleanup stays behind explicit sweeps/queues.
         }
+
 
         public bool IsZombie(MobileParty party)
         {

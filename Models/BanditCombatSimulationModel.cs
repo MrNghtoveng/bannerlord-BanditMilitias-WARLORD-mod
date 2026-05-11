@@ -27,7 +27,7 @@ namespace BanditMilitias.Models
         }
 
         [HarmonyTargetMethod]
-        public static System.Reflection.MethodBase TargetMethod()
+        public static System.Reflection.MethodBase? TargetMethod()
         {
             // Bannerlord 1.2+ uses out parameter and void return.
             // 1.1 and older used int return.
@@ -40,9 +40,9 @@ namespace BanditMilitias.Models
         }
 
         [HarmonyPostfix]
-        public static void PostfixDamage(PartyBase attackerParty, PartyBase defenderParty, ref int damage)
+        public static void PostfixDamage(PartyBase attackerParty, PartyBase defenderParty, MapEvent side, ref int damage)
         {
-            if (attackerParty == null || defenderParty == null) return;
+            if (attackerParty == null || defenderParty == null || side == null) return;
 
             var attackerMobile = attackerParty.MobileParty;
             var defenderMobile = defenderParty.MobileParty;
@@ -104,7 +104,7 @@ namespace BanditMilitias.Models
         }
 
         [HarmonyTargetMethod]
-        public static System.Reflection.MethodBase TargetMethod()
+        public static System.Reflection.MethodBase? TargetMethod()
         {
             var type = AccessTools.TypeByName("TaleWorlds.CampaignSystem.GameComponents.DefaultCombatSimulationModel")
                     ?? AccessTools.TypeByName("TaleWorlds.CampaignSystem.Models.CombatSimulationModel");
@@ -115,9 +115,9 @@ namespace BanditMilitias.Models
         }
 
         [HarmonyPostfix]
-        public static void PostfixCasualties(PartyBase attackerParty, PartyBase defenderParty, ref int casualties)
+        public static void PostfixCasualties(PartyBase attackerParty, PartyBase defenderParty, MapEvent side, ref int casualties)
         {
-            if (defenderParty == null) return;
+            if (defenderParty == null || side == null) return;
 
             var defenderMobile = defenderParty.MobileParty;
             if (defenderMobile?.PartyComponent is MilitiaPartyComponent && defenderMobile.MemberRoster != null)

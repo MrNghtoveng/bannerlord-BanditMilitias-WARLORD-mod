@@ -17,8 +17,11 @@ using TaleWorlds.MountAndBlade;
 
 namespace BanditMilitias.Systems.Enhancement
 {
-
-
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.Economy.WarlordEconomySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 50)]
     public class BanditEnhancementSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
 
@@ -439,8 +442,11 @@ namespace BanditMilitias.Systems.Enhancement
         }
     }
 
-
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.Economy.WarlordEconomySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 55)]
     public class WarlordTacticsSystem : MilitiaModuleBase
     {
 

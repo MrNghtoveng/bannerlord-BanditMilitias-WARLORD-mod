@@ -70,6 +70,7 @@ namespace BanditMilitias.Infrastructure
 
         private readonly Dictionary<string, float> _moduleLastTickMs = new Dictionary<string, float>(ModuleNameComparer);
         private readonly Dictionary<string, float> _moduleAvgTickMs = new Dictionary<string, float>(ModuleNameComparer);
+        private readonly Dictionary<IMilitiaModule, int> _moduleHourlyTickCounters = new();
 
 
         private readonly Dictionary<IMilitiaModule, string> _moduleNameCache = new();
@@ -461,7 +462,7 @@ namespace BanditMilitias.Infrastructure
 
                 if (Settings.Instance?.TestingMode == true)
                 {
-                    DebugLogger.Info("ModuleManager", $"Registered module: {moduleName} (Priority: {module.Priority})");
+                    DebugLogger.Info("ModuleManager", $"Registered module: {moduleName} (Priority: {ModulePriorityResolver.Resolve(module)})");
                 }
             }
         }
@@ -501,7 +502,7 @@ namespace BanditMilitias.Infrastructure
                         {
                             string moduleName = ResolveModuleName(module);
                             var moduleTimer = System.Diagnostics.Stopwatch.StartNew();
-                            FileLogger.Log($"Initialize module: {moduleName} (Priority {module.Priority})");
+                            FileLogger.Log($"Initialize module: {moduleName} (Priority {ModulePriorityResolver.Resolve(module)})");
                             module.Initialize();
                             BanditMilitias.Core.Registry.ModuleRegistry.Instance.MarkHealthy(module, "Initialize");
                             moduleTimer.Stop();
@@ -1187,6 +1188,17 @@ namespace BanditMilitias.Infrastructure
                 }
 
                 if (!module.IsCritical && IsModuleFailed(moduleName)) continue;
+
+                if (tickType == "Hourly")
+                {
+                    _moduleHourlyTickCounters.TryGetValue(module, out int count);
+                    count++;
+                    _moduleHourlyTickCounters[module] = count;
+
+                    int interval = Math.Max(1, module.HourlyTickInterval);
+                    if (count % interval != 0) continue;
+                }
+
                 if (tickType == "Application" &&
                     !_tickScheduler.ShouldRun(module, moduleName, dt, ModLifecycleManager.Instance.CurrentState))
                 {
@@ -1311,7 +1323,7 @@ namespace BanditMilitias.Infrastructure
         private IMilitiaModule[] BuildDependencySortedSnapshot()
         {
             var modules = _modules
-                .OrderByDescending(m => m.Priority)
+                .OrderByDescending(ModulePriorityResolver.Resolve)
                 .ThenBy(m => ResolveModuleName(m), ModuleNameComparer)
                 .ToArray();
 
@@ -1374,7 +1386,7 @@ namespace BanditMilitias.Infrastructure
             {
                 ready.Sort((a, b) =>
                 {
-                    int byPriority = b.Priority.CompareTo(a.Priority);
+                    int byPriority = ModulePriorityResolver.Resolve(b).CompareTo(ModulePriorityResolver.Resolve(a));
                     return byPriority != 0
                         ? byPriority
                         : ModuleNameComparer.Compare(ResolveModuleName(a), ResolveModuleName(b));
@@ -1478,6 +1490,7 @@ namespace BanditMilitias.Infrastructure
                 _lastErrorTime.Clear();
                 _failureRecords.Clear();
                 _moduleTickFailureStreaks.Clear();
+                _moduleHourlyTickCounters.Clear();
                 _sortedModuleSnapshot = Array.Empty<IMilitiaModule>();
                 _modulesDirty = true;
 

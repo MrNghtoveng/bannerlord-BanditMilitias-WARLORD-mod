@@ -24,7 +24,14 @@ using TaleWorlds.Library;
 namespace BanditMilitias.Systems.Dev
 {
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 1000, IsCritical = false, DevOnly = true)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Systems.Scheduling.AISchedulerSystem),
+        typeof(BanditMilitias.Intelligence.Strategic.BanditBrain),
+        typeof(BanditMilitias.Intelligence.AI.Components.StaticDataCache),
+        typeof(BanditMilitias.Systems.Grid.SpatialGridSystem),
+        typeof(BanditMilitias.Systems.Economy.WarlordEconomySystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 5, IsCritical = false, DevOnly = true)]
     public class DevDataCollector : MilitiaModuleBase
     {
         private static DevDataCollector? _instance;
@@ -484,10 +491,10 @@ namespace BanditMilitias.Systems.Dev
 
             var modules = new (string name, Func<string> diag)[]
             {
-                ("StaticDataCache",    () => StaticDataCache.Instance.GetDiagnostics()),
+                ("StaticDataCache",    () => StaticDataCache.Instance?.GetDiagnostics() ?? "N/A"),
                 ("AIScheduler",        () => ModuleManager.Instance.GetModule<AISchedulerSystem>()?.GetDiagnostics() ?? "N/A"),
-                ("SpatialGrid",        () => SpatialGridSystem.Instance.GetDiagnostics()),
-                ("DistanceCache",      () => $"CacheSize={SettlementDistanceCache.Instance.CacheSize}"),
+                ("SpatialGrid",        () => SpatialGridSystem.Instance?.GetDiagnostics() ?? "N/A"),
+                ("DistanceCache",      () => $"CacheSize={SettlementDistanceCache.Instance?.CacheSize ?? 0}"),
                 ("ActiveMilitias",     () => $"Count={ModuleManager.Instance.ActiveMilitias.Count}"),
                 ("ModuleManager",      () => ModuleManager.Instance.GetDiagnostics()),
             };

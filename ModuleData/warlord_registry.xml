@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<WarlordRegistry>
+    <!-- 
+        WARLORD MASTER REGISTRY
+        Bu dosya modun tüm varlıklarını ve kurallarını merkezi olarak tanımlar.
+        AssetRegistry.cs bu dosyayı ve ilgili XML'leri bütünlük için denetler.
+    -->
+
+    <!-- 1. Kariyer ve Terfi Kuralları -->
+    <CareerProgression>
+        <Tier id="Outlaw" rank="0" title="{=BM_Tier_Outlaw}Eşkıya" />
+        <Tier id="Warlord" rank="1" title="{=BM_Tier_Warlord}Ünlü Eşkıya" min_battles="5" />
+        <Tier id="MinorLord" rank="2" title="{=BM_Tier_MinorLord}Savaş Lordu" min_battles="15" />
+        <Tier id="Sovereign" rank="3" title="{=BM_Tier_Recognized}Hükümdar" min_battles="30" />
+    </CareerProgression>
+
+    <!-- 2. Taktik Doktrinleri (Adaptive AI) -->
+    <TacticalDoctrines>
+        <Doctrine id="Stealth" counter="Scouts" speed_mult="1.2" visibility_mult="0.5">
+            <Description>{=BM_Doctrine_Stealth_Desc}Haydut Gizliliği: Gece baskınları ve pusu odaklı.</Description>
+        </Doctrine>
+        <Doctrine id="Shock" counter="Infantry" damage_mult="1.3">
+            <Description>{=BM_Doctrine_Shock_Desc}Vur-Kaç: Ağır süvari ve balta saldırıları.</Description>
+        </Doctrine>
+    </TacticalDoctrines>
+
+    <!-- 3. Envanter Şablonları (Otomatik Kuşanma) -->
+    <EquipmentTemplates>
+        <Template id="Mountain_King_Set">
+            <Item category="Armor" id="Item.battania_warlord_armor" />
+            <Item category="Weapon" id="Item.battania_axe_2_t4" />
+        </Template>
+    </EquipmentTemplates>
+
+    <!-- 4. Kritik Diyalog Zincirleri ve Metin Anahtarları -->
+    <InteractionRegistry>
+        <Dialogue id="BM_Diplo_Start" priority="1" type="Intro" />
+        <Dialogue id="BM_Extort" priority="2" type="Action" />
+        <Dialogue id="BM_Dialog_Duel" priority="3" type="Special" />
+    </InteractionRegistry>
+
+    <LocalizationKeys>
+        <Key id="BM_Diplo_Start" />
+        <Key id="BM_Intro_Warlord" />
+        <Key id="BM_Extort" />
+        <Key id="BM_Dialog_Duel" />
+        <Key id="BM_Title_Warlord" />
+        <Key id="BM_Title_Sovereign" />
+        <Key id="BM_Conqueror" />
+        <Key id="BM_Notify_Rebel" />
+        <Key id="BM_Legitimacy_Promotion" />
+        <Key id="BM_Tactical_Warning" />
+        <Key id="BMS_DisplayName" />
+        <Key id="BMSG_Neural" />
+    </LocalizationKeys>
+    
+    <!-- 5. Kritik Birim Şablonları (NPCCharacters) -->
+    <NPCCharacters>
+        <Unit id="NPCCharacter.bm_hero_looters_1" />
+        <Unit id="NPCCharacter.bm_hero_sea_raiders_1" />
+        <Unit id="NPCCharacter.bm_hero_mountain_bandits_1" />
+        <Unit id="NPCCharacter.bm_hero_forest_bandits_1" />
+        <Unit id="NPCCharacter.bm_hero_desert_bandits_1" />
+        <Unit id="NPCCharacter.bm_hero_steppe_bandits_1" />
+        
+        <!-- Temel ve Özel Birimler -->
+        <Unit id="NPCCharacter.looter" />
+        <Unit id="NPCCharacter.deserter" />
+        <Unit id="NPCCharacter.mounted_pillager" />
+        <Unit id="NPCCharacter.mounted_ransacker" />
+        <Unit id="NPCCharacter.sea_raiders_bandit" />
+        <Unit id="NPCCharacter.mountain_bandits_bandit" />
+        <Unit id="NPCCharacter.forest_bandits_bandit" />
+        <Unit id="NPCCharacter.desert_bandits_bandit" />
+        <Unit id="NPCCharacter.steppe_bandits_bandit" />
+        
+        <!-- Kültür Liderleri (Bosses) -->
+        <Unit id="NPCCharacter.sea_raiders_boss" />
+        <Unit id="NPCCharacter.mountain_bandits_boss" />
+        <Unit id="NPCCharacter.forest_bandits_boss" />
+        <Unit id="NPCCharacter.desert_bandits_boss" />
+        <Unit id="NPCCharacter.steppe_bandits_boss" />
+    </NPCCharacters>
+
+</WarlordRegistry>

@@ -19,7 +19,11 @@ namespace BanditMilitias.Systems.Combat
 {
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 340, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.Seasonal.SeasonalEffectsSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 45, IsCritical = false)]
     public class MilitiaMoraleSystem : MilitiaModuleBase
     {
         public override string ModuleName => "MilitiaMoraleSystem";

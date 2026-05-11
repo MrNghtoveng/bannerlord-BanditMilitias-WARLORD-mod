@@ -16,7 +16,11 @@ namespace BanditMilitias.Systems.Diagnostics
 {
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 350, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Cleanup.PartyCleanupSystem),
+        typeof(BanditMilitias.Systems.Economy.WarlordEconomySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 85, IsCritical = false)]
     public class MilitiaAssertionSystem : MilitiaModuleBase
     {
         private static MilitiaAssertionSystem? _instance;

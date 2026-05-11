@@ -22,6 +22,7 @@ using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
 using TaleWorlds.SaveSystem;
+using TaleWorlds.Localization;
 
 namespace BanditMilitias.Intelligence.Strategic
 {
@@ -32,6 +33,7 @@ namespace BanditMilitias.Intelligence.Strategic
     [BanditMilitias.Core.Components.AutoRegister(Priority = 150, IsCritical = true, IsSingleton = true)]
     public sealed partial class BanditBrain : Core.Components.MilitiaModuleBase
     {
+        public override int Priority => 150;
         private static Lazy<BanditBrain> _instanceLazy = CreateLazyInstance();
         private static Lazy<BanditBrain> CreateLazyInstance() => new Lazy<BanditBrain>(() => new BanditBrain(), System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
         public static BanditBrain Instance => _instanceLazy.Value;
@@ -77,7 +79,9 @@ namespace BanditMilitias.Intelligence.Strategic
 
 
         private float _averageDecisionTime = 0f;
-        private Warlord? _warlord;
+#pragma warning disable CS0649
+        private Warlord? _warlord = null; // Uyarı CS0649: alan hiç atanmıyor; çalışma zamanında WarlordSystem'den çözümlenir
+#pragma warning restore CS0649
         private int _totalCommandsIssued = 0;
         private int _successfulCommands = 0;
         private float _overallSuccessRate = 0f;
@@ -561,7 +565,7 @@ namespace BanditMilitias.Intelligence.Strategic
             var command = CreateCommand(strike.Mission, null);
             command.TargetLocation = strike.TargetLocation;
             command.Priority = 1.0f;
-            command.Reason = "COORDINATED STRIKE";
+            command.Reason = new TextObject("{=BM_Reason_CoordStrike}COORDINATED STRIKE").ToString();
 
             foreach (var militia in strike.ParticipatingMilitias)
             {
@@ -668,8 +672,13 @@ namespace BanditMilitias.Intelligence.Strategic
                 // [5] Düşman süvari oranı (eski: sabit 0.5f)
                 stateFeatures[5] = EstimateEnemyCavalryRatio(outcome);
 
+                // Resolve the context warlord at call-time (BanditBrain is a singleton, not per-warlord).
+                // Pick the most prominent active warlord as context for neural feature extraction.
+                var contextWarlord = WarlordSystem.Instance.GetAllWarlords()
+                    .FirstOrDefault(w => w != null && w.IsAlive && w.CommandedMilitias?.Count > 0);
+
                 // [6] Toplam asker sayısı
-                stateFeatures[6] = Normalize(_warlord?.CommandedMilitias?
+                stateFeatures[6] = Normalize(contextWarlord?.CommandedMilitias?
                     .Where(m => m?.IsActive == true)
                     .Sum(m => m.MemberRoster?.TotalManCount ?? 0) ?? (int)outcome.MilitiaStrength / 10,
                     0f, 200f);
@@ -679,26 +688,29 @@ namespace BanditMilitias.Intelligence.Strategic
 
                 // [8] Warlord kariyer tieri (eski: sabit 0.5f)
                 var careerSystem = WarlordCareerSystem.Instance;
-                int tierInt = _warlord != null && careerSystem != null
-                    ? (int)careerSystem.GetTier(_warlord.StringId) : 2;
+                int tierInt = contextWarlord != null && careerSystem != null
+                    ? (int)careerSystem.GetTier(contextWarlord.StringId) : 2;
                 stateFeatures[8] = Normalize(tierInt, 0f, 4f);
 
                 // [9] Aktif avcı var mı (eski: sabit 0f)
-                stateFeatures[9] = (_warlord != null && BountySystem.Instance.HasHunterParty(_warlord.StringId)) ? 1.0f : 0.0f;
+                stateFeatures[9] = (contextWarlord != null && BountySystem.Instance.HasHunterParty(contextWarlord.StringId)) ? 1.0f : 0.0f;
 
                 // [10] Warlord ödülü
-                stateFeatures[10] = _warlord != null ? Normalize(BountySystem.Instance.GetBounty(_warlord.StringId), 0f, 5000f) : 0.2f;
+                stateFeatures[10] = contextWarlord != null ? Normalize(BountySystem.Instance.GetBounty(contextWarlord.StringId), 0f, 5000f) : 0.2f;
 
                 // [11] Oyuncuya mesafe
                 stateFeatures[11] = percept.ThreatLevel > 0.5f ? 0.3f : 0.7f;
 
                 // ── Action: son alınan doktrine göre seç (kazandı/kaybetti varsayımı yerine) ──
                 var doctrineSystem = AdaptiveAIDoctrineSystem.Instance;
-                CounterDoctrine activeDoctrine = _warlord != null
-                    ? doctrineSystem?.GetProfileForWarlord(
-                        _warlord.CommandedMilitias?.FirstOrDefault(m => m?.IsActive == true))
-                        ?.ActiveCounterDoctrine ?? CounterDoctrine.Balanced
-                    : CounterDoctrine.Balanced;
+                var activeMilitia = contextWarlord?.CommandedMilitias?.FirstOrDefault(m => m?.IsActive == true);
+                CounterDoctrine activeDoctrine = CounterDoctrine.Balanced;
+                if (activeMilitia != null && doctrineSystem != null)
+                {
+                    var profile = doctrineSystem.GetProfileForWarlord(activeMilitia);
+                    if (profile != null)
+                        activeDoctrine = profile.ActiveCounterDoctrine;
+                }
 
                 int actionIdx = DoctrineToActionIndex(activeDoctrine);
 
@@ -841,7 +853,14 @@ namespace BanditMilitias.Intelligence.Strategic
             {
                 Type = type,
                 Priority = _baseUtilityScores.TryGetValue(type, out float priority) ? priority : 0.5f,
-                Reason = warlord != null ? $"{warlord.Name}: {type}" : $"Brain: {type}",
+                Reason = warlord != null 
+                    ? new TextObject("{=BM_Reason_WarlordPrefix}{WARLORD}: {TYPE}")
+                        .SetTextVariable("WARLORD", warlord.Name)
+                        .SetTextVariable("TYPE", type.ToString())
+                        .ToString()
+                    : new TextObject("{=BM_Reason_BrainPrefix}Brain: {TYPE}")
+                        .SetTextVariable("TYPE", type.ToString())
+                        .ToString(),
                 TargetLocation = Vec2.Invalid
             };
         }
@@ -899,7 +918,7 @@ namespace BanditMilitias.Intelligence.Strategic
         {
             var command = CreateCommand(CommandType.Defend, null);
             command.Priority = 1.0f;
-            command.Reason = "EMERGENCY: High player threat detected";
+            command.Reason = new TextObject("{=BM_Reason_HighThreat}EMERGENCY: High player threat detected").ToString();
 
             PublishStrategicCommand(command);
         }
@@ -918,7 +937,9 @@ namespace BanditMilitias.Intelligence.Strategic
                 var command = CreateCommand(CommandType.Hunt, warlord);
                 command.TargetLocation = CompatibilityLayer.GetSettlementPosition(hideout);
                 command.Priority = level == DistressLevel.Critical ? 1.0f : 0.7f;
-                command.Reason = $"DISTRESS: {hideout.Name} destroyed!";
+                command.Reason = new TextObject("{=BM_Reason_Distress}DISTRESS: {SETTLEMENT} destroyed!")
+                    .SetTextVariable("SETTLEMENT", hideout.Name)
+                    .ToString();
 
                 IssueCommandToWarlord(warlord, command);
             }
@@ -1018,16 +1039,20 @@ namespace BanditMilitias.Intelligence.Strategic
                 }
             }
 
-            foreach (var village in StaticDataCache.Instance.AllVillages)
+            var cache = StaticDataCache.Instance;
+            if (cache != null)
             {
-                if (village == null)
-                    continue;
-
-                float distSq = CompatibilityLayer.GetSettlementPosition(village).DistanceSquared(myPos);
-                if (distSq < closestVillageDistSq)
+                foreach (var village in cache.AllVillages)
                 {
-                    closestVillage = village;
-                    closestVillageDistSq = distSq;
+                    if (village == null)
+                        continue;
+
+                    float distSq = CompatibilityLayer.GetSettlementPosition(village).DistanceSquared(myPos);
+                    if (distSq < closestVillageDistSq)
+                    {
+                        closestVillage = village;
+                        closestVillageDistSq = distSq;
+                    }
                 }
             }
 
@@ -1039,7 +1064,7 @@ namespace BanditMilitias.Intelligence.Strategic
                     TargetParty = closestThreat,
                     TargetLocation = CompatibilityLayer.GetPartyPosition(closestThreat),
                     Priority = 0.85f,
-                    Reason = "Autonomous captain: local advantage"
+                    Reason = new TextObject("{=BM_Reason_LocalAdv}Autonomous captain: local advantage").ToString()
                 };
             }
 
@@ -1050,7 +1075,7 @@ namespace BanditMilitias.Intelligence.Strategic
                     Type = CommandType.CommandRaidVillage,
                     TargetLocation = CompatibilityLayer.GetSettlementPosition(closestVillage),
                     Priority = 0.9f,
-                    Reason = "Autonomous survival raid"
+                    Reason = new TextObject("{=BM_Reason_SurvivalRaid}Autonomous survival raid").ToString()
                 };
             }
 
@@ -1061,7 +1086,7 @@ namespace BanditMilitias.Intelligence.Strategic
                     Type = CommandType.Defend,
                     TargetLocation = CompatibilityLayer.GetSettlementPosition(home),
                     Priority = 0.7f,
-                    Reason = "Autonomous fallback to hideout"
+                    Reason = new TextObject("{=BM_Reason_FallbackHideout}Autonomous fallback to hideout").ToString()
                 };
             }
 
@@ -1072,7 +1097,7 @@ namespace BanditMilitias.Intelligence.Strategic
                     Type = CommandType.CommandRaidVillage,
                     TargetLocation = CompatibilityLayer.GetSettlementPosition(closestVillage),
                     Priority = 0.72f,
-                    Reason = "Autonomous economic pressure"
+                    Reason = new TextObject("{=BM_Reason_EconPressure}Autonomous economic pressure").ToString()
                 };
             }
 
@@ -1081,7 +1106,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 Type = CommandType.Patrol,
                 TargetLocation = CompatibilityLayer.GetSettlementPosition(home),
                 Priority = 0.45f,
-                Reason = "Autonomous territorial patrol"
+                Reason = new TextObject("{=BM_Reason_TerritoryPatrol}Autonomous territorial patrol").ToString()
             };
         }
 
@@ -1091,7 +1116,9 @@ namespace BanditMilitias.Intelligence.Strategic
         {
 
 
-            var allHideouts = StaticDataCache.Instance.AllHideouts;
+            var cache = StaticDataCache.Instance;
+            if (cache == null) return;
+            var allHideouts = cache.AllHideouts;
             int total = allHideouts.Count;
             if (total == 0) return;
 
@@ -1144,6 +1171,11 @@ namespace BanditMilitias.Intelligence.Strategic
                 _ = _militiaMetrics.Remove(id);
             }
 
+            // Computation cache keys embed CampaignTime.Now.ToHours, so a new entry is
+            // written every hour and old ones never expire via TTL.  Clear once per day
+            // to prevent unbounded Dictionary growth (10 warlords × 11 actions × hours).
+            _computationCache.Clear();
+
             if (_totalDecisionsMade > 1000)
             {
                 var keys = _baseUtilityScores.Keys.ToList();
@@ -1160,6 +1192,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 _totalDecisionsMade = (int)(_totalDecisionsMade * 0.90f);
             }
         }
+
 
         private static float GetPlayerStrength()
         {
@@ -1608,7 +1641,9 @@ namespace BanditMilitias.Intelligence.Strategic
         {
             try
             {
-                var party = _warlord?.CommandedMilitias?.FirstOrDefault(m => m?.IsActive == true);
+                var contextWarlord = _warlord ?? WarlordSystem.Instance.GetAllWarlords()
+                    .FirstOrDefault(w => w != null && w.IsAlive && w.CommandedMilitias?.Count > 0);
+                var party = contextWarlord?.CommandedMilitias?.FirstOrDefault(m => m?.IsActive == true);
                 if (party == null) return false;
 
                 var terrainType = CompatibilityLayer.GetTerrainType(party);
@@ -1636,7 +1671,9 @@ namespace BanditMilitias.Intelligence.Strategic
             try
             {
                 float tierSum = 0f; int count = 0;
-                foreach (var militia in _warlord?.CommandedMilitias ?? Enumerable.Empty<MobileParty>())
+                var contextWarlord = _warlord ?? WarlordSystem.Instance.GetAllWarlords()
+                    .FirstOrDefault(w => w != null && w.IsAlive && w.CommandedMilitias?.Count > 0);
+                foreach (var militia in contextWarlord?.CommandedMilitias ?? Enumerable.Empty<MobileParty>())
                 {
                     if (militia?.MemberRoster == null) continue;
                     foreach (var element in militia.MemberRoster.GetTroopRoster())

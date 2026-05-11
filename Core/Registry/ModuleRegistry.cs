@@ -671,7 +671,7 @@ namespace BanditMilitias.Core.Registry
             TrackInstanceNoLock(module);
             entry.Status = status;
             entry.IsCritical = module.IsCritical;
-            entry.Priority = module.Priority;
+            entry.Priority = ModulePriorityResolver.Resolve(module);
             entry.IsEnabled = module.IsEnabled;
             entry.FailReason = failReason;
             UpdateDiagnosticsNoLock(entry, module, now);

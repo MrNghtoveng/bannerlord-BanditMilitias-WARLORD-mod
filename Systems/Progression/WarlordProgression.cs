@@ -36,6 +36,14 @@ namespace BanditMilitias.Systems.Progression
         Warlord = 3, Recognized = 4, Conqueror = 5
     }
 
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem),
+        typeof(BanditMilitias.Intelligence.Strategic.BanditBrain),
+        typeof(BanditMilitias.Systems.Enhancement.BanditEnhancementSystem),
+        typeof(BanditMilitias.Systems.Economy.BlackMarketSystem),
+        typeof(BanditMilitias.Systems.Workshop.WarlordWorkshopSystem))]
     [BanditMilitias.Core.Components.AutoRegister(Priority = 88, IsCritical = true, IsSingleton = true)]
     public class WarlordCareerSystem : MilitiaModuleBase
     {
@@ -91,9 +99,12 @@ namespace BanditMilitias.Systems.Progression
         private void ApplyPromotion(Warlord w, CareerRecord rec, CareerTier tier)
         {
             InformationManager.ShowInquiry(new InquiryData(
-                "Rank Promotion!",
-                $"{w.FullName} has risen to the rank of {tier}! Calradia is buzzing with this news.",
-                true, false, "Accept", "", null, null
+                new TextObject("{=BM_Inquiry_Promo_Title}Rank Promotion!").ToString(),
+                new TextObject("{=BM_Inquiry_Promo_Body}{NAME} has risen to the rank of {TIER}! Calradia is buzzing with this news.")
+                    .SetTextVariable("NAME", w.FullName)
+                    .SetTextVariable("TIER", new TextObject("{=BM_Tier_" + tier.ToString() + "}" + tier.ToString()))
+                    .ToString(),
+                true, false, new TextObject("{=BM_Accept}Accept").ToString(), "", null, null
             ));
 
             w.Gold += WarlordCareerRules.GetPromoGold(tier);
@@ -107,12 +118,14 @@ namespace BanditMilitias.Systems.Progression
             {
                 case CareerTier.Rebel:
                     ActivateRegionalFear(w);
-                    Notify(w, $"[REBEL] {w.Name} has risen as a 'Rebel'! The region is gripped by fear.", Colors.Yellow);
+                    Notify(w, new TextObject("{=BM_Notify_Rebel}[REBEL] {NAME} has risen as a 'Rebel'! The region is gripped by fear.")
+                        .SetTextVariable("NAME", w.Name).ToString(), Colors.Yellow);
                     w.IsLordHunting = false;
                     break;
 
                 case CareerTier.FamousBandit:
-                    Notify(w, $"[FAMOUS BANDIT] {w.Name} is now a 'Famous Bandit'! Hunting Ground mechanic active.", Colors.Yellow);
+                    Notify(w, new TextObject("{=BM_Notify_Famous}[FAMOUS BANDIT] {NAME} is now a 'Famous Bandit'! Hunting Ground mechanic active.")
+                        .SetTextVariable("NAME", w.Name).ToString(), Colors.Yellow);
                     UpgradeEquipment(w, LegitimacyLevel.FamousBandit);
                     TryAddWorkshop(w, Workshop.WorkshopType.Fletchery);
                     break;
@@ -121,24 +134,26 @@ namespace BanditMilitias.Systems.Progression
                     AssignPersonalityFromBackstory(w);
                     ActivateBrain(w, rec);
                     ActivateSwarm(w);
-                    SetTitle(w, rec, "Warlord");
-                    RenameParties(w, $"{w.Name}'s Army");
+                    SetTitle(w, rec, "{=BM_Title_Warlord}Warlord");
+                    RenameParties(w, new TextObject("{=BM_Warlord_Army}{NAME}'s Army").SetTextVariable("NAME", w.Name).ToString());
                     TryActivateBlackMarket(w);
                     TryActivatePropaganda(w);
                     TryAddWorkshop(w, Workshop.WorkshopType.WeaponSmith);
                     UpgradeEquipment(w, LegitimacyLevel.Warlord);
-                    Notify(w, $"[WARLORD] {w.Name} is now a 'Warlord'! Vassals and strategic systems are now active.", Colors.Magenta);
+                    Notify(w, new TextObject("{=BM_Notify_Warlord}[WARLORD] {NAME} is now a 'Warlord'! Vassals and strategic systems are now active.")
+                        .SetTextVariable("NAME", w.Name).ToString(), Colors.Magenta);
                     break;
 
                 case CareerTier.Recognized:
-                    SetTitle(w, rec, "Sovereign");
+                    SetTitle(w, rec, "{=BM_Title_Sovereign}Sovereign");
                     UpgradeEquipment(w, LegitimacyLevel.Recognized);
                     TrySendAllianceOffer(w, rec);
                     TryAddWorkshop(w, Workshop.WorkshopType.ArmorSmith);
                     TryAddWorkshop(w, Workshop.WorkshopType.HorseBreeder);
                     TryAddWorkshop(w, Workshop.WorkshopType.AlchemyLab);
                     w.IsLordHunting = true;
-                    Notify(w, $"[SOVEREIGN] {w.Name} is now a 'Recognized Sovereign'! Starting to hunt lords.", Colors.Magenta);
+                    Notify(w, new TextObject("{=BM_Notify_Sovereign}[SOVEREIGN] {NAME} is now a 'Recognized Sovereign'! Starting to hunt lords.")
+                        .SetTextVariable("NAME", w.Name).ToString(), Colors.Magenta);
                     break;
 
                 case CareerTier.Conqueror:
@@ -146,12 +161,14 @@ namespace BanditMilitias.Systems.Progression
                     UpgradeEquipment(w, LegitimacyLevel.Recognized);
                     TryAddWorkshop(w, Workshop.WorkshopType.SiegeWorks);
                     InformationManager.DisplayMessage(new InformationMessage(
-                        $"[CONQUEROR] {w.Name} has claimed the title of 'CONQUEROR'! All kingdoms are under a massive threat.", Colors.Red));
+                        new TextObject("{=BM_Notify_Conqueror}[CONQUEROR] {NAME} has claimed the title of 'CONQUEROR'! All kingdoms are under a massive threat.")
+                            .SetTextVariable("NAME", w.Name).ToString(), Colors.Red));
                     break;
             }
 
-            var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<CareerPromotionEvent>();
+            var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<CareerTierChangedEvent>();
             evt.Warlord = w;
+            evt.OldTier = rec.PreviousTier;
             evt.NewTier = tier;
             Core.Neural.NeuralEventRouter.Instance.Publish(evt);
             BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
@@ -262,9 +279,11 @@ namespace BanditMilitias.Systems.Progression
 
         private static void SetTitle(Warlord w, CareerRecord rec, string title)
         {
-            w.Title = title;
+            var titleObj = new TextObject(title);
+            w.Title = titleObj.ToString();
             if (w.LinkedHero?.IsAlive != true) { rec.NameChanged = true; return; }
-            var nameObj = new TextObject($"{title} {{NAME}}");
+            var nameObj = new TextObject("{=BM_Title_Format}{TITLE} {NAME}");
+            _ = nameObj.SetTextVariable("TITLE", titleObj);
             _ = nameObj.SetTextVariable("NAME", w.LinkedHero.FirstName);
             w.LinkedHero.SetName(nameObj, nameObj);
             rec.NameChanged = true;
@@ -341,11 +360,15 @@ namespace BanditMilitias.Systems.Progression
         {
             if (rec.IsConqueror) return;
             rec.IsConqueror = true;
-            w.Name = "The Conqueror";
-            w.Title = "The Conqueror";
+            string conquerorStr = new TextObject("{=BM_Conqueror}The Conqueror").ToString();
+            w.Name = conquerorStr;
+            w.Title = conquerorStr;
             if (w.LinkedHero?.IsAlive == true)
-                w.LinkedHero.SetName(new TextObject("{=BM_Conqueror}The Conqueror"), new TextObject("{=BM_Conqueror}The Conqueror"));
-            RenameParties(w, "The Conqueror's Army");
+            {
+                var nameObj = new TextObject("{=BM_Conqueror}The Conqueror");
+                w.LinkedHero.SetName(nameObj, nameObj);
+            }
+            RenameParties(w, new TextObject("{=BM_Conqueror_Army}The Conqueror's Army").ToString());
         }
 
         private void CheckConquerorCondition()

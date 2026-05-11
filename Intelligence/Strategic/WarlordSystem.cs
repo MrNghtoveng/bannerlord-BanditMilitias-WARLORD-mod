@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using BanditMilitias.Core.Events;
@@ -12,19 +12,28 @@ using BanditMilitias.Systems.Fear;
 using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Progression;
 using BanditMilitias.Systems.Spawning;
+using BanditMilitias.Core.Config;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
+using TaleWorlds.ObjectSystem;
 using TaleWorlds.Library;
 using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Intelligence.Strategic
 {
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Systems.Bounty.BountySystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.Economy.WarlordEconomySystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
     [BanditMilitias.Core.Components.AutoRegister(Priority = 400, IsCritical = true)]
     public class WarlordSystem : Core.Components.MilitiaModuleBase
     {
         public override string ModuleName => "WarlordSystem";
+        public override int Priority => 400;
         private static Lazy<WarlordSystem> _instanceLazy = CreateLazyInstance();
         private static Lazy<WarlordSystem> CreateLazyInstance() => new Lazy<WarlordSystem>(() => new WarlordSystem(), System.Threading.LazyThreadSafetyMode.ExecutionAndPublication);
         public static WarlordSystem Instance => _instanceLazy.Value;
@@ -145,6 +154,54 @@ namespace BanditMilitias.Intelligence.Strategic
             _instanceLazy = CreateLazyInstance();
         }
 
+        private CharacterObject? GetWarlordTemplate(CultureObject culture)
+        {
+            if (culture == null) return null;
+
+            string templateId = culture.StringId switch
+            {
+                "looters" => "bm_hero_looters_1",
+                "sea_raiders" => "bm_hero_sea_raiders_1",
+                "mountain_bandits" => "bm_hero_mountain_bandits_1",
+                "forest_bandits" => "bm_hero_forest_bandits_1",
+                "desert_bandits" => "bm_hero_desert_bandits_1",
+                "steppe_bandits" => "bm_hero_steppe_bandits_1",
+                _ => "bm_hero_looters_1"
+            };
+
+            return MBObjectManager.Instance.GetObject<CharacterObject>(templateId);
+        }
+
+        private Hero? CreateHeroForWarlord(Settlement hideout)
+        {
+            try
+            {
+                var template = GetWarlordTemplate(hideout.Culture);
+                if (template == null)
+                {
+                    DebugLogger.Warning("WarlordSystem", $"Could not find warlord template for culture {hideout.Culture?.StringId ?? "null"}");
+                    return null;
+                }
+
+                Hero hero = HeroCreator.CreateSpecialHero(template, hideout, null, null, -1);
+                
+                // Ensure the hero is active in the world
+                if (hero.HeroState == Hero.CharacterStates.NotSpawned)
+                {
+                    hero.ChangeState(Hero.CharacterStates.Active);
+                }
+
+                hero.Gold = (int)Constants.WARLORD_POCKET_MONEY;
+                
+                return hero;
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.Error("WarlordSystem", $"Failed to create Hero for Warlord: {ex.Message}");
+                return null;
+            }
+        }
+
         public Warlord CreateWarlord(Settlement hideout, Hero? hero = null)
         {
             lock (_initLock)
@@ -157,6 +214,11 @@ namespace BanditMilitias.Intelligence.Strategic
                     return _warlordsByHideout[hideout];
                 }
 
+                if (hero == null)
+                {
+                    hero = CreateHeroForWarlord(hideout);
+                }
+
                 string id = "BM_Warlord_" + Guid.NewGuid().ToString("N").Substring(0, 8);
                 var warlord = new Warlord
                 {
@@ -166,11 +228,11 @@ namespace BanditMilitias.Intelligence.Strategic
                     Personality = GeneratePersonality(),
                     Motivation = GenerateMotivation(),
                     CreationTime = CampaignTime.Now,
-                    Gold = 5000f,
+                    Gold = Constants.WARLORD_POCKET_MONEY,
                     IsAlive = true,
                     IsFemale = hero?.IsFemale ?? (MBRandom.RandomInt(100) < (Settings.Instance?.GenderRatio ?? 20))
                 };
-                warlord.Name = GenerateWarlordName(hideout, warlord.IsFemale);
+                warlord.Name = hero?.Name?.ToString() ?? GenerateWarlordName(hideout, warlord.IsFemale);
 
                 _allWarlords[id] = warlord;
                 _warlordsByHideout[hideout] = warlord;
@@ -469,7 +531,14 @@ namespace BanditMilitias.Intelligence.Strategic
 
             StrategicAI_OverpopulationResponse(warlord);
 
-            warlord.DaysActive++;
+                        warlord.DaysActive++;
+
+            // [ELECTRICAL GRID] Bridge: Signal the Adaptive system that assessment is ready
+            var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<StrategicAssessmentEvent>();
+            evt.Warlord = warlord;
+            evt.AssessmentType = "DailyStrategicUpdate";
+            BanditMilitias.Core.Events.EventBus.Instance.Publish(evt);
+            BanditMilitias.Core.Events.EventBus.Instance.Return(evt);
         }
 
         private void ManageReserves(Warlord warlord)
@@ -570,7 +639,7 @@ namespace BanditMilitias.Intelligence.Strategic
                         {
                             Type = CommandType.CommandLayLow,
                             Priority = 0.9f,
-                            Reason = "High bounty — laying low to survive"
+                            Reason = "High bounty â€” laying low to survive"
                         });
                         return;
                     }
@@ -587,7 +656,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 {
                     Type = CommandType.CommandBuildRepute,
                     Priority = 0.7f,
-                    Reason = "Warlord has surplus gold and low threat — building repute"
+                    Reason = "Warlord has surplus gold and low threat â€” building repute"
                 });
             }
             else if (warlord.CommandedMilitias.Count < 2 && warlord.Gold > 1000)
@@ -596,7 +665,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 {
                     Type = CommandType.Patrol,
                     Priority = 0.5f,
-                    Reason = "Low militia count — patrol mode while waiting for reinforcements"
+                    Reason = "Low militia count â€” patrol mode while waiting for reinforcements"
                 });
             }
         }
@@ -1168,6 +1237,7 @@ namespace BanditMilitias.Intelligence.Strategic
         }
     }
 
+    [Serializable]
     public class Warlord
     {
         [SaveableProperty(1)]
@@ -1602,6 +1672,7 @@ namespace BanditMilitias.Intelligence.Strategic
         public float Progress { get; set; }
     }
 
+    [Serializable]
     public class BattleSite
     {
         [SaveableProperty(1)]
@@ -1612,6 +1683,7 @@ namespace BanditMilitias.Intelligence.Strategic
         public float Intensity { get; set; }
     }
 
+    [Serializable]
     public class StrategicState
     {
         [SaveableField(1)]
@@ -1675,7 +1747,7 @@ namespace BanditMilitias.Intelligence.Strategic
                 return StrategyHelper.Make(warlord, CommandType.Retreat, 1.0f, "They are too strong... That's it for today.");
 
             if (threat.OverallThreat > 0.55f)
-                return StrategyHelper.Make(warlord, CommandType.Ambush, 0.82f + threat.OverallThreat * 0.10f, "Set an ambush – be opportunistic!");
+                return StrategyHelper.Make(warlord, CommandType.Ambush, 0.82f + threat.OverallThreat * 0.10f, "Set an ambush â€“ be opportunistic!");
 
             if (threat.OverallThreat > 0.25f)
                 return StrategyHelper.Make(warlord, CommandType.Hunt, 0.85f, "HUNT!");
@@ -1708,9 +1780,9 @@ namespace BanditMilitias.Intelligence.Strategic
                 return StrategyHelper.Make(warlord, CommandType.Defend, 0.75f, "Defend, stay safe.");
 
             if (player.CurrentStrength < 30)
-                return StrategyHelper.Make(warlord, CommandType.Harass, 0.58f, "Player is weak – harass, win.");
+                return StrategyHelper.Make(warlord, CommandType.Harass, 0.58f, "Player is weak â€“ harass, win.");
 
-            return StrategyHelper.Make(warlord, CommandType.Patrol, 0.45f, "Patrol – stay visible but careful.");
+            return StrategyHelper.Make(warlord, CommandType.Patrol, 0.45f, "Patrol â€“ stay visible but careful.");
         }
 
         public float GetActionAffinity(CommandType action) => action switch
@@ -1739,7 +1811,7 @@ namespace BanditMilitias.Intelligence.Strategic
 
             if (player.PlayStyle == PlayStyle.Aggressive && player.CurrentStrength > 80)
                 return StrategyHelper.Make(warlord, CommandType.CommandExtort, 0.75f,
-                    "Make villages pay – slow down the player.");
+                    "Make villages pay â€“ slow down the player.");
 
             if (threat.OverallThreat < 0.25f)
                 return StrategyHelper.Make(warlord, CommandType.CommandExtort, 0.80f,
@@ -1768,7 +1840,7 @@ namespace BanditMilitias.Intelligence.Strategic
             float rage = TaleWorlds.Library.MathF.Min(1f, player.TotalKills / 20f);
 
             if (threat.OverallThreat > 0.85f)
-                return StrategyHelper.Make(warlord, CommandType.Retreat, 0.90f, "Not today – I will get stronger.");
+                return StrategyHelper.Make(warlord, CommandType.Retreat, 0.90f, "Not today â€“ I will get stronger.");
 
             if (rage > 0.75f)
             {

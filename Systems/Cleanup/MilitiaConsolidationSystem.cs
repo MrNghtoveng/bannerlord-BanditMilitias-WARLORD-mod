@@ -18,7 +18,11 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Cleanup
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 150, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 40, IsCritical = false)]
     public class MilitiaConsolidationSystem : MilitiaModuleBase
     {
         public override string ModuleName => "ConsolidationSystem";

@@ -103,10 +103,29 @@ namespace BanditMilitias.Systems.Raiding
                 .ToList();
             foreach (var id in stale)
                 _ = LastRaidTimes.Remove(id);
+
+            // Blacklist recovery: un-blacklist settlements whose hearth has recovered
+            if (Blacklisted.Count > 0)
+            {
+                var recovered = Blacklisted
+                    .Where(id =>
+                    {
+                        var settlement = Settlement.Find(id);
+                        return settlement?.Village != null && settlement.Village.Hearth > 400f;
+                    })
+                    .ToList();
+                foreach (var id in recovered)
+                    Blacklisted.Remove(id);
+            }
         }
     }
 
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem),
+        typeof(BanditMilitias.Systems.Seasonal.SeasonalEffectsSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 55)]
     public class MilitiaRaidSystem : MilitiaModuleBase
     {
 

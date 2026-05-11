@@ -740,20 +740,39 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        private static readonly Lazy<(MethodInfo? Method, bool UseAi)> _setMoveGoToSettlementLazy = new Lazy<(MethodInfo?, bool)>(() =>
+        private struct MethodCache
         {
+            public MethodInfo? Method;
+            public ParameterInfo[]? Parameters;
+            public bool UseAi;
+            public object? DefaultNav;
+        }
 
-            var method = typeof(MobileParty).GetMethod("SetMoveGoToSettlement");
-            if (method != null) return (method, false);
-
-            var aiType = typeof(MobileParty).GetProperty("Ai")?.PropertyType;
-            if (aiType != null)
+        private static readonly Lazy<MethodCache> _setMoveGoToSettlementCache = new Lazy<MethodCache>(() =>
+        {
+            MethodInfo? method = typeof(MobileParty).GetMethod("SetMoveGoToSettlement");
+            bool useAi = false;
+            if (method == null)
             {
-                method = aiType.GetMethod("SetMoveGoToSettlement");
-                if (method != null) return (method, true);
+                var aiType = typeof(MobileParty).GetProperty("Ai")?.PropertyType;
+                if (aiType != null)
+                {
+                    method = aiType.GetMethod("SetMoveGoToSettlement");
+                    useAi = true;
+                }
             }
-            return (null, false);
-        });
+
+            if (method == null) return new MethodCache();
+
+            var parameters = method.GetParameters();
+            object? defaultNav = null;
+            if (parameters.Length >= 2 && parameters[1].ParameterType.IsEnum)
+            {
+                defaultNav = Enum.GetValues(parameters[1].ParameterType).GetValue(0);
+            }
+
+            return new MethodCache { Method = method, Parameters = parameters, UseAi = useAi, DefaultNav = defaultNav };
+        }, true);
 
         public static void SetMoveGoToSettlement(MobileParty party, Settlement settlement)
         {
@@ -761,46 +780,42 @@ namespace BanditMilitias.Infrastructure
 
             try
             {
-                var (method, useAi) = _setMoveGoToSettlementLazy.Value;
-                if (method == null) return;
+                var cache = _setMoveGoToSettlementCache.Value;
+                if (cache.Method == null || cache.Parameters == null) return;
 
-                object targetObj = useAi ? party.Ai : party;
+                object targetObj = cache.UseAi ? party.Ai : party;
                 if (targetObj == null) return;
 
-                var parameters = method.GetParameters();
-
-                if (parameters.Length == 1)
+                int paramCount = cache.Parameters.Length;
+                if (paramCount == 1)
                 {
-                    _ = method.Invoke(targetObj, [settlement]);
+                    _ = cache.Method.Invoke(targetObj, [settlement]);
                 }
-                else if (parameters.Length >= 2)
+                else if (paramCount == 2)
                 {
-
-                    var navType = parameters[1].ParameterType;
-                    object? standardNav = Enum.GetValues(navType).GetValue(0);
-
-                    if (parameters.Length == 2)
-                    {
-                        _ = method.Invoke(targetObj, [settlement, standardNav]);
-                    }
-                    else if (parameters.Length == 3)
-                    {
-
-                        _ = method.Invoke(targetObj, [settlement, standardNav, false]);
-                    }
+                    _ = cache.Method.Invoke(targetObj, [settlement, cache.DefaultNav]);
+                }
+                else if (paramCount == 3)
+                {
+                    _ = cache.Method.Invoke(targetObj, [settlement, cache.DefaultNav, false]);
                 }
             }
             catch (Exception ex)
             {
-                if (BanditMilitias.Settings.Instance?.TestingMode == true)
+                if (Settings.Instance?.TestingMode == true)
                     TaleWorlds.Library.Debug.Print($"[CompatibilityLayer] SetMoveGoToSettlement failed: {ex.Message}");
             }
         }
 
-        private static readonly Lazy<MethodInfo?> _setMoveEngagePartyLazy = new Lazy<MethodInfo?>(() =>
+        private static readonly Lazy<Action<MobileParty, MobileParty>?> _setMoveEngagePartyDelegate = new Lazy<Action<MobileParty, MobileParty>?>(() =>
         {
-            return typeof(MobileParty).GetMethod("SetMoveEngageParty", [typeof(MobileParty)]);
-        });
+            var method = typeof(MobileParty).GetMethod("SetMoveEngageParty", [typeof(MobileParty)]);
+            if (method == null) return null;
+            var p1 = System.Linq.Expressions.Expression.Parameter(typeof(MobileParty), "party");
+            var p2 = System.Linq.Expressions.Expression.Parameter(typeof(MobileParty), "target");
+            return System.Linq.Expressions.Expression.Lambda<Action<MobileParty, MobileParty>>(
+                System.Linq.Expressions.Expression.Call(p1, method, p2), p1, p2).Compile();
+        }, true);
 
         public static void SetMoveEngageParty(MobileParty party, MobileParty target)
         {
@@ -808,21 +823,18 @@ namespace BanditMilitias.Infrastructure
 
             try
             {
-                var method = _setMoveEngagePartyLazy.Value;
-
-                if (method != null)
+                var del = _setMoveEngagePartyDelegate.Value;
+                if (del != null)
                 {
-                    _ = method.Invoke(party, [target]);
+                    del(party, target);
                 }
                 else
                 {
-
                     SetMoveGoToPoint(party, GetPartyPosition(target));
                 }
             }
             catch (Exception ex)
             {
-
                 if (Settings.Instance?.TestingMode == true)
                 {
                     TaleWorlds.Library.Debug.Print($"[CompatibilityLayer] SetMoveEngageParty failed: {ex.Message}");
@@ -830,18 +842,21 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        private static readonly Lazy<(MethodInfo? Method, bool UseAi)> _setMoveRaidLazy = new Lazy<(MethodInfo?, bool)>(() =>
+        private static readonly Lazy<MethodCache> _setMoveRaidCache = new Lazy<MethodCache>(() =>
         {
             var method = typeof(MobileParty).GetMethods().FirstOrDefault(m => m.Name == "SetMoveRaid");
-            if (method != null) return (method, false);
-
-            var aiType = typeof(MobileParty).GetProperty("Ai")?.PropertyType;
-            if (aiType != null)
+            bool useAi = false;
+            if (method == null)
             {
-                method = aiType.GetMethods().FirstOrDefault(m => m.Name == "SetMoveRaid");
-                if (method != null) return (method, true);
+                var aiType = typeof(MobileParty).GetProperty("Ai")?.PropertyType;
+                if (aiType != null)
+                {
+                    method = aiType.GetMethods().FirstOrDefault(m => m.Name == "SetMoveRaid");
+                    useAi = true;
+                }
             }
-            return (null, false);
+            if (method == null) return new MethodCache();
+            return new MethodCache { Method = method, Parameters = method.GetParameters(), UseAi = useAi };
         }, true);
 
         public static void SetMoveRaidSettlement(MobileParty party, Settlement target)
@@ -849,13 +864,13 @@ namespace BanditMilitias.Infrastructure
             if (party == null || target == null) return;
             try
             {
-                var (method, useAi) = _setMoveRaidLazy.Value;
-                if (method != null)
+                var cache = _setMoveRaidCache.Value;
+                if (cache.Method != null)
                 {
-                    object targetObj = useAi ? party.Ai : party;
+                    object targetObj = cache.UseAi ? party.Ai : party;
                     if (targetObj != null)
                     {
-                        _ = method.Invoke(targetObj, new object[] { target });
+                        _ = cache.Method.Invoke(targetObj, [target]);
                         return;
                     }
                 }
@@ -928,9 +943,14 @@ namespace BanditMilitias.Infrastructure
             }
         }
 
-        private static readonly Lazy<MethodInfo?> _setMoveDefendLazy = new Lazy<MethodInfo?>(() =>
+        private static readonly Lazy<Action<MobileParty, Settlement>?> _setMoveDefendDelegate = new Lazy<Action<MobileParty, Settlement>?>(() =>
         {
-            return typeof(MobileParty).GetMethod("SetMoveDefendSettlement");
+            var method = typeof(MobileParty).GetMethod("SetMoveDefendSettlement", [typeof(Settlement)]);
+            if (method == null) return null;
+            var p1 = System.Linq.Expressions.Expression.Parameter(typeof(MobileParty), "party");
+            var p2 = System.Linq.Expressions.Expression.Parameter(typeof(Settlement), "target");
+            return System.Linq.Expressions.Expression.Lambda<Action<MobileParty, Settlement>>(
+                System.Linq.Expressions.Expression.Call(p1, method, p2), p1, p2).Compile();
         }, true);
 
         public static void SetMoveDefendSettlement(MobileParty party, Settlement target)
@@ -938,10 +958,10 @@ namespace BanditMilitias.Infrastructure
             if (party == null || target == null) return;
             try
             {
-                var method = _setMoveDefendLazy.Value;
-                if (method != null)
+                var del = _setMoveDefendDelegate.Value;
+                if (del != null)
                 {
-                    _ = method.Invoke(party, new object[] { target });
+                    del(party, target);
                 }
                 else
                 {
@@ -1027,31 +1047,56 @@ namespace BanditMilitias.Infrastructure
             return type?.GetMethod("ApplyBetweenCharacters", BindingFlags.Public | BindingFlags.Static);
         }, true);
 
+        private static readonly Lazy<Delegate?> _giveGoldDelegateLazy = new Lazy<Delegate?>(() =>
+        {
+            var type = Type.GetType("TaleWorlds.CampaignSystem.Actions.GiveGoldAction, TaleWorlds.CampaignSystem");
+            var method = type?.GetMethod("ApplyBetweenCharacters", BindingFlags.Public | BindingFlags.Static);
+            if (method == null) return null;
+
+            var paramsInfo = method.GetParameters();
+            var pGiver = System.Linq.Expressions.Expression.Parameter(typeof(Hero), "giver");
+            var pReceiver = System.Linq.Expressions.Expression.Parameter(typeof(Hero), "receiver");
+            var pAmount = System.Linq.Expressions.Expression.Parameter(typeof(int), "amount");
+            
+            if (paramsInfo.Length == 4)
+            {
+                var pIsSilent = System.Linq.Expressions.Expression.Parameter(typeof(bool), "isSilent");
+                return System.Linq.Expressions.Expression.Lambda<Action<Hero?, Hero, int, bool>>(
+                    System.Linq.Expressions.Expression.Call(null, method, pGiver, pReceiver, pAmount, pIsSilent),
+                    pGiver, pReceiver, pAmount, pIsSilent).Compile();
+            }
+            else if (paramsInfo.Length == 3)
+            {
+                return System.Linq.Expressions.Expression.Lambda<Action<Hero?, Hero, int>>(
+                    System.Linq.Expressions.Expression.Call(null, method, pGiver, pReceiver, pAmount),
+                    pGiver, pReceiver, pAmount).Compile();
+            }
+            return null;
+        }, true);
+
         public static void GiveGoldSafe(Hero receiver, int amount)
         {
             if (receiver == null || amount <= 0) return;
 
             try
             {
-                MethodInfo? giveGoldMethod = _giveGoldMethod.Value;
-                if (giveGoldMethod != null)
+                var del = _giveGoldDelegateLazy.Value;
+                if (del != null)
                 {
-                    var paramCount = giveGoldMethod.GetParameters().Length;
-
-                    object?[]? args = null;
-                    if (paramCount == 4) args = [null, receiver, amount, false];
-                    else if (paramCount == 3) args = [null, receiver, amount];
-
-                    if (args != null)
+                    if (del is Action<Hero?, Hero, int, bool> del4)
                     {
-                        _ = giveGoldMethod.Invoke(null, args);
+                        del4(null, receiver, amount, false);
+                        return;
+                    }
+                    else if (del is Action<Hero?, Hero, int> del3)
+                    {
+                        del3(null, receiver, amount);
                         return;
                     }
                 }
 
                 if (receiver.Gold >= 0)
                 {
-
                     var goldProp = typeof(Hero).GetProperty("Gold");
                     if (goldProp != null && goldProp.CanWrite)
                     {
@@ -1061,7 +1106,6 @@ namespace BanditMilitias.Infrastructure
             }
             catch (Exception ex)
             {
-
                 TaleWorlds.Library.Debug.Print($"[BanditMilitias] GiveGoldSafe Failed: {ex.Message}");
             }
         }

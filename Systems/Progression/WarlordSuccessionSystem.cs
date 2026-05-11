@@ -17,7 +17,10 @@ namespace BanditMilitias.Systems.Progression
 {
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 330, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 90, IsCritical = false)]
     public class WarlordSuccessionSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordSuccessionSystem";
@@ -139,7 +142,7 @@ namespace BanditMilitias.Systems.Progression
             successor.Title = fallenTier >= 4 ? "Successor Captain" : "New Captain";
 
 
-            successor.Gold = fallen.Gold * PRESTIGE_INHERITANCE_RATIO;
+            successor.Gold = Math.Max(500f, fallen.Gold * PRESTIGE_INHERITANCE_RATIO);
 
 
             int fTier = (int)WarlordCareerSystem.Instance.GetOrCreate(fallen.StringId).Tier;

@@ -15,8 +15,7 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Spawning
 {
-
-
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 85)]
     public class DynamicHideoutSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         private static DynamicHideoutSystem? _instance;
@@ -372,8 +371,7 @@ namespace BanditMilitias.Systems.Spawning
         public string GetDescription() => $"Hideout formed at {Position}";
     }
 
-
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 86)]
     public class HardcoreDynamicHideoutSystem : MilitiaModuleBase
     {
         private static HardcoreDynamicHideoutSystem? _instance;

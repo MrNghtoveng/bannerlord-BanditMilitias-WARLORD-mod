@@ -133,7 +133,14 @@ namespace BanditMilitias.Infrastructure
 
             int requiredDays = System.Math.Max(0, Settings.Instance?.ActivationDelay ?? 2);
             float elapsedDays = GetActivationDelayElapsedDays();
-            if (elapsedDays < requiredDays) return false;
+            if (elapsedDays < requiredDays)
+            {
+                if (Settings.Instance?.TestingMode == true && MBRandom.RandomFloat < 0.05f) // Throttled logging
+                {
+                    DebugLogger.Info("ModActivationManager", $"Militia activation delayed. {elapsedDays:F2}/{requiredDays} days elapsed.");
+                }
+                return false;
+            }
 
             _gameplayActivationSwitchClosed = true;
 
@@ -185,7 +192,16 @@ namespace BanditMilitias.Infrastructure
 
                 if (TaleWorlds.Core.Game.Current?.GameStateManager?.ActiveState == null ||
                     !(TaleWorlds.Core.Game.Current.GameStateManager.ActiveState is TaleWorlds.CampaignSystem.GameState.MapState))
-                    return false;
+                {
+                    if (Settings.Instance?.TestingMode == true && Campaign.Current.GameStarted)
+                    {
+                        // Proceed in headless/test mode
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
 
                 if (Settlement.All == null || Settlement.All.Count == 0)
                     return false;

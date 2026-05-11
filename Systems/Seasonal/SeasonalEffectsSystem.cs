@@ -8,6 +8,7 @@ using System.Linq;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.Core;
+using TaleWorlds.Localization;
 using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Seasonal
@@ -25,7 +26,7 @@ namespace BanditMilitias.Systems.Seasonal
     }
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 320, IsCritical = false)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 20, IsCritical = false)]
     public class SeasonalEffectsSystem : MilitiaModuleBase
     {
         public override string ModuleName => "SeasonalEffectsSystem";
@@ -146,10 +147,10 @@ namespace BanditMilitias.Systems.Seasonal
         {
             string message = newSeason switch
             {
-                MilitiaSeason.Spring  => "☀ Spring has arrived — militias are recovering.",
-                MilitiaSeason.Summer  => "☀ Summer has started — militias move faster.",
-                MilitiaSeason.Autumn  => "🍂 Autumn — villages are full of harvest, raid season is open!",
-                MilitiaSeason.Winter  => "❄ Winter has struck — a tough period for militias begins.",
+                MilitiaSeason.Spring  => new TextObject("{=BM_Season_Spring_Arrival}Spring has arrived — militias are recovering.").ToString(),
+                MilitiaSeason.Summer  => new TextObject("{=BM_Season_Summer_Arrival}Summer has started — militias move faster.").ToString(),
+                MilitiaSeason.Autumn  => new TextObject("{=BM_Season_Autumn_Arrival}Autumn — villages are full of harvest, raid season is open!").ToString(),
+                MilitiaSeason.Winter  => new TextObject("{=BM_Season_Winter_Arrival}Winter has struck — a tough period for militias begins.").ToString(),
                 _ => ""
             };
 
@@ -225,10 +226,14 @@ namespace BanditMilitias.Systems.Seasonal
         {
             return _currentSeason switch
             {
-                MilitiaSeason.Spring => "Spring — Normal conditions",
-                MilitiaSeason.Summer => $"Summer — Speed +%{(SpeedMultiplier - 1f) * 100:F0}",
-                MilitiaSeason.Autumn => $"Autumn — Raid income +%{(RaidLootMultiplier - 1f) * 100:F0}",
-                MilitiaSeason.Winter => "Winter — Troop loss risk, slow movement",
+                MilitiaSeason.Spring => new TextObject("{=BM_Season_Spring_Desc}Spring — Normal conditions").ToString(),
+                MilitiaSeason.Summer => new TextObject("{=BM_Season_Summer_Desc}Summer — Speed +%{PERCENT}")
+                    .SetTextVariable("PERCENT", ((SpeedMultiplier - 1f) * 100).ToString("F0"))
+                    .ToString(),
+                MilitiaSeason.Autumn => new TextObject("{=BM_Season_Autumn_Desc}Autumn — Raid income +%{PERCENT}")
+                    .SetTextVariable("PERCENT", ((RaidLootMultiplier - 1f) * 100).ToString("F0"))
+                    .ToString(),
+                MilitiaSeason.Winter => new TextObject("{=BM_Season_Winter_Desc}Winter — Troop loss risk, slow movement").ToString(),
                 _ => "Unknown"
             };
         }

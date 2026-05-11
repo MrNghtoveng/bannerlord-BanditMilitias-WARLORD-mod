@@ -39,7 +39,7 @@ namespace BanditMilitias.Systems.Tracking
     }
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 430, IsCritical = false)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 100, IsCritical = false)]
     public class PlayerTracker : BanditMilitias.Core.Components.MilitiaModuleBase, IPlayerTracker
     {
         public override string ModuleName => "PlayerTracker";

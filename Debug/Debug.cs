@@ -434,7 +434,14 @@ namespace BanditMilitias.Debug
 
 
             var cache = BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance;
-            _ = sb.AppendLine($"[StaticDataCache] Hideouts: {cache.AllHideouts.Count}, Villages: {cache.AllVillages.Count}, Towns: {cache.AllTowns.Count}");
+            if (cache != null)
+            {
+                _ = sb.AppendLine($"[StaticDataCache] Hideouts: {cache.AllHideouts.Count}, Villages: {cache.AllVillages.Count}, Towns: {cache.AllTowns.Count}");
+            }
+            else
+            {
+                _ = sb.AppendLine($"[StaticDataCache] Instance is null.");
+            }
 
 
             var militias = ModuleManager.Instance.ActiveMilitias;

@@ -64,7 +64,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             }
 
 
-            if (SwarmCoordinator.Instance.TryGetOrder(party, out var swarmOrder))
+            if (SwarmCoordinator.Instance != null && SwarmCoordinator.Instance.TryGetOrder(party, out var swarmOrder))
             {
                 if (ShouldApplySwarmOverride(swarmOrder, party, component, sensors))
                 {

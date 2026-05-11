@@ -155,13 +155,21 @@ namespace BanditMilitias.Boot
                     var instanceProp = type.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static);
                     if (instanceProp != null && typeof(IMilitiaModule).IsAssignableFrom(instanceProp.PropertyType))
                     {
-                        module = instanceProp.GetValue(null) as IMilitiaModule;
+                        try
+                        {
+                            module = instanceProp.GetValue(null) as IMilitiaModule;
+                        }
+                        catch (TargetInvocationException)
+                        {
+                            // Instance getter threw, likely because it is uninitialized. Fallback to CreateInstance.
+                            module = null;
+                        }
                     }
                 }
 
                 if (module == null)
                 {
-                    module = Activator.CreateInstance(type) as IMilitiaModule;
+                    module = Activator.CreateInstance(type, nonPublic: true) as IMilitiaModule;
                 }
 
                 if (module == null)

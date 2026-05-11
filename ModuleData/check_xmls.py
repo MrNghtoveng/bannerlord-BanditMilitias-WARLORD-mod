@@ -1,49 +1,49 @@
+from pathlib import Path
 import xml.etree.ElementTree as ET
-import glob
-import os
 
-files = glob.glob(r"c:\Users\firat\Desktop\MyModdingProject\source\0\BanditMilitias WARLORD\BanditMilitias\ModuleData\**\*.xml", recursive=True)
 
-for file in files:
-    filename = os.path.basename(file)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+MODULE_DATA_DIR = PROJECT_ROOT / "ModuleData"
+SUBMODULE_PATH = PROJECT_ROOT / "SubModule.xml"
+
+
+def validate_xml(path: Path) -> None:
+    filename = path.name
     print(f"\nChecking: {filename}")
+
     try:
-        tree = ET.parse(file)
+        tree = ET.parse(path)
         root = tree.getroot()
         print("  -> Well Formed!")
-        
-        if filename in ["bandits.xml", "lords.xml"] and root.tag != "NPCCharacters":
+
+        if filename in {"bandits.xml", "lords.xml"} and root.tag != "NPCCharacters":
             print(f"  -> [ERROR] Root element must be NPCCharacters, got: {root.tag}")
-        
-        # Check duplicate IDs inside bandits and lords
-        if filename in ["bandits.xml", "lords.xml"]:
-            ids = []
-            for elem in tree.iter():
-                if "id" in elem.attrib:
-                    ids.append(elem.attrib["id"])
-            
-            duplicates = set([x for x in ids if ids.count(x) > 1])
+
+        if filename in {"bandits.xml", "lords.xml"}:
+            ids = [elem.attrib["id"] for elem in root.findall("NPCCharacter") if "id" in elem.attrib]
+            duplicates = sorted({value for value in ids if ids.count(value) > 1})
             if duplicates:
                 print("  -> [ERROR] Duplicate IDs found:")
-                for d in duplicates:
-                    print(f"      - {d}")
-                    
-    except ET.ParseError as e:
-        print(f"  -> [ERROR] Malformed XML: {e}")
+                for duplicate in duplicates:
+                    print(f"      - {duplicate}")
+    except ET.ParseError as exc:
+        print(f"  -> [ERROR] Malformed XML: {exc}")
 
-# Validate SubModule.xml basic structure
-submodule_path = r"c:\Users\firat\Desktop\MyModdingProject\source\0\BanditMilitias WARLORD\BanditMilitias\SubModule.xml"
-if os.path.exists(submodule_path):
-    filename = os.path.basename(submodule_path)
-    print(f"\nChecking: {filename}")
+
+for xml_file in sorted(MODULE_DATA_DIR.rglob("*.xml")):
+    validate_xml(xml_file)
+
+
+if SUBMODULE_PATH.exists():
+    print(f"\nChecking: {SUBMODULE_PATH.name}")
     try:
-        tree = ET.parse(submodule_path)
+        tree = ET.parse(SUBMODULE_PATH)
         root = tree.getroot()
         print("  -> Well Formed!")
-        
+
         if root.tag != "Module":
             print(f"  -> [ERROR] Root element must be Module, got: {root.tag}")
         else:
-            print("  -> [OK] Root element is Module (Use C# validator for full Module.xsd validation)")
-    except ET.ParseError as e:
-        print(f"  -> [ERROR] Malformed XML: {e}")
+            print("  -> [OK] Root element is Module (use C# validator for full Module.xsd validation)")
+    except ET.ParseError as exc:
+        print(f"  -> [ERROR] Malformed XML: {exc}")

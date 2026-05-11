@@ -77,13 +77,6 @@ namespace BanditMilitias.Core.Events
         public void Reset() { Warlord = null; Reason = ""; PeakFear = 0f; WinningTactics = null; }
     }
 
-    public class CareerPromotionEvent : MilitiaEventBase, IPoolableEvent
-    {
-        public Warlord? Warlord { get; set; }
-        public CareerTier NewTier { get; set; }
-        public void Reset() { Warlord = null; NewTier = CareerTier.Outlaw; }
-    }
-
     public class CareerConquerorPromotionEvent : MilitiaEventBase, IPoolableEvent
     {
         public Warlord? Warlord { get; set; }
@@ -311,10 +304,11 @@ namespace BanditMilitias.Core.Events
         public void Reset() { Warlord = null; OldTier = CareerTier.Outlaw; NewTier = CareerTier.Outlaw; }
     }
 
-    public class StrategicAssessmentEvent : MilitiaEventBase
+    public class StrategicAssessmentEvent : MilitiaEventBase, IPoolableEvent
     {
         public Warlord? Warlord { get; set; }
         public string AssessmentType { get; set; } = "";
+        public void Reset() { Warlord = null; AssessmentType = ""; }
     }
 
     public class AIDecisionEvent : MilitiaEventBase, IPoolableEvent

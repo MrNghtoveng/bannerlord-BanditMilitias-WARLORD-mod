@@ -11,6 +11,7 @@ using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
+using TaleWorlds.Localization;
 using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Systems.WarlordLegitimacy
@@ -44,7 +45,11 @@ namespace BanditMilitias.Systems.WarlordLegitimacy
         public int TotalVillagesPillaged { get; set; } = 0;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 70, IsCritical = true)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem),
+        typeof(BanditMilitias.Systems.Progression.AscensionEvaluator))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 65, IsCritical = true)]
     public class WarlordLegitimacySystem : MilitiaModuleBase
     {
         public override string ModuleName => "LegitimacySystem";
@@ -273,20 +278,21 @@ namespace BanditMilitias.Systems.WarlordLegitimacy
                 record.LastLevelChangeTime = CampaignTime.Now;
                 ApplyMilitiaBannerPrestige(warlord, newLevel);
 
-                string titleEn = newLevel switch
+                string titleId = newLevel switch
                 {
-                    LegitimacyLevel.Rebel => "CAPTAIN",
-                    LegitimacyLevel.FamousBandit => "FAMOUS OUTLAW",
-                    LegitimacyLevel.Warlord => "WARLORD",
-                    LegitimacyLevel.Recognized => "CONQUEROR",
-                    _ => newLevel.ToString().ToUpper()
+                    LegitimacyLevel.Rebel => "BM_Title_Captain",
+                    LegitimacyLevel.FamousBandit => "BM_Title_Famous",
+                    LegitimacyLevel.Warlord => "BM_Title_Warlord",
+                    LegitimacyLevel.Recognized => "BM_Title_Sovereign",
+                    _ => "BM_Title_Outlaw"
                 };
 
                 if (Settings.Instance?.TestingMode == true)
                 {
-                    InformationManager.DisplayMessage(new InformationMessage(
-                        $"Dark Politics: {warlord.Name} has reached the status of {titleEn}!",
-                        Colors.Magenta));
+                    TextObject msg = new TextObject("{=BM_Legitimacy_Promotion}Dark Politics: {NAME} has reached the status of {TITLE}!");
+                    _ = msg.SetTextVariable("NAME", warlord.Name);
+                    _ = msg.SetTextVariable("TITLE", new TextObject("{=" + titleId + "}"));
+                    InformationManager.DisplayMessage(new InformationMessage(msg.ToString(), Colors.Magenta));
                 }
 
                 var evt = BanditMilitias.Core.Events.EventBus.Instance.Get<WarlordLevelChangedEvent>();

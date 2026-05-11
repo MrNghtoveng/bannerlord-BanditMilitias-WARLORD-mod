@@ -389,7 +389,8 @@ namespace BanditMilitias.Intelligence.AI
 
             float resourceScore = nearbyVillages * 20f;
 
-            float tradeIntensity = BanditMilitias.Systems.Tracking.CaravanActivityTracker.Instance.GetTradeIntensity(position);
+            var tracker = BanditMilitias.Systems.Tracking.CaravanActivityTracker.Instance;
+            float tradeIntensity = tracker != null ? tracker.GetTradeIntensity(position) : 0f;
             float tradeBonus = tradeIntensity * 10f;
 
             return Core.MathUtils.Clamp((distanceScore * 0.5f + resourceScore * 0.3f + tradeBonus * 0.2f), 0f, 100f);

@@ -115,7 +115,10 @@ namespace BanditMilitias.Intelligence.Tactical
                 if (_warlordParty == null) return;
 
 
-                AdaptiveDoctrineProfile profile = AdaptiveAIDoctrineSystem.Instance.GetProfileForWarlord(_warlordParty);
+                var instance = AdaptiveAIDoctrineSystem.Instance;
+                if (instance == null) return;
+                AdaptiveDoctrineProfile? profile = instance.GetProfileForWarlord(_warlordParty);
+                if (profile == null) return;
                 CounterDoctrine doctrine = profile.ActiveCounterDoctrine;
 
                 if (Settings.Instance?.TestingMode == true)

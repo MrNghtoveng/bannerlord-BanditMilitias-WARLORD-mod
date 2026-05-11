@@ -13,6 +13,7 @@ using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.Library;
+using TaleWorlds.Localization;
 
 namespace BanditMilitias.Intelligence.AI
 {
@@ -167,7 +168,7 @@ namespace BanditMilitias.Intelligence.AI
                             Type = CommandType.Defend,
                             TargetLocation = CompatibilityLayer.GetSettlementPosition(component.GetHomeSettlement()!),
                             Priority = 0.9f,
-                            Reason = "Home Under Attack!"
+                            Reason = new TextObject("{=BM_Reason_HomeAttack}Home Under Attack!").ToString()
                         });
                         return;
                     }
@@ -261,7 +262,7 @@ namespace BanditMilitias.Intelligence.AI
                             Type = CommandType.Patrol,
                             TargetLocation = CompatibilityLayer.GetSettlementPosition(targetSettlement),
                             Priority = 0.45f,
-                            Reason = "Roaming: move out from hideout"
+                            Reason = new TextObject("{=BM_Reason_RoamingOut}Roaming: move out from hideout").ToString()
                         });
                         return true;
                     }
@@ -277,7 +278,7 @@ namespace BanditMilitias.Intelligence.AI
                             Type = CommandType.Patrol,
                             TargetLocation = newTarget,
                             Priority = 0.45f,
-                            Reason = "Roaming: forced outward"
+                            Reason = new TextObject("{=BM_Reason_RoamingForced}Roaming: forced outward").ToString()
                         });
                         return true;
                     }
@@ -304,8 +305,10 @@ namespace BanditMilitias.Intelligence.AI
 
         private static Settlement? FindExpansionTarget(MobileParty me, Settlement home)
         {
-            var allTargets = BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance.AllVillages
-                .Concat(BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance.AllTowns);
+            var cache = BanditMilitias.Intelligence.AI.Components.StaticDataCache.Instance;
+            if (cache == null) return null;
+
+            var allTargets = cache.AllVillages.Concat(cache.AllTowns);
             var candidates = allTargets.Where(s => s != home &&
                 s.GatePosition.DistanceSquared(home.GatePosition) > 10f * 10f).ToList();
 
@@ -634,7 +637,9 @@ namespace BanditMilitias.Intelligence.AI
                     Type = cmdType,
                     TargetLocation = evt.Position,
                     Priority = 0.6f,
-                    Reason = $"Opportunity: {evt.Type}"
+                    Reason = new TextObject("{=BM_Reason_Opportunity}Opportunity: {TYPE}")
+                        .SetTextVariable("TYPE", evt.Type.ToString())
+                        .ToString()
                 });
 
                 if (Settings.Instance?.TestingMode == true)
@@ -652,7 +657,10 @@ namespace BanditMilitias.Intelligence.AI
 
         private static Settlement? FindBestVillageToRaid(MobileParty party, Vec2 center)
         {
-            return StaticDataCache.Instance.AllVillages
+            var cache = StaticDataCache.Instance;
+            if (cache == null) return null;
+
+            return cache.AllVillages
                    .Where(s => s.MapFaction.IsAtWarWith(party.MapFaction))
                    .OrderBy(s => s.GatePosition.DistanceSquared(center))
                    .FirstOrDefault();

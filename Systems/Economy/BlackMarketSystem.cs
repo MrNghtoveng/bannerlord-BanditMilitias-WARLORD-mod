@@ -21,7 +21,9 @@ namespace BanditMilitias.Systems.Economy
         public float InfluenceLevel { get; set; } = 0f;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 50)]
     public class BlackMarketSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         public override string ModuleName => "BlackMarket";

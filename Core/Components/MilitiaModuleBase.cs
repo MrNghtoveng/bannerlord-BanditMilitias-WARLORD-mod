@@ -39,6 +39,34 @@ namespace BanditMilitias.Core.Components
         }
     }
 
+    public static class ModulePriorityResolver
+    {
+        public static int Resolve(Type? moduleType, int fallbackPriority = 50)
+        {
+            if (moduleType == null)
+            {
+                return fallbackPriority;
+            }
+
+            var attr = (AutoRegisterAttribute?)Attribute.GetCustomAttribute(
+                moduleType,
+                typeof(AutoRegisterAttribute),
+                inherit: false);
+
+            return attr?.Priority ?? fallbackPriority;
+        }
+
+        public static int Resolve(IMilitiaModule? module)
+        {
+            if (module == null)
+            {
+                return 50;
+            }
+
+            return Resolve(module.GetType(), module.Priority);
+        }
+    }
+
 
     public interface IMilitiaModule
     {
@@ -46,6 +74,13 @@ namespace BanditMilitias.Core.Components
         bool IsEnabled { get; }
         bool IsCritical { get; }
         int Priority { get; }
+        /// <summary>
+        /// Minimum number of hourly ticks between real OnHourlyTick executions.
+        /// 1 = every tick (default), 2 = every other tick, 3 = every third tick, etc.
+        /// ModuleManager uses this to implement per-module LOD without changing the
+        /// module's own OnHourlyTick logic.
+        /// </summary>
+        int HourlyTickInterval { get; }
         void Initialize();
         void Cleanup();
         void OnDailyTick();
@@ -87,7 +122,7 @@ namespace BanditMilitias.Core.Components
             _eventBusUnsubscribeActions.Add(() =>
             {
                 try { EventBus.Instance.Unsubscribe(handler); }
-                catch { /* Suppress — already unsubscribed or bus reset */ }
+                catch { /* Suppress - already unsubscribed or bus reset */ }
             });
         }
 
@@ -117,6 +152,8 @@ namespace BanditMilitias.Core.Components
         public virtual void OnDailyTick() { }
         public virtual void OnHourlyTick() { }
         public virtual void OnTick(float dt) { }
+        /// <inheritdoc cref="IMilitiaModule.HourlyTickInterval"/>
+        public virtual int HourlyTickInterval => 1;
         public virtual void SyncData(IDataStore ds) { }
         public virtual void OnSessionStart() { }
         public virtual void RegisterCampaignEvents() { }

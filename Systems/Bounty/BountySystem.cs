@@ -45,7 +45,9 @@ namespace BanditMilitias.Systems.Bounty
         public int ActiveHuntersCount { get; set; } = 0;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 90, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsCritical = false)]
     public class BountySystem : MilitiaModuleBase
     {
 
@@ -326,7 +328,7 @@ namespace BanditMilitias.Systems.Bounty
             if (amount > 500 && Settings.Instance?.TestingMode == true)
             {
                 DebugLogger.Info("BountySystem",
-                    $"Bounty Increase [{warlord.Name}]: +{amount} ({source}) Â› Total: {record.TotalBounty}");
+                    $"Bounty Increase [{warlord.Name}]: +{amount} ({source}) -> Total: {record.TotalBounty}");
             }
         }
 

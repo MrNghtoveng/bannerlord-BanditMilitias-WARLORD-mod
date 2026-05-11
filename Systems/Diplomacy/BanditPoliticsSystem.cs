@@ -69,7 +69,10 @@ namespace BanditMilitias.Systems.Diplomacy
         public CampaignTime LastUpdated { get; set; } = CampaignTime.Zero;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 220, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Bounty.BountySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 57, IsCritical = false)]
     public class BanditPoliticsSystem : MilitiaModuleBase
     {
         public override string ModuleName => "BanditPoliticsSystem";

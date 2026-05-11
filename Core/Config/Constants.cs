@@ -298,7 +298,7 @@ namespace BanditMilitias.Core.Config
         {
 
 
-            string[] fallbackIds = new[] { "looter", "bandit", "mountain_bandit", "forest_bandit", "sea_raider" };
+            string[] fallbackIds = new[] { "looter", "mountain_bandits_bandit", "forest_bandits_bandit", "sea_raiders_bandit", "desert_bandits_bandit", "steppe_bandits_bandit" };
             var infantry = new List<CharacterObject>();
 
             foreach (var id in fallbackIds)

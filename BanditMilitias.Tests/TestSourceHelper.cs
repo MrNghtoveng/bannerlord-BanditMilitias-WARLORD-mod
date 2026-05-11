@@ -108,6 +108,18 @@ namespace BanditMilitias.Tests
             var dir = new DirectoryInfo(AppContext.BaseDirectory);
             while (dir != null)
             {
+                // Check for .csproj in current dir
+                if (dir.GetFiles("*.csproj").Any())
+                {
+                    // If we are in the Tests folder, go up one more
+                    if (dir.Name.EndsWith(".Tests") && dir.Parent != null && dir.Parent.GetFiles("*.csproj").Any())
+                    {
+                         return dir.Parent.FullName;
+                    }
+                    return dir.FullName;
+                }
+
+                // Fallback for some test runners
                 if (File.Exists(Path.Combine(dir.FullName, "BanditMilitias.csproj")))
                 {
                     return dir.FullName;

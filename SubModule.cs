@@ -11,8 +11,9 @@ namespace BanditMilitias
         public static readonly System.Version ModVersion = new(1, 3, 15);
 
         private static ModLifecycleManager Lifecycle => ModLifecycleManager.Instance;
+        private static BanditMilitias.Boot.WarlordPowerController Grid => BanditMilitias.Boot.WarlordPowerController.Instance;
 
-        public static bool IsDeferredInitDone => Lifecycle.DeferredInitDone;
+        public static bool IsDeferredInitDone => Grid.IsEnergized || Lifecycle.DeferredInitDone;
         public static void SetStateDormant() => Lifecycle.SetStateDormant();
         public static void SetStateActive() => Lifecycle.SetStateActive();
         public static bool IsSandboxMode => Lifecycle.IsSandboxMode;
@@ -25,29 +26,45 @@ namespace BanditMilitias
         protected override void OnSubModuleLoad()
         {
             base.OnSubModuleLoad();
+            // --- POWER GRID: STAGE 1 (WIRING) ---
+            Grid.PowerOn(typeof(SubModule).Assembly);
+            
+            // Sync with legacy lifecycle for UI/compat
             Lifecycle.OnSubModuleLoad(typeof(SubModule).Assembly);
         }
 
         protected override void OnGameStart(Game game, IGameStarter gameStarter)
         {
             base.OnGameStart(game, gameStarter);
+            // --- POWER GRID: STAGE 2 (GROUNDING) ---
+            Grid.ConnectLoad(game, gameStarter);
+            
+            // Sync with legacy lifecycle
             Lifecycle.OnGameStart(game, gameStarter);
         }
 
         public override void OnGameLoaded(Game game, object initDataObject)
         {
             base.OnGameLoaded(game, initDataObject);
+            // --- POWER GRID: STAGE 3 (ENERGIZING) ---
+            Grid.Energize();
+            
+            // Sync with legacy lifecycle
             Lifecycle.OnGameLoaded(game);
         }
 
         public override void OnGameEnd(Game game)
         {
             base.OnGameEnd(game);
+            // --- POWER GRID: SHUTDOWN ---
+            Grid.Shutdown();
+            
             Lifecycle.OnGameEnd();
         }
 
         protected override void OnSubModuleUnloaded()
         {
+            Grid.Shutdown();
             Lifecycle.OnSubModuleUnloaded();
             base.OnSubModuleUnloaded();
         }

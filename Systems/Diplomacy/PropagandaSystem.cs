@@ -26,7 +26,10 @@ namespace BanditMilitias.Systems.Diplomacy
         public float Intensity { get; set; } = 0f;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 50)]
     public class PropagandaSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         public override string ModuleName => "Propaganda";

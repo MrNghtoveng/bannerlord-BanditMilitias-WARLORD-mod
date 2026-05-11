@@ -80,16 +80,16 @@ namespace BanditMilitias.Behaviors
                     var level = WarlordLegitimacySystem.Instance.GetLevel(matchedWarlord.StringId);
                     if (level >= LegitimacyLevel.Warlord)
                     {
-                        string rankInfo = level switch
+                        string rankId = level switch
                         {
-                            LegitimacyLevel.FamousBandit => "ÜNLÜ EŞKIYA",
-                            LegitimacyLevel.Warlord => "SAVAŞ LORDU",
-                            LegitimacyLevel.Recognized => "HÜKÜMDAR",
-                            _ => "LORD"
+                            LegitimacyLevel.FamousBandit => "BM_Rank_Famous",
+                            LegitimacyLevel.Warlord => "BM_Rank_Warlord",
+                            LegitimacyLevel.Recognized => "BM_Rank_Recognized",
+                            _ => "BM_Rank_Lord"
                         };
 
                         TextObject warning = new TextObject("{=BM_Tactical_Warning}[Tactical Brilliance] {RANK} {NAME} is fielding units specifically countered against your army composition!");
-                        _ = warning.SetTextVariable("RANK", rankInfo);
+                        _ = warning.SetTextVariable("RANK", new TextObject("{=" + rankId + "}"));
                         _ = warning.SetTextVariable("NAME", matchedWarlord.Name);
 
                         InformationManager.DisplayMessage(new InformationMessage(warning.ToString(), Colors.Red));
@@ -157,15 +157,28 @@ namespace BanditMilitias.Behaviors
                 () => IsMilitiaParty() && MobileParty.ConversationParty != null && MobileParty.ConversationParty.MapFaction != null && Hero.MainHero?.MapFaction != null && !MobileParty.ConversationParty.MapFaction.IsAtWarWith(Hero.MainHero.MapFaction),
                 null);
 
+            // --- Player Options ---
             _ = starter.AddPlayerLine("militia_who_are_you", "militia_intro", "militia_background",
                 "{=BM_Dialog_Who}Who are you?",
-                () => IsMilitiaParty(),
-                null);
+                null, null);
 
             _ = starter.AddDialogLine("militia_background_response", "militia_background", "militia_intro",
                 "{=BM_Dialog_Background_Response}We are the free people of Calradia. We take what we need.",
-                null,
+                null, null);
+
+            // --- Warlord Specific Info ---
+            _ = starter.AddPlayerLine("militia_warlord_info", "militia_intro", "militia_warlord_resp",
+                "{=BM_Dialog_Warlord_Goal}What are your plans for these lands?",
+                () => 
+                {
+                    var warlord = WarlordSystem.Instance.GetWarlordForParty(MobileParty.ConversationParty);
+                    return warlord != null;
+                },
                 null);
+
+            _ = starter.AddDialogLine("militia_warlord_resp", "militia_warlord_resp", "militia_intro",
+                "{=BM_Dialog_Warlord_Goal_Resp}I plan to rule them. Every hideout, every village. All will know my name.",
+                null, null);
 
             _ = starter.AddPlayerLine("militia_bribe_offer", "militia_intro", "militia_bribe_result",
                 "{=BM_Diplo_Bribe}Here is {GOLD_COST} denars. Let us pass.",
@@ -313,12 +326,23 @@ namespace BanditMilitias.Behaviors
 
         private bool IsMilitiaParty()
         {
-            if (!Infrastructure.ModActivationManager.IsGameplayActivationSwitchClosed())
-                return false;
+            var conversationParty = MobileParty.ConversationParty;
+            if (conversationParty == null) return false;
 
-            return MobileParty.ConversationParty != null &&
-                   (MobileParty.ConversationParty.PartyComponent is MilitiaPartyComponent ||
-                    MobileParty.ConversationParty.StringId.Contains("Bandit_Militia"));
+            // 1. Direct Component Check
+            if (conversationParty.PartyComponent is MilitiaPartyComponent)
+                return true;
+
+            // 2. Warlord Check (even if led by a hero in a standard party)
+            if (conversationParty.LeaderHero != null && 
+                Intelligence.Strategic.WarlordSystem.Instance.GetAllWarlords().Any(w => w.LinkedHero == conversationParty.LeaderHero))
+                return true;
+
+            // 3. StringId Fallback (for spawned parties that might have lost component)
+            if (conversationParty.StringId != null && conversationParty.StringId.Contains("Bandit_Militia"))
+                return true;
+
+            return false;
         }
 
         private int CalculateBribeCost()
@@ -441,21 +465,23 @@ namespace BanditMilitias.Behaviors
 
             try
             {
-                var narrative = BanditMilitias.Intelligence.Narrative.WarlordNarrativeSystem.Instance;
-                var voice = narrative.GetVoice(warlord.Personality);
+                var voice = Intelligence.Narrative.WarlordNarrativeSystem.Instance.GetVoice(warlord.Personality);
                 if (voice != null)
                 {
-
-
                     string? reaction = voice.GetThreatReaction(warlord);
                     if (!string.IsNullOrEmpty(reaction))
                     {
-
-
                         string cleanReaction = reaction!.Contains("]: ") ? reaction!.Substring(reaction!.IndexOf("]: ") + 3) : reaction!;
                         return new TextObject(cleanReaction);
                     }
                 }
+
+                // Fallbacks based on legitimacy
+                var level = WarlordLegitimacySystem.Instance.GetLevel(warlord.StringId);
+                if (level >= LegitimacyLevel.Warlord)
+                    return new TextObject("{=BM_Intro_Warlord}I am the shadow of this land. You are trespassing on Warlord territory.");
+                if (level >= LegitimacyLevel.FamousBandit)
+                    return new TextObject("{=BM_Intro_Famous}You've heard of me. I don't like visitors.");
             }
             catch { }
 

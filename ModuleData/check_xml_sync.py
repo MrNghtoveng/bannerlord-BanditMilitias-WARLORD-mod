@@ -1,8 +1,11 @@
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
+MODULE_DATA_DIR = Path(__file__).resolve().parent
+
 files = {
-    'EN': r'Languages/EN/std_BanditMilitias_xml_en.xml',
-    'TR': r'Languages/TR/std_BanditMilitias_xml_tr.xml'
+    'EN': MODULE_DATA_DIR / 'Languages' / 'EN' / 'std_BanditMilitias_xml_en.xml',
+    'TR': MODULE_DATA_DIR / 'Languages' / 'TR' / 'std_BanditMilitias_xml_tr.xml',
 }
 
 results = {}

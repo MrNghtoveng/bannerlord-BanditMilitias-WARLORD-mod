@@ -1,5 +1,6 @@
 using BanditMilitias.Boot;
 using BanditMilitias.Debug;
+using BanditMilitias.Core.Registry;
 using BanditMilitias.Diagnostics;
 using BanditMilitias.Infrastructure;
 using BanditMilitias.Intelligence.Neural;
@@ -521,6 +522,18 @@ namespace BanditMilitias.Lifecycle
                 {
                     DeferredInitDone = true;
                     _deferredInitFailureCount = 0;
+
+                    // --- WARLORD ASSET INTEGRITY CHECK ---
+                    try 
+                    {
+                        AssetRegistry.PerformFullIntegrityCheck();
+                    }
+                    catch (Exception ex)
+                    {
+                        FileLogger.LogWarning($"AssetRegistry check failed: {ex.Message}");
+                    }
+                    // -------------------------------------
+
                     return true;
                 }
 

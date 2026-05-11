@@ -31,7 +31,7 @@ namespace BanditMilitias.Infrastructure
                 {
                     TaleWorlds.Library.InformationManager.DisplayMessage(
                         new TaleWorlds.Library.InformationMessage(
-                            $"[ClanCache] Attempt {_initAttempts}/{MAX_INIT_ATTEMPTS}: Clan.All henüz yüklenmemiþ - retry scheduled",
+                            $"[ClanCache] Attempt {_initAttempts}/{MAX_INIT_ATTEMPTS}: Clan.All henÃ¼z yÃ¼klenmemiÅŸ - retry scheduled",
                             TaleWorlds.Library.Colors.Yellow));
                 }
 
@@ -54,7 +54,7 @@ namespace BanditMilitias.Infrastructure
                     {
                         TaleWorlds.Library.InformationManager.DisplayMessage(
                             new TaleWorlds.Library.InformationMessage(
-                                "[ClanCache] UYARI: Hiç klan bulunamadý! Tekrar denenecek.",
+                                "[ClanCache] UYARI: HiÃ§ klan bulunamadÄ±! Tekrar denenecek.",
                                 TaleWorlds.Library.Colors.Red));
                     }
 

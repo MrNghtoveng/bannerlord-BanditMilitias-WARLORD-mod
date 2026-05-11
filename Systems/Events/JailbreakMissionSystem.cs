@@ -11,7 +11,9 @@ using TaleWorlds.Library;
 namespace BanditMilitias.Systems.Events
 {
 
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 59)]
     public class JailbreakMissionSystem : MilitiaModuleBase
     {
         public override string ModuleName => "JailbreakMissionSystem";

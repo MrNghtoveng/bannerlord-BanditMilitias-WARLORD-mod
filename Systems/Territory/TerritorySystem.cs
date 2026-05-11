@@ -4,11 +4,13 @@ using BanditMilitias.Infrastructure;
 using BanditMilitias.Core.Neural;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using TaleWorlds.CampaignSystem;
 using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Library;
+using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Systems.Territory
 {
@@ -23,21 +25,34 @@ namespace BanditMilitias.Systems.Territory
         PatrolRoute = 4
     }
 
+    [Serializable]
     public class ActivityHotspot
     {
+        [SaveableProperty(1)]
         public Vec2 Position { get; set; }
+        [SaveableProperty(2)]
         public float ActivityScore { get; set; }
+        [SaveableProperty(3)]
         public HotspotType Type { get; set; }
+        [SaveableProperty(4)]
         public CampaignTime LastActivity { get; set; }
     }
 
+    [Serializable]
     public class TerritoryInfo
     {
+        [SaveableProperty(1)]
         public Settlement? Hideout { get; set; }
+        [SaveableProperty(2)]
         public float ControlStrength { get; set; }
-        public CampaignTime LastUpdate { get; set; }
+        [SaveableProperty(3)]
+        public float ThreatLevel { get; set; }
+        [SaveableProperty(4)]
         public int MilitiaCount { get; set; }
+        [SaveableProperty(5)]
         public List<MobileParty> Occupants { get; set; } = new();
+        [SaveableProperty(6)]
+        public CampaignTime LastUpdate { get; set; }
     }
 
     public class TerritoryOpportunityEvent : IGameEvent
@@ -54,11 +69,13 @@ namespace BanditMilitias.Systems.Territory
     }
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 390, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 30, IsCritical = false)]
     public class TerritorySystem : MilitiaModuleBase
     {
-        public static readonly TerritorySystem Instance = new TerritorySystem();
-        private TerritorySystem() { }
+        public static TerritorySystem Instance { get; } = new TerritorySystem();
+        public TerritorySystem() { }
 
         public override string ModuleName => "TerritoryInfluence";
         public override bool IsEnabled => Settings.Instance?.EnableSpatialAwareness ?? true;
@@ -125,41 +142,35 @@ namespace BanditMilitias.Systems.Territory
 
             if (ds.IsSaving)
             {
-                var ids = new List<string>();
-                var strengths = new List<float>();
-                var updates = new List<long>();
-
+                var entries = new List<string>();
                 foreach (var kvp in _territoryMap)
                 {
-                    ids.Add(kvp.Key.StringId);
-                    strengths.Add(kvp.Value.ControlStrength);
-                    updates.Add((long)kvp.Value.LastUpdate.ToHours);
+                    entries.Add(kvp.Key.StringId);
+                    entries.Add(kvp.Value.ControlStrength.ToString(CultureInfo.InvariantCulture));
+                    entries.Add(kvp.Value.MilitiaCount.ToString());
                 }
-                _ = ds.SyncData("_tm_ids", ref ids);
-                _ = ds.SyncData("_tm_strengths", ref strengths);
-                _ = ds.SyncData("_tm_updates", ref updates);
+
+                _ = ds.SyncData("_territoryMap_v2", ref entries);
             }
             else if (ds.IsLoading)
             {
                 _territoryMap.Clear();
-                var ids = new List<string>();
-                var strengths = new List<float>();
-                var updates = new List<long>();
-                _ = ds.SyncData("_tm_ids", ref ids);
-                _ = ds.SyncData("_tm_strengths", ref strengths);
-                _ = ds.SyncData("_tm_updates", ref updates);
+                var entries = new List<string>();
+                _ = ds.SyncData("_territoryMap_v2", ref entries);
 
-                for (int i = 0; i < ids.Count; i++)
+                for (int i = 0; i < entries.Count; i += 3)
                 {
-                    var h = ModuleManager.Instance.HideoutCache
-                        .FirstOrDefault(s => s.StringId == ids[i]);
-                    if (h != null)
-                        _territoryMap[h] = new TerritoryInfo
+                    var hideout = ModuleManager.Instance.HideoutCache
+                        .FirstOrDefault(s => s.StringId == entries[i]);
+                    if (hideout != null)
+                    {
+                        _territoryMap[hideout] = new TerritoryInfo
                         {
-                            Hideout = h,
-                            ControlStrength = strengths[i],
-                            LastUpdate = CampaignTime.Hours(updates[i])
+                            Hideout = hideout,
+                            ControlStrength = float.Parse(entries[i + 1], CultureInfo.InvariantCulture),
+                            MilitiaCount = int.Parse(entries[i + 2])
                         };
+                    }
                 }
             }
 

@@ -12,11 +12,15 @@ using TaleWorlds.CampaignSystem.Party;
 using TaleWorlds.CampaignSystem.Settlements;
 using TaleWorlds.Core;
 using TaleWorlds.ObjectSystem;
+using TaleWorlds.Localization;
 
 namespace BanditMilitias.Systems.Logistics
 {
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 110, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Enhancement.BanditEnhancementSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsCritical = false)]
     public class WarlordLogisticsSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordLogisticsSystem";
@@ -118,7 +122,7 @@ namespace BanditMilitias.Systems.Logistics
                     {
                         Type = CommandType.Patrol,
                         TargetLocation = CompatibilityLayer.GetSettlementPosition(town),
-                        Reason = "Selling prisoners"
+                        Reason = new TextObject("{=BM_Reason_SellPrisoners}Selling prisoners").ToString()
                     });
 
                     if (Settings.Instance?.TestingMode == true)
@@ -193,7 +197,7 @@ namespace BanditMilitias.Systems.Logistics
                     {
                         Type = CommandType.Patrol,
                         TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
-                        Reason = "Food purchase complete, returning to patrol"
+                        Reason = new TextObject("{=BM_Reason_RestockComplete}Food purchase complete, returning to patrol").ToString()
                     });
                 }
                 else
@@ -204,7 +208,7 @@ namespace BanditMilitias.Systems.Logistics
                         {
                             Type = CommandType.Patrol,
                             TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
-                            Reason = "Moving to restock food"
+                            Reason = new TextObject("{=BM_Reason_RestockFood}Moving to restock food").ToString()
                         });
                 }
             }
@@ -224,7 +228,7 @@ namespace BanditMilitias.Systems.Logistics
                 {
                     Type = CommandType.Patrol,
                     TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
-                    Reason = "Prisoner sale complete, returning to patrol"
+                    Reason = new TextObject("{=BM_Reason_SaleComplete}Prisoner sale complete, returning to patrol").ToString()
                 });
             }
             else
@@ -234,7 +238,7 @@ namespace BanditMilitias.Systems.Logistics
                     {
                         Type = CommandType.Patrol,
                         TargetLocation = CompatibilityLayer.GetSettlementPosition(target),
-                        Reason = "Moving to sell prisoners"
+                        Reason = new TextObject("{=BM_Reason_SellPrisoners}Selling prisoners").ToString()
                     });
             }
         }

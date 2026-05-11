@@ -52,7 +52,9 @@ namespace BanditMilitias.Systems.Fear
         public string? Reason { get; set; }
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsCritical = true)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 75, IsCritical = true)]
     public class FearSystem : MilitiaModuleBase
     {
 

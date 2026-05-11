@@ -15,7 +15,11 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Economy
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 310, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Fear.FearSystem),
+        typeof(BanditMilitias.Systems.Grid.SpatialGridSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 55, IsCritical = false)]
     public class CaravanTaxSystem : MilitiaModuleBase
     {
         public override string ModuleName => "CaravanTaxSystem";

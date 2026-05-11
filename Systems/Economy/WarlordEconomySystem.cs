@@ -34,7 +34,12 @@ namespace BanditMilitias.Systems.Economy
 
     }
 
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem),
+        typeof(BanditMilitias.Systems.Enhancement.BanditEnhancementSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 95)]
     public class WarlordEconomySystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordEconomy";

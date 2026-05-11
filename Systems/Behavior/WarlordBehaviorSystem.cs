@@ -17,7 +17,10 @@ using TaleWorlds.SaveSystem;
 
 namespace BanditMilitias.Systems.Behavior
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 300, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 82, IsCritical = false)]
     public class WarlordBehaviorSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordBehaviorSystem";

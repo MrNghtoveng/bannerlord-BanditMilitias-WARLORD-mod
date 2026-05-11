@@ -323,7 +323,7 @@ namespace BanditMilitias.Core.Memory
     }
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 10, IsCritical = true)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 101, IsCritical = true)]
     public sealed class WorldMemory : MilitiaModuleBase
     {
         private static readonly Lazy<WorldMemory> _inst = new(() => new WorldMemory());

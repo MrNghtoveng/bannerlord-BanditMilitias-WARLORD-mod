@@ -24,7 +24,10 @@ namespace BanditMilitias.Systems.Heroics
         [SaveableProperty(4)] public int RenownGain { get; set; } = 0;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 380, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 85, IsCritical = false)]
     public class WarlordHeroicsSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordHeroicsSystem";

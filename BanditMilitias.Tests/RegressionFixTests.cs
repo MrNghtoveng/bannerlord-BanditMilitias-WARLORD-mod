@@ -159,7 +159,7 @@ namespace BanditMilitias.Tests
         {
             string src = TestSourceHelper.ReadProjectFile("Systems", "AI", "AdaptiveAIDoctrineSystem.cs");
             StringAssert.Contains(src, "MilitiaEquipmentManager.Instance.ClearMissionEquipmentPolicy");
-            StringAssert.Contains(src, "MilitiaEquipmentManager.Instance.ResetMissionEquipmentPolicies();");
+            StringAssert.Contains(src, "MilitiaEquipmentManager.Instance?.ResetMissionEquipmentPolicies();");
         }
 
         [TestMethod]

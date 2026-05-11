@@ -10,7 +10,7 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Grid
 {
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 30, IsCritical = true, IsSingleton = true)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 100, IsCritical = true, IsSingleton = true)]
     public class SpatialGridSystem : MilitiaModuleBase
     {
         public static SpatialGridSystem Instance { get; } = new();
@@ -68,7 +68,7 @@ namespace BanditMilitias.Systems.Grid
             _settlementGrid = new Dictionary<long, List<Settlement>>();
             _pool.Clear();
             _settlementPool.Clear();
-            CampaignEvents.MobilePartyDestroyed.ClearListeners(this);
+            try { CampaignEvents.MobilePartyDestroyed?.ClearListeners(this); } catch { }
         }
 
 

@@ -15,11 +15,11 @@ namespace BanditMilitias.Systems.Tracking
 {
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 61, IsSingleton = true)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 61, IsSingleton = false)]
     public class CaravanActivityTracker : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         private static CaravanActivityTracker? _instance;
-        public static CaravanActivityTracker Instance => _instance ??= new CaravanActivityTracker();
+        public static CaravanActivityTracker? Instance => _instance;
 
         public override string ModuleName => "CaravanActivityTracker";
         public override int Priority => 61;
@@ -40,6 +40,7 @@ namespace BanditMilitias.Systems.Tracking
 
         public override void Initialize()
         {
+            _instance = this;
             FileLogger.Log("[CaravanActivityTracker] System initialized.");
         }
 
@@ -60,6 +61,7 @@ namespace BanditMilitias.Systems.Tracking
         {
             _tradeIntensityGrid.Clear();
             _recentEvents = new Queue<TradeEvent>();
+            _instance = null;
             CampaignEvents.SettlementEntered.ClearListeners(this);
         }
 
@@ -189,11 +191,11 @@ namespace BanditMilitias.Systems.Tracking
     }
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsSingleton = true)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 60, IsSingleton = false)]
     public class WarActivityTracker : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         private static WarActivityTracker? _instance;
-        public static WarActivityTracker Instance => _instance ??= new WarActivityTracker();
+        public static WarActivityTracker? Instance => _instance;
 
         public override string ModuleName => "WarActivityTracker";
 
@@ -216,7 +218,7 @@ namespace BanditMilitias.Systems.Tracking
 
         public override void Initialize()
         {
-
+            _instance = this;
             FileLogger.Log("[WarActivityTracker] System initialized.");
         }
 
@@ -237,6 +239,7 @@ namespace BanditMilitias.Systems.Tracking
         {
             _warIntensityGrid.Clear();
             _recentEvents = new Queue<WarEvent>();
+            _instance = null;
             CampaignEvents.MapEventEnded.ClearListeners(this);
             CampaignEvents.OnSiegeEventStartedEvent.ClearListeners(this);
         }

@@ -59,7 +59,11 @@ namespace BanditMilitias.Systems.Crisis
         [SaveableProperty(10)] public string? Resolution { get; set; }
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 450, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Bounty.BountySystem),
+        typeof(BanditMilitias.Systems.Grid.SpatialGridSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 48, IsCritical = false)]
     public class CrisisEventSystem : MilitiaModuleBase
     {
         public override string ModuleName => "CrisisEvents";

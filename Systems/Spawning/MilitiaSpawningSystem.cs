@@ -29,7 +29,7 @@ namespace BanditMilitias.Systems.Spawning
     [Core.Components.ModuleDependency(
         typeof(BanditMilitias.Systems.Scheduling.AISchedulerSystem),
         typeof(BanditMilitias.Systems.Cleanup.PartyCleanupSystem))]
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 50, IsCritical = true)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 82, IsCritical = true)]
     public class MilitiaSpawningSystem : MilitiaModuleBase, ISpawningSystem
     {
         public const float BaseDailySpawnChanceMin = 0.55f;
@@ -296,8 +296,8 @@ namespace BanditMilitias.Systems.Spawning
 
             if (Settings.Instance?.WarSpawnMultiplier > 0f)
             {
-                float deserterModifier = BanditMilitias.Systems.Tracking.WarActivityTracker.Instance
-                    .GetDeserterSpawnModifier(CompatibilityLayer.GetSettlementPosition(hideout));
+                var warTracker = BanditMilitias.Systems.Tracking.WarActivityTracker.Instance;
+                float deserterModifier = warTracker != null ? warTracker.GetDeserterSpawnModifier(CompatibilityLayer.GetSettlementPosition(hideout)) : 1.0f;
 
                 if (deserterModifier > 1.0f)
                 {
@@ -308,8 +308,8 @@ namespace BanditMilitias.Systems.Spawning
 
             if (Settings.Instance?.TradeSpawnMultiplier > 0f)
             {
-                float tradeIntensity = BanditMilitias.Systems.Tracking.CaravanActivityTracker.Instance
-                    .GetTradeIntensity(CompatibilityLayer.GetSettlementPosition(hideout));
+                var caravanTracker = BanditMilitias.Systems.Tracking.CaravanActivityTracker.Instance;
+                float tradeIntensity = caravanTracker != null ? caravanTracker.GetTradeIntensity(CompatibilityLayer.GetSettlementPosition(hideout)) : 0f;
 
                 if (tradeIntensity > 0.1f)
                 {
@@ -521,7 +521,8 @@ namespace BanditMilitias.Systems.Spawning
             }
 
             var mapScene = Campaign.Current?.MapSceneWrapper;
-            if (mapScene == null)
+            bool isHeadless = mapScene == null;
+            if (isHeadless && Settings.Instance?.TestingMode != true)
             {
                 DebugLogger.TestLog("[Spawn] MapSceneWrapper null! Spawn aborted.", Colors.Red);
                 MarkSpawnFailure(hideout, "MapSceneWrapper null", 12f);
@@ -532,13 +533,13 @@ namespace BanditMilitias.Systems.Spawning
 
             if (mapScene != null)
             {
-                var testPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, 1f);
+                var testPos = mapScene.GetAccessiblePointNearPosition(gatePos, 1f);
                 if (float.IsNaN(testPos.X) || float.IsNaN(testPos.Y))
                 {
-                    testPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, 15f);
+                    testPos = mapScene.GetAccessiblePointNearPosition(gatePos, 15f);
                     if (float.IsNaN(testPos.X) || float.IsNaN(testPos.Y))
                     {
-                        testPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, 40f);
+                        testPos = mapScene.GetAccessiblePointNearPosition(gatePos, 40f);
                         if (float.IsNaN(testPos.X) || float.IsNaN(testPos.Y))
                         {
                             string msg = $"[BanditMilitias] SPAWN CANCELLED: Hideout '{hideout.Name}' " +
@@ -580,42 +581,45 @@ namespace BanditMilitias.Systems.Spawning
                     DebugLogger.TestLog($"[Spawn] {hideout.Name} reactivated.", Colors.Green);
             }
 
-            Vec2 finalSpawnPos = Vec2.Invalid;
-            bool validPosFound = false;
+            Vec2 finalSpawnPos = CompatibilityLayer.ToVec2(gatePos);
+            bool validPosFound = isHeadless; // Automatically true if headless
             bool spawnIsOnLand = true;
             int maxAttempts = 25;
 
-            for (int attempt = 0; attempt < maxAttempts; attempt++)
+            if (!isHeadless && liveMapScene != null)
             {
-                float searchRadius = 5f + (attempt * 5f);
-                var potentialPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, searchRadius);
-                if (potentialPos == null) continue;
-                var vec2Pos = CompatibilityLayer.ToVec2(potentialPos);
-
-                if (float.IsNaN(vec2Pos.X) || float.IsNaN(vec2Pos.Y)) continue;
-                if (vec2Pos.X < 0 || vec2Pos.Y < 0 || vec2Pos.X > 2000 || vec2Pos.Y > 2000) continue;
-
-                var faceIndex = liveMapScene.GetFaceIndex(potentialPos);
-                if (!faceIndex.IsValid()) continue;
-
-                var terrainType = liveMapScene.GetFaceTerrainType(faceIndex);
-                bool isSeaRaider = banditClan.StringId.Contains("sea_raiders");
-
-                if (terrainType == TerrainType.Water || terrainType == TerrainType.River)
+                for (int attempt = 0; attempt < maxAttempts; attempt++)
                 {
-                    if (!isSeaRaider || !_hasNavalDLC.Value) continue;
-                    spawnIsOnLand = false;
-                }
-                else
-                {
-                    spawnIsOnLand = true;
-                }
+                    float searchRadius = 5f + (attempt * 5f);
+                    var potentialPos = liveMapScene.GetAccessiblePointNearPosition(gatePos, searchRadius);
+                    if (potentialPos == null) continue;
+                    var vec2Pos = CompatibilityLayer.ToVec2(potentialPos);
 
-                if (terrainType == TerrainType.Canyon) continue;
+                    if (float.IsNaN(vec2Pos.X) || float.IsNaN(vec2Pos.Y)) continue;
+                    if (vec2Pos.X < 0 || vec2Pos.Y < 0 || vec2Pos.X > 2000 || vec2Pos.Y > 2000) continue;
 
-                finalSpawnPos = vec2Pos;
-                validPosFound = true;
-                break;
+                    var faceIndex = liveMapScene.GetFaceIndex(potentialPos);
+                    if (!faceIndex.IsValid()) continue;
+
+                    var terrainType = liveMapScene.GetFaceTerrainType(faceIndex);
+                    bool isSeaRaider = banditClan.StringId.Contains("sea_raiders");
+
+                    if (terrainType == TerrainType.Water || terrainType == TerrainType.River)
+                    {
+                        if (!isSeaRaider || !_hasNavalDLC.Value) continue;
+                        spawnIsOnLand = false;
+                    }
+                    else
+                    {
+                        spawnIsOnLand = true;
+                    }
+
+                    if (terrainType == TerrainType.Canyon) continue;
+
+                    finalSpawnPos = vec2Pos;
+                    validPosFound = true;
+                    break;
+                }
             }
 
             if (!validPosFound)
@@ -1209,5 +1213,4 @@ namespace BanditMilitias.Systems.Spawning
             => elapsedDaysSinceLastSpawn >= 1.0f;
     }
 }
-
 

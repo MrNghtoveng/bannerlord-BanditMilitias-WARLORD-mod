@@ -8,7 +8,6 @@ using BanditMilitias.Systems.WarlordLegitimacy;
 using BanditMilitias.Systems.Tracking;
 using BanditMilitias.Systems.Bounty;
 using BanditMilitias.Debug;
-using BanditMilitias.Systems.Bounty;
 using BanditMilitias.Intelligence.Neural;
 using BanditMilitias.Systems.Enhancement;
 using BanditMilitias.Core.Neural;
@@ -58,17 +57,21 @@ namespace BanditMilitias.Systems.AI
         public float AggressionBias { get; set; }
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 120, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.Progression.WarlordCareerSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem),
+        typeof(BanditMilitias.Systems.Tracking.PlayerTracker),
+        typeof(BanditMilitias.Systems.AI.MilitiaEquipmentManager))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 92, IsCritical = false, IsSingleton = false)]
     public class AdaptiveAIDoctrineSystem : MilitiaModuleBase
     {
         public override string ModuleName => "AdaptiveAIDoctrineSystem";
         public override bool IsEnabled => Settings.Instance?.EnableAdaptiveAIDoctrine ?? true;
         public override int Priority => 92;
 
-        private static readonly Lazy<AdaptiveAIDoctrineSystem> _instance =
-            new Lazy<AdaptiveAIDoctrineSystem>(() => new AdaptiveAIDoctrineSystem());
-
-        public static AdaptiveAIDoctrineSystem Instance => _instance.Value;
+        private static AdaptiveAIDoctrineSystem? _instance;
+        public static AdaptiveAIDoctrineSystem? Instance => _instance;
 
         private readonly object _stateLock = new object();
         private Dictionary<string, AdaptiveDoctrineProfile> _profilesByWarlord = new Dictionary<string, AdaptiveDoctrineProfile>();
@@ -92,12 +95,12 @@ namespace BanditMilitias.Systems.AI
                 if (_isInitialized)
                     return;
 
+                _instance = this;
                 CampaignEvents.MapEventEnded.AddNonSerializedListener(this, OnMapEventEnded);
-
-
                 CampaignEvents.MapEventStarted.AddNonSerializedListener(this, OnMapEventStarted);
+                
                 BanditMilitias.Core.Events.EventBus.Instance.Subscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
-
+                BanditMilitias.Core.Events.EventBus.Instance.Subscribe<StrategicAssessmentEvent>(OnStrategicAssessment);
 
                 EnsureGlobalProfile();
 
@@ -107,8 +110,6 @@ namespace BanditMilitias.Systems.AI
 
         public override void RegisterCampaignEvents()
         {
-
-
             lock (_stateLock)
             {
                 foreach (var profile in _profilesByWarlord.Values)
@@ -128,7 +129,9 @@ namespace BanditMilitias.Systems.AI
                 CampaignEvents.MapEventEnded.ClearListeners(this);
                 CampaignEvents.MapEventStarted.ClearListeners(this);
                 BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<ThreatLevelChangedEvent>(OnThreatLevelChanged);
-                MilitiaEquipmentManager.Instance.ResetMissionEquipmentPolicies();
+                BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<StrategicAssessmentEvent>(OnStrategicAssessment);
+                
+                MilitiaEquipmentManager.Instance?.ResetMissionEquipmentPolicies();
 
                 _profilesByWarlord.Clear();
                 _doctrineShifts = 0;
@@ -138,6 +141,7 @@ namespace BanditMilitias.Systems.AI
                 _observedBattleSamples = 0;
                 _loggedBattleSamples = 0;
                 _isInitialized = false;
+                _instance = null;
             }
         }
 
@@ -211,14 +215,12 @@ namespace BanditMilitias.Systems.AI
                 float doctrineMod = AdaptiveDoctrineRules.GetDecisionModifier(profile.ActiveCounterDoctrine, decisionType, isRaider);
                 float finalMod = doctrineMod + profile.AggressionBias;
 
-
                 if (decisionType == AIDecisionType.Raid || decisionType == AIDecisionType.Engage)
                 {
                     Warlord? warlord = WarlordSystem.Instance.GetWarlord(profile.WarlordId);
                     if (warlord != null && warlord.Gold < 15000)
                     {
                         finalMod += 10f;
-
                     }
                 }
 
@@ -292,7 +294,6 @@ namespace BanditMilitias.Systems.AI
             PlayStyle style = tracker.GetPlayerPlayStyle();
             float threatLevel = tracker.GetThreatLevel();
 
-
             var tacticsSystem = Systems.Enhancement.WarlordTacticsSystem.Instance;
             var playerArmy = tacticsSystem != null
                 ? tacticsSystem.AnalyzePlayerArmy()
@@ -306,7 +307,6 @@ namespace BanditMilitias.Systems.AI
             ApplyDoctrineUpdate(GetGlobalProfile(), observed, style, PersonalityType.Cunning, threatLevel, isGlobalProfile: true, LegitimacyLevel.Warlord);
 
             var warlords = WarlordSystem.Instance.GetAllWarlords();
-
 
             HashSet<string> activeIds = new HashSet<string>(warlords.Select(w => w.StringId));
             RemoveStaleProfiles(activeIds);
@@ -377,7 +377,6 @@ namespace BanditMilitias.Systems.AI
             _observedDoctrineSamples++;
         }
 
-
         private void OnMapEventStarted(MapEvent mapEvent, PartyBase attackerParty, PartyBase defenderParty)
         {
             if (!IsEnabled || !_isInitialized || mapEvent == null) return;
@@ -385,8 +384,6 @@ namespace BanditMilitias.Systems.AI
 
             lock (_stateLock)
             {
-
-
                 MobileParty? militiaParty = null;
                 foreach (var p in mapEvent.AttackerSide.Parties)
                 {
@@ -396,7 +393,6 @@ namespace BanditMilitias.Systems.AI
                         break;
                     }
                 }
-
 
                 if (militiaParty == null)
                 {
@@ -447,7 +443,6 @@ namespace BanditMilitias.Systems.AI
 
                     float learningRate = Settings.Instance?.AdaptiveDoctrineLearningRate ?? 0.30f;
 
-                    // ── Mevcut binary confidence sistemi (değiştirilmedi) ──────────────
                     float confidenceBefore = profile.Confidence;
                     profile.Confidence = AdaptiveDoctrineRules.UpdateConfidence(profile.Confidence, won, learningRate);
                     profile.LastUpdatedTime = CampaignTime.Now;
@@ -456,8 +451,9 @@ namespace BanditMilitias.Systems.AI
                     else profile.FailedEngagements++;
                     _observedBattleSamples++;
 
-                    // ── YENİ: NeuralAdvisor'a deneyimi ilet ──────────────────────────
                     TryRecordNeuralExperience(mapEvent, party, warlord, won, militiaIsAttacker);
+
+                    MilitiaEquipmentManager.Instance.ClearMissionEquipmentPolicy(party);
                 }
             }
         }
@@ -483,6 +479,13 @@ namespace BanditMilitias.Systems.AI
                     _doctrineShifts++;
                 }
             }
+        }
+
+        private void OnStrategicAssessment(StrategicAssessmentEvent evt)
+        {
+            if (evt?.Warlord == null) return;
+            // Bridge signal: trigger doctrine re-evaluation when strategic assessment arrives
+            RecomputeDoctrineProfiles();
         }
 
         public AdaptiveDoctrineProfile GetProfileForWarlord(MobileParty party)
@@ -553,7 +556,6 @@ namespace BanditMilitias.Systems.AI
             if (_profilesByWarlord.ContainsKey(GLOBAL_PROFILE_ID))
                 return;
 
-
             var safeTime = Campaign.Current != null ? CampaignTime.Now : CampaignTime.Zero;
             _profilesByWarlord[GLOBAL_PROFILE_ID] = new AdaptiveDoctrineProfile
             {
@@ -581,7 +583,6 @@ namespace BanditMilitias.Systems.AI
                 CounterDoctrine.DefensiveDepth => -3.5f,
                 _ => 0f
             };
-
 
             float confidenceMod = (confidence - 0.5f) * 5.0f;
             bias += confidenceMod;
@@ -641,10 +642,6 @@ namespace BanditMilitias.Systems.AI
             return $"Doctrine snapshot exported to: {AdaptiveDoctrineDataLogger.SnapshotPath}";
         }
 
-        /// <summary>
-        /// Savaş sonuçlarını NeuralAdvisor'ın ExperienceBuffer'ına yazar.
-        /// MapEvent'ten gerçek kayıp verisi çeker (sabit 0.3f değil).
-        /// </summary>
         private void TryRecordNeuralExperience(
             MapEvent mapEvent,
             MobileParty militiaParty,
@@ -657,21 +654,16 @@ namespace BanditMilitias.Systems.AI
                 var advisor = NeuralAdvisor.Instance;
                 if (advisor == null || !advisor.IsEnabled) return;
 
-                // 1. Savaş öncesi durum vektörünü oluştur
                 float[] stateFeatures = BuildBattleStateFeatures(mapEvent, militiaParty, warlord, isAttacker);
 
-                // 2. Aktif doktrini action index'e çevir
                 AdaptiveDoctrineProfile profile = GetOrCreateProfile(warlord?.StringId ?? GLOBAL_PROFILE_ID);
                 int actionIdx = DoctrineToActionIndex(profile.ActiveCounterDoctrine);
 
-                // 3. Gerçek kayıp oranını hesapla (sabit 0.3f yerine)
                 float ownCasualtyRatio = GetCasualtyRatio(mapEvent, isAttacker ? BattleSideEnum.Attacker : BattleSideEnum.Defender);
                 float enemyCasualtyRatio = GetCasualtyRatio(mapEvent, isAttacker ? BattleSideEnum.Defender : BattleSideEnum.Attacker);
 
-                // 4. Sürekli ödül fonksiyonu (raporun önerdiği, ancak gerçek verilerle)
                 float reward = CalculateContinuousReward(won, ownCasualtyRatio, enemyCasualtyRatio, mapEvent);
 
-                // 5. Savaş sonrası durum (yenilgide düşman gücü sıfıra yakın, zafer durumunda kayıplar hesaba katılır)
                 float[] nextStateFeatures = BuildPostBattleStateFeatures(stateFeatures, won, ownCasualtyRatio);
 
                 advisor.RecordExperience(stateFeatures, actionIdx, reward, nextStateFeatures, "doctrine_battle");
@@ -689,29 +681,22 @@ namespace BanditMilitias.Systems.AI
             }
         }
 
-        /// <summary>
-        /// MapEventSide'dan gerçek kayıp oranını çeker.
-        /// Savaş başındaki güç ile bitişteki farkı kullanır.
-        /// </summary>
         private static float GetCasualtyRatio(MapEvent mapEvent, BattleSideEnum side)
         {
             try
             {
                 if (mapEvent.StrengthOfSide == null || mapEvent.StrengthOfSide.Length < 2)
-                    return 0.3f; // fallback
+                    return 0.3f;
 
-                // Bannerlord MapEvent'te StrengthOfSide savaş sonrası kalan gücü verir.
-                // Başlangıç gücüne ulaşmak için InvolvedParties'in başlangıç gücünü toplarız.
                 float remainingStrength = mapEvent.StrengthOfSide[(int)side];
                 float initialStrength = 0f;
 
                 foreach (var p in mapEvent.GetMapEventSide(side).Parties)
                 {
                     if (p?.Party?.MobileParty == null) continue;
-                    // Kalan + kayıp = başlangıç; kayıplar MemberRoster'daki WoundedRegulars üzerinden tahmin edilir
                     int total = p.Party.MobileParty.MemberRoster?.TotalManCount ?? 0;
                     int wounded = p.Party.MobileParty.MemberRoster?.TotalWoundedRegulars ?? 0;
-                    initialStrength += total + wounded; // yaklaşık başlangıç
+                    initialStrength += total + wounded;
                 }
 
                 if (initialStrength <= 0f) return 0.3f;
@@ -725,10 +710,6 @@ namespace BanditMilitias.Systems.AI
             }
         }
 
-        /// <summary>
-        /// Sürekli ödül fonksiyonu — Pirus zaferini cezalandırır, verimli geri çekilmeyi ödüllendirir.
-        /// R = baseOutcome + casualtyDelta * weight
-        /// </summary>
         private static float CalculateContinuousReward(
             bool won,
             float ownCasualtyRatio,
@@ -736,16 +717,13 @@ namespace BanditMilitias.Systems.AI
             MapEvent mapEvent)
         {
             float baseScore = won ? 0.5f : -0.5f;
-            float casualtyDelta = enemyCasualtyRatio - ownCasualtyRatio; // -1..+1
+            float casualtyDelta = enemyCasualtyRatio - ownCasualtyRatio;
 
-            // Pirus zaferi tespiti: kazandık ama çok kayıp verdik
             if (won && ownCasualtyRatio > 0.6f)
             {
-                baseScore *= (1f - ownCasualtyRatio * 0.5f); // ödülü azalt
+                baseScore *= (1f - ownCasualtyRatio * 0.5f);
             }
 
-            // Akıllı geri çekilme ödülü:
-            // Çok güçlü düşmana karşı kaybettik ama az kayıp verdik → pozitif
             if (!won && ownCasualtyRatio < 0.25f)
             {
                 float enemyStr = mapEvent.StrengthOfSide != null && mapEvent.StrengthOfSide.Length >= 2
@@ -756,16 +734,13 @@ namespace BanditMilitias.Systems.AI
                     : 1f;
 
                 if (enemyStr > ownStr * 1.8f)
-                    baseScore = 0.15f; // Ezici düşmandan kaçmayı başardı
+                    baseScore = 0.15f;
             }
 
             float finalReward = baseScore + (casualtyDelta * 0.8f);
             return TaleWorlds.Library.MathF.Clamp(finalReward, -1.5f, 1.5f);
         }
 
-        /// <summary>
-        /// Savaş anındaki 12 boyutlu durum vektörü — ExtractFeatures ile aynı yapıda.
-        /// </summary>
         private static float[] BuildBattleStateFeatures(
             MapEvent mapEvent,
             MobileParty militiaParty,
@@ -787,31 +762,23 @@ namespace BanditMilitias.Systems.AI
             f[2] = enemyStr > 0f ? TaleWorlds.Library.MathF.Min(3f, ownStr / Math.Max(1f, enemyStr)) : 1f;
             f[3] = Math.Min(1f, PlayerTracker.Instance?.GetThreatLevel() ?? 0.5f);
 
-            // f[4]: arazi — orman mı?
             f[4] = IsPartyInForest(militiaParty) ? 1f : 0f;
 
-            // f[5]: düşman süvari oranı
             f[5] = GetEnemyCavalryRatio(mapEvent, enemySide);
 
-            // f[6]: militia toplam asker sayısı normalize
             f[6] = Normalize(militiaParty.MemberRoster?.TotalManCount ?? 0, 0f, 200f);
 
-            // f[7]: ortalama tier
             f[7] = Normalize(GetAverageTier(militiaParty), 0f, 6f);
 
-            // f[8]: warlord tier (kariyer seviyesi)
             var careerSystem = WarlordCareerSystem.Instance;
             int tierInt = warlord != null && careerSystem != null
                 ? (int)careerSystem.GetTier(warlord.StringId) : 2;
             f[8] = Normalize(tierInt, 0f, 4f);
 
-            // f[9]: aktif avcı var mı
             f[9] = (warlord != null && BountySystem.Instance.HasHunterParty(warlord.StringId)) ? 1f : 0f;
 
-            // f[10]: warlord bounty
             f[10] = warlord != null ? Normalize(BountySystem.Instance.GetBounty(warlord.StringId), 0f, 5000f) : 0.2f;
 
-            // f[11]: oyuncuya mesafe normalize
             f[11] = GetPlayerDistanceNormalized(militiaParty);
 
             return f;
@@ -822,22 +789,15 @@ namespace BanditMilitias.Systems.AI
             float[] next = new float[preBattleState.Length];
             Array.Copy(preBattleState, next, preBattleState.Length);
 
-            // Savaş sonrası kendi gücümüz azaldı
             next[0] = Math.Max(0f, preBattleState[0] * (1f - ownCasualtyRatio));
-            // Düşman gücü: kazandıysak azaldı, kaybettik se büyük ölçüde kaldı
             next[1] = won ? Math.Max(0f, preBattleState[1] * 0.1f) : preBattleState[1];
-            // Güç oranı güncelle
             next[2] = next[1] > 0f ? Math.Min(3f, next[0] / Math.Max(0.01f, next[1])) : 1f;
 
             return next;
         }
 
-        // ── Yardımcı metodlar ──────────────────────────────────────────────────────
-
         private static int DoctrineToActionIndex(CounterDoctrine doctrine)
         {
-            // CounterDoctrine → NeuralActionMap.CommandToIndex eşlemesi
-            // Mevcut NeuralActionMap'e göre en yakın CommandType seçilir.
             return doctrine switch
             {
                 CounterDoctrine.DefensiveDepth => NeuralActionMap.CommandToIndex(CommandType.Defend),
@@ -953,8 +913,6 @@ namespace BanditMilitias.Systems.AI
             float threatLevel,
             LegitimacyLevel warlordLevel)
         {
-
-
             if (warlordLevel == LegitimacyLevel.Outlaw)
                 return CounterDoctrine.Balanced;
 
@@ -992,20 +950,17 @@ namespace BanditMilitias.Systems.AI
                 _ => CounterDoctrine.Balanced
             };
 
-
             if (warlordLevel == LegitimacyLevel.Rebel)
             {
                 if (ideal == CounterDoctrine.SpearWall || ideal == CounterDoctrine.ShockRaid)
                     return CounterDoctrine.Balanced;
             }
 
-
             if (warlordLevel == LegitimacyLevel.FamousBandit)
             {
                 if (ideal == CounterDoctrine.ShockRaid)
                     return CounterDoctrine.Balanced;
             }
-
 
             return ideal;
         }
@@ -1105,9 +1060,7 @@ namespace BanditMilitias.Systems.AI
             if (current == candidate) return false;
             if (hoursSinceSwitch < cooldownHours) return false;
 
-
             if (confidence < 0.40f) return true;
-
 
             return confidence > 0.55f;
         }
@@ -1122,5 +1075,3 @@ namespace BanditMilitias.Systems.AI
         private static float Clamp01(float v) => MathF.Clamp(v, 0f, 1f);
     }
 }
-
-

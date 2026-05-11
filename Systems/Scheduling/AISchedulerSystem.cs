@@ -17,6 +17,7 @@ namespace BanditMilitias.Systems.Scheduling
     public class AISchedulerSystem : Core.Components.MilitiaModuleBase
     {
         public override string ModuleName => "AIScheduler";
+        public override int Priority => 130;
         private static AISchedulerSystem? _instance;
         public static AISchedulerSystem? Instance => _instance;
 
@@ -74,15 +75,14 @@ namespace BanditMilitias.Systems.Scheduling
             _totalSpawnEvalsProcessed = 0;
             _zombiesRescued = 0;
             _lastZombieCandidateRefreshHour = int.MinValue;
-            BanditMilitias.Core.Events.EventBus.Instance.Subscribe<StrategicCommandEvent>(OnStrategicCommandIssued);
-            // Also register via SubscribeSafe so base.Cleanup() guarantees removal
-            // even if Cleanup() is never explicitly called on this instance.
+            // SubscribeSafe guarantees removal via base.Cleanup(),
+            // no need for a separate EventBus.Subscribe call.
             SubscribeSafe<StrategicCommandEvent>(OnStrategicCommandIssued);
         }
 
         public override void Cleanup()
         {
-            BanditMilitias.Core.Events.EventBus.Instance.Unsubscribe<StrategicCommandEvent>(OnStrategicCommandIssued);
+            // SubscribeSafe handles unsubscription via base.Cleanup().
             _isEnabled = false;
             _instance = null;
             _lastUpdateTimes.Clear();
@@ -212,14 +212,63 @@ namespace BanditMilitias.Systems.Scheduling
         // Hourly tick — budget-based queue draining
         // ─────────────────────────────────────────────────────────────────────
 
+        // Counter for periodic _lastUpdateTimes pruning.
+        private int _hourlyTickCount;
+
         public override void OnHourlyTick()
         {
             _urgencyCache.Clear();
+            _hourlyTickCount++;
+
+            // Every 24 ticks remove _lastUpdateTimes entries whose parties no longer
+            // exist in the active militia list.  This is a safety net for cases where
+            // OnPartyDestroyedCleanup was never called (crash, unregistered party, etc.).
+            if (_hourlyTickCount % 24 == 0)
+            {
+                PruneStaleUpdateTimes();
+            }
 
             UpdateStuckCandidates();
             RescueZombies();
             ProcessDecisionQueue();
             ProcessSpawnEvalQueue();
+        }
+
+        private void PruneStaleUpdateTimes()
+        {
+            if (_lastUpdateTimes.Count == 0) return;
+
+            var activeMilitias = ModuleManager.Instance?.ActiveMilitias;
+            if (activeMilitias == null) return;
+
+            // Build a quick lookup of live StringIds.
+            var liveIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var p in activeMilitias)
+            {
+                if (p?.StringId != null) liveIds.Add(p.StringId);
+            }
+
+            // Collect stale keys without modifying during enumeration.
+            List<string>? toRemove = null;
+            foreach (var key in _lastUpdateTimes.Keys)
+            {
+                if (!liveIds.Contains(key))
+                {
+                    (toRemove ??= new List<string>()).Add(key);
+                }
+            }
+
+            if (toRemove == null) return;
+
+            foreach (var key in toRemove)
+            {
+                _lastUpdateTimes.Remove(key);
+                _urgencyCache.Remove(key);
+            }
+
+            if (Settings.Instance?.TestingMode == true && toRemove.Count > 0)
+                DebugLogger.Info("AIScheduler",
+                    $"[PruneStaleUpdateTimes] Removed {toRemove.Count} stale entries. Tracked={_lastUpdateTimes.Count}");
         }
 
         private void ProcessDecisionQueue()
@@ -476,5 +525,4 @@ namespace BanditMilitias.Systems.Scheduling
         }
     }
 }
-
 

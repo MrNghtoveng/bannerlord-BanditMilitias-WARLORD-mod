@@ -25,7 +25,11 @@ namespace BanditMilitias.Intelligence.Narrative
     }
 
 
-    [AutoRegister]
+    [Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem),
+        typeof(BanditMilitias.Systems.Legacy.WarlordLegacySystem))]
+    [AutoRegister(Priority = 35)]
     public class WarlordNarrativeSystem : MilitiaModuleBase
     {
         public override string ModuleName => "NarrativeSystem";
@@ -475,9 +479,11 @@ namespace BanditMilitias.Intelligence.Narrative
             if (intensity >= 10)
             {
                 InformationManager.ShowInquiry(new InquiryData(
-                    "âš  Warlord MesajÄ±",
+                    new TextObject("{=BM_Warlord_Message}Warlord Message").ToString(),
                     message,
-                    true, false, "Tamam", null, null, null));
+                    true, false, 
+                    new TextObject("{=BM_Close}Close").ToString(), 
+                    null, null, null));
             }
             else
             {

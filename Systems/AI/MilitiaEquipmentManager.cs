@@ -13,6 +13,7 @@ namespace BanditMilitias.Systems.AI
     public class MilitiaEquipmentManager : MilitiaModuleBase
     {
         public override string ModuleName => "MilitiaEquipment";
+        public override int Priority => 300;
         private static readonly Lazy<MilitiaEquipmentManager> _instance = new(() => new MilitiaEquipmentManager());
         public static MilitiaEquipmentManager Instance => _instance.Value;
         private readonly object _policyLock = new();

@@ -86,12 +86,14 @@ namespace BanditMilitias.Intelligence.Swarm
         public string Reason { get; set; } = "";
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 40, IsCritical = true)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Systems.Grid.SpatialGridSystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 85, IsCritical = true, IsSingleton = false)]
     public class SwarmCoordinator : MilitiaModuleBase
     {
 
         private static SwarmCoordinator? _instance;
-        public static SwarmCoordinator Instance => _instance ??= new SwarmCoordinator();
+        public static SwarmCoordinator? Instance => _instance;
 
         public override string ModuleName => "SwarmCoordinator";
         public override bool IsEnabled => Settings.Instance?.EnableCustomAI ?? true;
@@ -127,6 +129,7 @@ namespace BanditMilitias.Intelligence.Swarm
         public override void Initialize()
         {
             if (_isInitialized) return;
+            _instance = this;
             _isInitialized = true;
 
             _partyCache = new();
@@ -168,6 +171,7 @@ namespace BanditMilitias.Intelligence.Swarm
             _partyCache.Clear();
             _partyGroupMap.Clear();
             _isInitialized = false;
+            _instance = null;
         }
 
         public override void OnDailyTick()
@@ -324,7 +328,7 @@ namespace BanditMilitias.Intelligence.Swarm
                 if (tactic != group.CurrentTactic)
                 {
                     DebugLogger.Info("SwarmCoordinator",
-                        $"Group {(group.Id.Length > 6 ? group.Id.Substring(0, 6) : group.Id)}: {group.CurrentTactic}Â›{tactic}");
+                        $"Group {(group.Id.Length > 6 ? group.Id.Substring(0, 6) : group.Id)}: {group.CurrentTactic} -> {tactic}");
                     group.CurrentTactic = tactic;
                 }
 
@@ -882,7 +886,7 @@ namespace BanditMilitias.Intelligence.Swarm
 
                 if (Settings.Instance?.TestingMode == true)
                     DebugLogger.Info("SwarmCoordinator",
-                        $"[Battle] {militia.Name}: Morale {current:F0}Â›{boosted:F0} ({reason})");
+                        $"[Battle] {militia.Name}: Morale {current:F0} -> {boosted:F0} ({reason})");
             }
             catch (Exception ex)
             {
@@ -976,7 +980,7 @@ namespace BanditMilitias.Intelligence.Swarm
             if (evt?.Hideout == null) return;
             if (ModActivationManager.IsGameplayActivationDelayed()) return;
             DebugLogger.Info("SwarmCoordinator",
-                $"Hideout formed at {evt.Hideout.Name} Â— scanning for nearby militias.");
+                $"Hideout formed at {evt.Hideout.Name} - scanning for nearby militias.");
 
             var nearby = ModuleManager.Instance.ActiveMilitias
                 .Where(p => p.IsActive && CompatibilityLayer.GetPartyPosition(p).DistanceSquared(CompatibilityLayer.GetSettlementPosition(evt.Hideout)) < COORDINATION_RADIUS * COORDINATION_RADIUS)
@@ -1036,7 +1040,7 @@ namespace BanditMilitias.Intelligence.Swarm
 
             if (Settings.Instance?.TestingMode == true)
                 DebugLogger.Info("SwarmCoordinator",
-                    $"[Spawn] {evt.Party.Name} â†’ {(target != null ? $"grup eklendi" : "periyodik gruplama bekliyor")}");
+                    $"[Spawn] {evt.Party.Name} - {(target != null ? "added to existing group" : "awaiting periodic grouping")}");
         }
 
         private void OnMilitiaDisbanded(MilitiaDisbandedEvent evt)
@@ -1057,7 +1061,7 @@ namespace BanditMilitias.Intelligence.Swarm
 
                     if (Settings.Instance?.TestingMode == true)
                         DebugLogger.Info("SwarmCoordinator",
-                            $"[Disband] Grup daÄŸÄ±tÄ±ldÄ± â€” minimum boyutun altÄ±na dÃ¼ÅŸtÃ¼.");
+                            "[Disband] Group disbanded - fell below minimum size.");
                 }
             }
             _ = _partyCache.Remove(pid);
@@ -1237,7 +1241,7 @@ namespace BanditMilitias.Intelligence.Swarm
                 _groups ??= new();
                 _pendingCacheRebuild = true;
                 DebugLogger.Info("SwarmCoordinator",
-                    $"SyncData load complete Â— {_groups.Count} groups queued for cache rebuild.");
+                    $"SyncData load complete - {_groups.Count} groups queued for cache rebuild.");
             }
         }
 

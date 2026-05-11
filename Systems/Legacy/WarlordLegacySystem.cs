@@ -42,7 +42,7 @@ namespace BanditMilitias.Systems.Legacy
             MathF.Min(1f, (DaysActive / 120f) * (PeakFear + 0.1f) * (Kills / 20f + 0.5f));
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 370, IsCritical = false)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 55, IsCritical = false)]
     public class WarlordLegacySystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordLegacy";
@@ -260,7 +260,7 @@ namespace BanditMilitias.Systems.Legacy
         private static void AnnounceEfsane(WarlordLegacyRecord rec)
         {
             InformationManager.DisplayMessage(new InformationMessage(
-                $"[EFSANE] {rec.WarlordName} dÃ¼ÅŸtÃ¼ â€” ama sÃ¶ylentisi bÃ¶lgede yaÅŸÄ±yor.",
+                $"[LEGEND] {rec.WarlordName} has fallen - but the rumor lives on in the region.",
                 Colors.Magenta));
         }
 

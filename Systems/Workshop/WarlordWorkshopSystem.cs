@@ -44,7 +44,10 @@ namespace BanditMilitias.Systems.Workshop
         [SaveableProperty(5)] public CampaignTime LastProductionTime { get; set; } = CampaignTime.Zero;
     }
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 290, IsCritical = false)]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 75, IsCritical = false)]
     public class WarlordWorkshopSystem : MilitiaModuleBase
     {
         public override string ModuleName => "WarlordWorkshopSystem";

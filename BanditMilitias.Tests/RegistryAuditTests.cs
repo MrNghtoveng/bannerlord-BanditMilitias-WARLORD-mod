@@ -19,6 +19,16 @@ namespace BanditMilitias.Tests
         private string AllSourceCode()
             => TestSourceHelper.AllSourceCode();
 
+        private static HashSet<string> FindEventClasses(string allCode)
+        {
+            return Regex.Matches(
+                    allCode,
+                    @"public\s+class\s+(\w+Event)\s*:\s*MilitiaEventBase(?:\s*,\s*[^{}\r\n]+)?")
+                .Cast<Match>()
+                .Select(match => match.Groups[1].Value)
+                .ToHashSet();
+        }
+
         [TestMethod]
         public void All_Module_Classes_Must_Be_Registered()
         {
@@ -75,12 +85,7 @@ namespace BanditMilitias.Tests
         {
             string allCode = AllSourceCode();
 
-            var eventClasses = Regex.Matches(
-                    allCode,
-                    @"public\s+class\s+(\w+Event)\s*:\s*(?:IPoolableEvent|IGameEvent)")
-                .Cast<Match>()
-                .Select(match => match.Groups[1].Value)
-                .ToHashSet();
+            var eventClasses = FindEventClasses(allCode);
 
             var dead = new List<string>();
             foreach (string evt in eventClasses.OrderBy(x => x))
@@ -109,12 +114,7 @@ namespace BanditMilitias.Tests
         {
             string allCode = AllSourceCode();
 
-            var eventClasses = Regex.Matches(
-                    allCode,
-                    @"public\s+class\s+(\w+Event)\s*:\s*(?:IPoolableEvent|IGameEvent)")
-                .Cast<Match>()
-                .Select(match => match.Groups[1].Value)
-                .ToHashSet();
+            var eventClasses = FindEventClasses(allCode);
 
             var noSubscribers = new List<string>();
             foreach (string evt in eventClasses.OrderBy(x => x))

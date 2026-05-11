@@ -12,6 +12,8 @@ using TaleWorlds.Library;
 
 namespace BanditMilitias.Systems.Progression
 {
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem))]
     [BanditMilitias.Core.Components.AutoRegister(Priority = 80, IsCritical = true)]
     public class MilitiaProgressionSystem : MilitiaModuleBase
     {

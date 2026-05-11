@@ -10,12 +10,11 @@ namespace BanditMilitias.Intelligence.AI.Components
 {
 
 
-    [BanditMilitias.Core.Components.AutoRegister(Priority = 20, IsCritical = true)]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 10, IsCritical = true, IsSingleton = false)]
     public class StaticDataCache : MilitiaModuleBase
     {
         private static StaticDataCache? _instance;
-        public static StaticDataCache Instance =>
-            _instance ??= ModuleManager.Instance.GetModule<StaticDataCache>() ?? new StaticDataCache();
+        public static StaticDataCache? Instance => _instance;
 
         public override string ModuleName => "StaticDataCache";
         public override bool IsEnabled => true;
@@ -33,7 +32,10 @@ namespace BanditMilitias.Intelligence.AI.Components
 
         private bool _isCacheLoaded = false;
         public override void Initialize()
-            => CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, SafeRefreshCacheOnSessionLaunched);
+        {
+            _instance = this;
+            CampaignEvents.OnSessionLaunchedEvent.AddNonSerializedListener(this, SafeRefreshCacheOnSessionLaunched);
+        }
 
         private void SafeRefreshCacheOnSessionLaunched(CampaignGameStarter _)
         {
@@ -85,6 +87,7 @@ namespace BanditMilitias.Intelligence.AI.Components
             _allHideouts.Clear(); _allVillages.Clear();
             _allTowns.Clear(); _allCastles.Clear();
             _isCacheLoaded = false;
+            _instance = null;
             CampaignEvents.OnSessionLaunchedEvent.ClearListeners(this);
         }
 
@@ -133,7 +136,9 @@ namespace BanditMilitias.Intelligence.AI.Components
             Settlement? best = null;
             float bestSq = float.MaxValue;
 
-            foreach (var s in StaticDataCache.Instance.AllHideouts)
+            var cache = StaticDataCache.Instance;
+            if (cache == null) return null;
+            foreach (var s in cache.AllHideouts)
             {
                 if (s == null || !s.IsActive) continue;
                 float dSq = CompatibilityLayer.GetSettlementPosition(s).DistanceSquared(position);
@@ -148,7 +153,9 @@ namespace BanditMilitias.Intelligence.AI.Components
             Settlement? best = null;
             float bestSq = float.MaxValue;
 
-            foreach (var s in StaticDataCache.Instance.AllTowns)
+            var cache = StaticDataCache.Instance;
+            if (cache == null) return null;
+            foreach (var s in cache.AllTowns)
             {
                 if (s == null || !s.IsActive) continue;
                 float dSq = CompatibilityLayer.GetSettlementPosition(s).DistanceSquared(position);

@@ -16,7 +16,10 @@ using TaleWorlds.Localization;
 
 namespace BanditMilitias.Systems.Diplomacy
 {
-    [BanditMilitias.Core.Components.AutoRegister]
+    [BanditMilitias.Core.Components.ModuleDependency(
+        typeof(BanditMilitias.Intelligence.Strategic.WarlordSystem),
+        typeof(BanditMilitias.Systems.WarlordLegitimacy.WarlordLegitimacySystem))]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 50)]
     public class ExtortionSystem : BanditMilitias.Core.Components.MilitiaModuleBase
     {
         private static ExtortionSystem? _instance;

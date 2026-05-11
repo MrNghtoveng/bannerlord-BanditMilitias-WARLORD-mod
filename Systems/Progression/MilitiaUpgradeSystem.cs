@@ -8,7 +8,7 @@ namespace BanditMilitias.Systems.Progression
 {
 
 
-    [Obsolete("Use MilitiaProgressionSystem instead. This class is kept for legacy compatibility.")]
+    [BanditMilitias.Core.Components.AutoRegister(Priority = 85)]
     public sealed class MilitiaUpgradeSystem : MilitiaModuleBase
     {
         private static readonly Lazy<MilitiaUpgradeSystem> _inst =
@@ -16,7 +16,7 @@ namespace BanditMilitias.Systems.Progression
         public static MilitiaUpgradeSystem Instance => _inst.Value;
 
         public override string ModuleName => "MilitiaUpgradeSystem_LEGACY";
-        public override bool IsEnabled => false;
+        public override bool IsEnabled => true;
         public override int Priority => 85;
 
         [Obsolete("MilitiaProgressionSystem handles upgrades directly via OnBattleVictory/OnDailyTick.")]

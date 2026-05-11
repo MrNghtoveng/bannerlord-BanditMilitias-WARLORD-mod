@@ -72,7 +72,9 @@ namespace BanditMilitias.Intelligence.AI.Components
             if (_nearbyVillages != null) return _nearbyVillages;
 
             _nearbyVillages = new List<Settlement>();
-            var villages = StaticDataCache.Instance.AllVillages;
+            var cache = StaticDataCache.Instance;
+            if (cache == null) return _nearbyVillages;
+            var villages = cache.AllVillages;
             float radiusSq = searchRadius * searchRadius;
 
             foreach (var v in villages)
